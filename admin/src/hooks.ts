@@ -11,7 +11,7 @@ export interface LiveState {
   feed_events: { t: number; e: string; d: string | null }[];
 }
 
-export interface Me { user: { id: number; username: string; role: 'admin' | 'editor' | 'trader'; must_change_pw: boolean; plan_id: number | null; plan_until: number | null }; auth_enabled: boolean; via: string | null; features: Record<string, boolean | number | null>; plan: { id: number; name: string } }
+export interface Me { user: { id: number; username: string; role: 'admin' | 'editor' | 'trader'; must_change_pw: boolean; plan_id: number | null; plan_until: number | null; qx_linked?: boolean; qx_hint?: string | null; qx_at?: number | null }; quotex_link?: boolean; auth_enabled: boolean; via: string | null; features: Record<string, boolean | number | null>; plan: { id: number; name: string } }
 /** Who is signed in (on a local server with sign-in switched off, the local admin). A 401 means: show the sign-in page. */
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me'), retry: false, staleTime: 60000, refetchOnWindowFocus: true });
 

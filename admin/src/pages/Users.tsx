@@ -7,7 +7,7 @@ import { Badge, Card, Empty, ErrorBox, PageTitle, Spinner } from '../components/
 import type { Feature, Plan } from './Features';
 
 type Role = 'admin' | 'editor' | 'trader';
-interface User { id: number; username: string; role: Role; plan_id: number | null; plan_until: number | null; active: boolean; must_change_pw: boolean; env_admin: boolean; created: number; last_login: number | null; sessions: number; tokens: number }
+interface User { id: number; username: string; role: Role; plan_id: number | null; plan_until: number | null; active: boolean; must_change_pw: boolean; env_admin: boolean; created: number; last_login: number | null; sessions: number; tokens: number; qx_linked: boolean; qx_hint: string | null; qx_at: number | null }
 interface Audit { id: number; ts: number; actor: string; action: string; target: string; detail: Record<string, unknown> }
 interface Saved { user: User; generated_password: string | null }
 
@@ -90,6 +90,7 @@ export default function Users() {
   });
   const signOut = useMutation({ mutationFn: (id: number) => api(`/api/users/${id}/logout`, { method: 'POST', body: {} }), onSuccess: refresh, onError: fail });
   const remove = useMutation({ mutationFn: (id: number) => api(`/api/users/${id}`, { method: 'DELETE' }), onSuccess: refresh, onError: fail });
+  const unlink = useMutation({ mutationFn: (id: number) => api(`/api/users/${id}/quotex`, { method: 'DELETE' }), onSuccess: refresh, onError: fail });
 
   const [name, setName] = useState('');
   const [role, setRole] = useState<Role>('trader');
@@ -131,7 +132,7 @@ export default function Users() {
       <Card title={`Accounts (${users.data.length})`} className="mt-4">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead><tr>{['User', 'Role', 'Plan', 'Status', 'Last sign-in', 'Sessions', 'Tokens', ''].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
+            <thead><tr>{['User', 'Role', 'Plan', 'Status', 'Quotex account', 'Last sign-in', 'Sessions', 'Tokens', ''].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
             <tbody>{users.data.map((u) => {
               const self = u.id === me?.id;
               const locked = u.env_admin || self;
@@ -155,6 +156,11 @@ export default function Users() {
                             onChange={(e) => patch.mutate({ id: u.id, body: { plan_until: e.target.value ? new Date(`${e.target.value}T23:59:59`).getTime() / 1000 : null } })} /></label>
                       </div>)}</td>
                   <td className="td">{u.active ? <Badge tone="up">ACTIVE</Badge> : <Badge tone="down">OFF</Badge>}</td>
+                  <td className="td whitespace-nowrap">
+                    {u.qx_linked ? (
+                      <span className="inline-flex items-center gap-2"><span className="tabular-nums" title={u.qx_at ? `linked ${dateTime(u.qx_at)}` : ''}>···{u.qx_hint || '?'}</span>
+                        <button className="btn btn-sm" title="Lets this user link a different Quotex account the next time their extension connects" onClick={() => { if (confirm(`Unlink the Quotex account of ${u.username}? Their next connection links whichever Quotex account it is then logged into.`)) unlink.mutate(u.id); }}>Unlink</button></span>
+                    ) : <span className="note">not linked yet</span>}</td>
                   <td className="td whitespace-nowrap text-mut" title={u.last_login ? dateTime(u.last_login) : ''}>{u.last_login ? ago(u.last_login) : 'never'}</td>
                   <td className="td tabular-nums text-mut">{u.sessions}</td><td className="td tabular-nums text-mut">{u.tokens}</td>
                   <td className="td whitespace-nowrap text-right">
@@ -166,7 +172,7 @@ export default function Users() {
                       <button className="btn btn-sm btn-danger" disabled={locked} onClick={() => { if (confirm(`Delete ${u.username}? This cannot be undone.`)) remove.mutate(u.id); }}>Delete</button>
                     </div></td>
                 </tr>
-                {open === u.id && cat.data && <tr><td className="td" colSpan={8}><Overrides user={u} features={cat.data.features} onClose={() => setOpen(null)} /></td></tr>}
+                {open === u.id && cat.data && <tr><td className="td" colSpan={9}><Overrides user={u} features={cat.data.features} onClose={() => setOpen(null)} /></td></tr>}
                 </Fragment>);
             })}</tbody>
           </table>

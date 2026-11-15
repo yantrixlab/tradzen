@@ -81,6 +81,7 @@ def generate_password(n: int = 14) -> str:
 _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile(p), m, r, f) for p, m, r, f in [
     (r"^/healthz$", None, "public", None),
     (r"^/api/auth/login$", {"POST"}, "public", None),
+    (r"^/api/auth/extension-login$", {"POST"}, "public", None),          # the extension popup signs in with username + password and gets its own revocable token
     (r"^/ingest$", {"POST"}, "ingest", None),
     (r"^/api/auth/", None, "any", None),
     (r"^/api/me$", None, "any", None),
@@ -130,10 +131,11 @@ def allowed(role: str, rule: str) -> bool:
 
 # ---------------------------------------------------------------------------------------------- the accounts service
 class Auth:
-    def __init__(self, db: sqlite3.Connection, *, enabled: bool, production: bool = False, secret: str = "") -> None:
+    def __init__(self, db: sqlite3.Connection, *, enabled: bool, production: bool = False, secret: str = "", link_quotex: bool = True) -> None:
         self.db = db
         self.enabled = enabled
         self.production = production
+        self.link_quotex = link_quotex                      # one Tradzen account <-> one Quotex account (QXS_QUOTEX_LINK=off switches it off)
         if enabled and len(secret) < 16:
             raise RuntimeError("QXS_SECRET_KEY must be set (at least 16 random characters) when sign-in is enabled")
         self._key = (secret or "dev-not-used").encode()
@@ -149,11 +151,11 @@ class Auth:
 
     @staticmethod
     def _public(row) -> dict:
-        i, name, role, plan_id, plan_until, active, must, env, created, last = row
+        i, name, role, plan_id, plan_until, active, must, env, created, last, qx_hint, qx_linked, qx_at = row
         return {"id": i, "username": name, "role": role, "plan_id": plan_id, "plan_until": plan_until, "active": bool(active), "must_change_pw": bool(must),
-                "env_admin": bool(env), "created": created, "last_login": last}
+                "env_admin": bool(env), "created": created, "last_login": last, "qx_linked": bool(qx_linked), "qx_hint": qx_hint if qx_linked else None, "qx_at": qx_at if qx_linked else None}
 
-    _COLS = "id, username, role, plan_id, plan_until, active, must_change_pw, env_admin, created, last_login"
+    _COLS = "id, username, role, plan_id, plan_until, active, must_change_pw, env_admin, created, last_login, qx_hint, (qx_hash IS NOT NULL), qx_at"
 
     def get_user(self, uid: int) -> dict | None:
         r = self.db.execute(f"SELECT {self._COLS} FROM users WHERE id=?", (uid,)).fetchone()
@@ -253,6 +255,67 @@ class Auth:
             self.db.execute("UPDATE api_tokens SET last_used=? WHERE id=?", (time.time(), r[0]))
             self.db.commit()
         return {**u, "via": "token", "feeder": bool(r[2]) and u["role"] == "admin"}
+
+    # ---- the Quotex account a Tradzen account is tied to
+    def qx_check(self, uid: int, qx_hash: object, hint: object = "") -> str:
+        """Compare the Quotex account the extension is looking at with the one this Tradzen account is tied to.
+        'ok' same account | 'bound' tied just now (the first time) | 'unknown' the extension has not seen an account number yet |
+        'mismatch' this Tradzen account belongs to another Quotex account | 'taken' that Quotex account belongs to another Tradzen user.
+        The extension sends a SHA-256 of the account number; what is stored is a keyed hash of that, so neither the number nor a guessable hash of it is kept."""
+        if not self.link_quotex:
+            return "ok"
+        if not isinstance(qx_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", qx_hash):
+            return "unknown"
+        key = self._h("qx:" + qx_hash)
+        row = self.db.execute("SELECT qx_hash FROM users WHERE id=?", (uid,)).fetchone()
+        if row is None:
+            return "unknown"
+        if row[0]:
+            return "ok" if hmac.compare_digest(row[0], key) else "mismatch"
+        if self.db.execute("SELECT 1 FROM users WHERE qx_hash=?", (key,)).fetchone():
+            return "taken"
+        digits = re.sub(r"\D", "", str(hint or ""))[-3:]
+        try:
+            cur = self.db.execute("UPDATE users SET qx_hash=?, qx_hint=?, qx_at=? WHERE id=? AND qx_hash IS NULL", (key, digits, time.time(), uid))
+            self.db.commit()
+        except sqlite3.IntegrityError:                      # two Tradzen users raced for the same Quotex account: the second one loses
+            return "taken"
+        if cur.rowcount != 1:
+            return "ok"
+        u = self.db.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()
+        self.audit(u[0] if u else str(uid), "quotex-linked", "", {"hint": digits})
+        return "bound"
+
+    def qx_unlink(self, actor: dict, uid: int) -> None:
+        """Admin only: let this Tradzen account be tied to a (different) Quotex account again, at its next connection."""
+        u = self.get_user(uid)
+        if not u:
+            raise AuthError(404, "no such user")
+        self.db.execute("UPDATE users SET qx_hash=NULL, qx_hint=NULL, qx_at=NULL WHERE id=?", (uid,))
+        self.db.commit()
+        self.audit(actor["username"], "quotex-unlinked", u["username"], {"hint": u.get("qx_hint")})
+
+    # ---- sign in from the extension popup: the same password check, but the answer is a revocable access token instead of a browser session
+    def extension_login_finish(self, ok: bool, row: tuple | None, username: str, ip: str, device: str, feeder: bool) -> tuple[dict, dict, str]:
+        key = self._client_key(ip, username)
+        if not ok or row is None or not row[2]:
+            self._fails.setdefault(key, []).append(time.time())
+            self.audit(username[:60], "login-failed", "", {"ip": ip, "via": "extension"})
+            raise AuthError(401, "wrong username or password")
+        self._fails.pop(key, None)
+        user = self.get_user(row[0])
+        if user["must_change_pw"]:
+            raise AuthError(403, "sign in on the website once to choose your own password, then sign in here")
+        if feeder and user["role"] != "admin":
+            raise AuthError(403, "only an admin can use a browser as the price feed")
+        dev = re.sub(r"[^0-9a-zA-Z]", "", device or "")[:12] or "browser"
+        label = f"Chrome extension ({dev})"
+        self.db.execute("UPDATE api_tokens SET revoked=1 WHERE user_id=? AND label=? AND revoked=0", (user["id"], label))      # signing in again on the same browser replaces its token
+        self.db.commit()
+        token, secret = self.create_token(user, label, feeder)
+        self.db.execute("UPDATE users SET last_login=? WHERE id=?", (time.time(), user["id"]))
+        self.db.commit()
+        return user, token, secret
 
     # ---- users (admin only; the routes check the role)
     def create_user(self, actor: str, username: str, password: str | None, role: str = "trader", must_change_pw: bool = True) -> tuple[dict, str | None]:
@@ -399,6 +462,7 @@ def from_env(db: sqlite3.Connection, env: dict | None = None) -> Auth:
     enabled = production or flag in ("on", "1", "true", "yes")
     if flag in ("off", "0", "false", "no") and production:
         raise RuntimeError("QXS_AUTH=off is not allowed with QXS_ENV=production")
-    a = Auth(db, enabled=enabled, production=production, secret=env.get("QXS_SECRET_KEY", ""))
+    link = env.get("QXS_QUOTEX_LINK", "on").lower() not in ("off", "0", "false", "no")
+    a = Auth(db, enabled=enabled, production=production, secret=env.get("QXS_SECRET_KEY", ""), link_quotex=link)
     a.ensure_env_admin(env.get("QXS_ADMIN_USER"), env.get("QXS_ADMIN_PASSWORD"))
     return a

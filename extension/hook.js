@@ -163,12 +163,40 @@
     return typeof v === 'number' ? v : null;
   }
 
+  // ---- which Quotex account this tab is logged into. The account number is read ONLY from messages about the account's own orders and balance (never from lists of
+  // other traders) and goes no further than the extension's background worker, which turns it into a hash. Tradzen uses it to keep one account's trades, balance and alerts
+  // from ending up on another Tradzen account; nothing is ever sent to Quotex.
+  const OWN_ACCOUNT_RE = /^(s_)?(orders|balance|settings|profile)(\/|$)/;
+  const uid = { cur: null, cand: null, candN: 0, sources: {} };
+  function noteUid(name, arg) {
+    if (!OWN_ACCOUNT_RE.test(name)) return;
+    const found = [];
+    const walk = (v, d) => {
+      if (!v || d > 3) return;
+      if (Array.isArray(v)) { v.slice(0, 30).forEach((x) => walk(x, d + 1)); return; }
+      if (typeof v !== 'object') return;
+      if ((typeof v.uid === 'number' || typeof v.uid === 'string') && /^\d{3,20}$/.test(String(v.uid))) found.push(String(v.uid));
+      for (const k of Object.keys(v).slice(0, 40)) if (v[k] && typeof v[k] === 'object') walk(v[k], d + 1);
+    };
+    walk(arg, 0);
+    for (const u of found) {
+      uid.sources[name] = (uid.sources[name] || 0) + 1;
+      if (u === uid.cur) { uid.cand = null; uid.candN = 0; continue; }
+      if (u === uid.cand) uid.candN++; else { uid.cand = u; uid.candN = 1; }
+      if (uid.cur === null || uid.candN >= 3) {                  // the first number is taken at once; a different one must repeat before the account counts as switched
+        uid.cur = u; uid.cand = null; uid.candN = 0;
+        pushFeed({ k: 'a', u });
+      }
+    }
+  }
+
   // ------------------------------------------------------- frame handling
   function handleEvent(dir, name, args) {
     const key = dir + ':' + name;
     bump(key);
     const recvMs = Date.now();
     let isTick = false;
+    if (dir === 'in') for (const arg of args) noteUid(name, arg);
     for (const arg of args) {
       const ticks = dir === 'in' ? extractTicks(arg) : [];
       if (!ticks.length && ORDER_RE.test(name) && !AUTH_EVENT_RE.test(name)) {
@@ -312,6 +340,7 @@
       isTop: root.top === root, startedAt: S.started, installedAt, now: Date.now(), workers: S.workers,
       sockets: S.sockets.slice(-10), frames: S.frames, bytes: S.bytes, events: S.events, assets,
       instruments: S.instruments, samples: S.samples, tickRing: S.tickRing.slice(-100), parseErrors: S.parseErrors,
+      account: { known: uid.cur !== null, hint: uid.cur ? uid.cur.slice(-3) : null, sources: uid.sources },      // event NAMES the account number was seen in (never the number)
     };
   }
 

@@ -17,6 +17,13 @@ class LoginIn(BaseModel):
     password: str
 
 
+class ExtLoginIn(BaseModel):
+    username: str
+    password: str
+    device: str = ""
+    feeder: bool = False
+
+
 class PasswordIn(BaseModel):
     old: str | None = None
     new: str
@@ -115,7 +122,7 @@ def bind(auth: Auth, features: Features, on_user_deleted=None) -> tuple[APIRoute
 
     def me_payload(user: dict) -> dict:
         plan = features._plan_for(user)
-        return {"user": {k: user.get(k) for k in ("id", "username", "role", "must_change_pw", "plan_id", "plan_until")}, "auth_enabled": auth.enabled, "via": user.get("via"),
+        return {"user": {k: user.get(k) for k in ("id", "username", "role", "must_change_pw", "plan_id", "plan_until", "qx_linked", "qx_hint", "qx_at")}, "auth_enabled": auth.enabled, "quotex_link": auth.link_quotex, "via": user.get("via"),
                 "features": features.values(user), "plan": {"id": plan["id"], "name": plan["name"]}}
 
     # ---- sign in / out
@@ -133,6 +140,31 @@ def bind(auth: Auth, features: Features, on_user_deleted=None) -> tuple[APIRoute
             raise HTTPException(e.status, e.message)
         response.set_cookie(COOKIE, token, max_age=SESSION_DAYS * 86400, httponly=True, secure=auth.production, samesite="lax", path="/")
         return me_payload({**auth.get_user(row[0]), "via": "session"})
+
+    @router.post("/auth/extension-login")
+    async def extension_login(body: ExtLoginIn, request: Request) -> dict:
+        """The extension popup signs in with the account's username and password and receives its own access token (shown to nobody: the extension keeps it).
+        Same lock-out as the website; an admin may ask for a price-feed token for this browser."""
+        if not auth.enabled:
+            raise HTTPException(400, "sign-in is switched off on this server")
+        ip = request.client.host if request.client else ""
+        try:
+            auth.login_precheck(ip, body.username)
+            row = auth.login_row(body.username)
+            ok = await run_in_threadpool(verify_password, body.password, row[1] if row else _DUMMY_HASH)
+            if ok and row is not None and row[2]:
+                u = auth.get_user(row[0])
+                if u["role"] != "admin" and not features.can({**u, "via": "db"}, "cap.extension.connect"):
+                    raise HTTPException(403, "the Chrome extension is not included in your plan")
+            user, token, secret = auth.extension_login_finish(ok and row is not None, row, body.username, ip, body.device, body.feeder)
+        except AuthError as e:
+            raise HTTPException(e.status, e.message)
+        return {"token": secret, "label": token["label"], "feeder": token["feeder"], "user": {k: user.get(k) for k in ("id", "username", "role")}}
+
+    @router.delete("/users/{uid}/quotex")
+    async def user_quotex_unlink(uid: int, request: Request) -> dict:
+        _call(auth.qx_unlink, request.state.user, uid)
+        return {"ok": True}
 
     @router.post("/auth/logout")
     async def logout(request: Request, response: Response) -> dict:

@@ -61,7 +61,7 @@ interface SeedState {
   pending: SeedInfo | null; fresh: boolean; server: Record<string, number>;
   merge: { state: 'idle' | 'running' | 'done' | 'error'; done: number; total: number; result: Record<string, number> | null; error: string | null };
 }
-const LABELS: Record<string, string> = { candles: 'Candles', sentiment: 'Sentiment rows', instruments: 'Pairs', signals: 'Signals', strategies: 'Strategies', backtest_runs: 'Backtest runs', broker_trades: 'Trades' };
+const LABELS: Record<string, string> = { candles: 'Candles', sentiment: 'Sentiment rows', instruments: 'Pairs', signals: 'Signals', strategies: 'Strategies', backtest_runs: 'Backtest runs', broker_trades: 'Trades', style_signals: 'My style samples' };
 
 /** Send the data collected elsewhere (the file made by `python -m app.seed make`) to this server: add its candles to what is here, or - while nobody but the admin has an account - load all of it. */
 function ImportCard() {

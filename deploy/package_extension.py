@@ -4,7 +4,7 @@ Writes dist/tradzen-extension-<domain>.zip, ready to send to users (Chrome: chro
 or to upload as an unlisted Chrome Web Store item. The build:
   * talks to your server by default and is allowed to reach only that server (no other host permission),
   * has no side panel (the hosted panel is opened in a browser tab instead) and no developer / test files.
-Users still sign in once: they create an access token under "My account" on your site and paste it into the extension popup.
+Users sign in once in the extension popup with their Tradzen username and password (an access token from "My account" still works too).
 """
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def build(url: str, out_dir: Path) -> Path:
     ph = work / "popup.html"
     t = ph.read_text(encoding="utf-8")
     t = sub(t, 'placeholder="http://127.0.0.1:8787"', f'placeholder="{origin}"', "server placeholder")
-    t = sub(t, '<button id="panel">Open signal panel</button>', '<button id="panel" hidden>Open signal panel</button>', "side panel button")
+    t = sub(t, 'id="panel">Open signal panel</button>', 'id="panel" hidden>Open signal panel</button>', "side panel button")
     t = sub(t, "Send market data to the local backend", "Send my trades to the server", "forward label")
     ph.write_text(t, encoding="utf-8")
 

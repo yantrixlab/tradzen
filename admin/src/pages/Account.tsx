@@ -49,7 +49,7 @@ function Tokens({ isAdmin }: { isAdmin: boolean }) {
   const revoke = useMutation({ mutationFn: (id: number) => api(`/api/tokens/${id}`, { method: 'DELETE' }), onSuccess: () => qc.invalidateQueries({ queryKey: ['tokens'] }) });
   return (
     <Card title="Chrome extension">
-      <p className="note mb-3">In the extension popup, enter this server&apos;s address and an access token. Each browser needs its own token; revoke one here to disconnect it.</p>
+      <p className="note mb-3">The easy way: open the extension popup, go to <b className="text-fg">Connection</b> and sign in with the same username and password as here (browsers that signed in this way show up below too). Or create an access token here and paste it into the popup. Revoke a browser to disconnect it.</p>
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-[180px] flex-1"><label className="label" htmlFor="tl">Name</label><input id="tl" className="input" value={label} maxLength={60} onChange={(e) => setLabel(e.target.value)} /></div>
         {isAdmin && <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={feeder} onChange={(e) => setFeeder(e.target.checked)} />Price feed (the tab that streams Quotex prices)</label>}
@@ -83,6 +83,28 @@ function Tokens({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+/** The Quotex account this Tradzen account is tied to: set automatically the first time the extension sees the account, changed only by an admin. */
+function QuotexLink({ linked, hint, at, enforced }: { linked: boolean; hint: string | null | undefined; at: number | null | undefined; enforced: boolean }) {
+  return (
+    <Card title="Quotex account">
+      {!enforced ? <p className="note">This server does not tie accounts together.</p> : linked ? (
+        <div className="flex items-start gap-3">
+          <Badge tone="up">LINKED</Badge>
+          <div className="text-sm">
+            <div>Quotex account ending in <b className="tabular-nums">···{hint || '?'}</b>{at ? <span className="text-mut"> · linked {ago(at)}</span> : null}</div>
+            <p className="note mt-1">Your trades, balance and alerts follow this account only. If you log into another Quotex account in the browser, nothing is saved and no alerts are shown until you are back on this one. To use a different Quotex account, ask your admin to unlink this one.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-3">
+          <Badge tone="warn">NOT LINKED YET</Badge>
+          <p className="note">The first time the extension sees your Quotex account (after you sign in there and open or place a trade), this Tradzen account is tied to it automatically. Only that account can then send trades and balance here.</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function Account() {
   const me = useMe().data;
   if (!me) return null;
@@ -93,6 +115,7 @@ export default function Account() {
       <div className="grid gap-4 lg:grid-cols-2">
         {me.auth_enabled ? <Card title="Password"><PasswordForm /></Card> : <Card title="Password"><p className="note">Sign-in is switched off on this local server, so there is no password to change.</p></Card>}
         {me.auth_enabled ? <Tokens isAdmin={u.role === 'admin'} /> : <Card title="Chrome extension"><p className="note">On this local server the extension needs no token.</p></Card>}
+        {me.auth_enabled && <QuotexLink linked={!!u.qx_linked} hint={u.qx_hint} at={u.qx_at} enforced={me.quotex_link !== false} />}
       </div>
     </div>
   );

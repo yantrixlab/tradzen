@@ -3,56 +3,143 @@ let tabId = null;
 let last = [];
 
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+const DEFAULT_URL = 'http://127.0.0.1:8787';
+const isLocalHost = (h) => h === '127.0.0.1' || h === 'localhost';
+const serverUrl = async () => ((await chrome.storage.local.get('backendUrl')).backendUrl || DEFAULT_URL).replace(/\/$/, '');
+const setMsg = (el, kind, text) => { el.className = 'msg ' + (kind || 'mut'); el.textContent = text || ''; };
+
+// ------------------------------------------------------------------ tabs
+document.querySelectorAll('nav button').forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.id === 'tab-' + b.dataset.tab));
+    try { sessionStorage.setItem('tab', b.dataset.tab); } catch (_) { /* ignore */ }
+  };
+});
+try { const t = sessionStorage.getItem('tab'); if (t) document.querySelector(`nav button[data-tab="${t}"]`)?.click(); } catch (_) { /* ignore */ }
+
+// ------------------------------------------------------------------ the status of this tab and of the connection
+function setStat(key, tone, title, sub) {
+  $('i-' + key).className = 'ic ' + (tone || '');
+  $('t-' + key).textContent = title;
+  $('s-' + key).textContent = sub;
+}
+
+function pill(kind, text) { const p = $('status'); p.className = 'pill ' + kind; p.lastElementChild.textContent = text; }
+
+function renderOverview(all, conn, snap) {
+  const b = all.backend, qx = all.qx, who = all.who || conn.who || null;
+  let host = '';
+  try { host = new URL(conn.backendUrl || DEFAULT_URL).host; } catch (_) { host = ''; }
+  const local = isLocalHost((host || '').split(':')[0]);
+  const signedIn = !!conn.token;
+  const banners = [];
+
+  // ---- server
+  if (!signedIn && !local) {
+    setStat('srv', 'warn', 'Not signed in', 'Sign in under Connection to link this browser to your account.');
+  } else if (!b) {
+    setStat('srv', '', 'Connecting…', host);
+  } else if (!b.ok) {
+    setStat('srv', 'bad', 'Cannot reach the server', `${host} · ${b.err || ''}`);
+    if (/401/.test(b.err || '')) banners.push(['bad', '<b>Your sign-in expired or was revoked.</b> Sign in again under Connection.']);
+  } else {
+    setStat('srv', 'ok', 'Connected', local ? host + ' · local server' : `${who ? who.username + ' · ' + who.role + ' · ' : ''}${host}`);
+  }
+
+  // ---- Quotex account
+  const seen = snap && snap.account && snap.account.known ? snap.account.hint : null;
+  const st = qx && qx.state;
+  if (st === 'mismatch') {
+    setStat('acct', 'bad', 'Wrong Quotex account', `This Tradzen account is linked to account ···${qx.hint || '?'}${seen ? `. This tab is ···${seen}` : ''}.`);
+    banners.push(['bad', `<b>This Quotex tab is on a different account.</b> Nothing of this account is saved or shown, and you get no alerts, until you log into the Quotex account that ends in <b>···${esc(qx.hint || '?')}</b>.`]);
+  } else if (st === 'taken') {
+    setStat('acct', 'bad', 'Quotex account already in use', 'That Quotex account is linked to another Tradzen user. Ask your admin.');
+    banners.push(['bad', '<b>This Quotex account belongs to another Tradzen user.</b> Ask your admin to unlink it first.']);
+  } else if (st === 'ok' || st === 'bound') {
+    setStat('acct', 'ok', `Quotex account ···${qx.hint || seen || '?'}`, st === 'bound' ? 'Linked to your Tradzen account just now.' : 'Linked to your Tradzen account.');
+  } else if (qx) {
+    setStat('acct', 'warn', seen ? `Detected ···${seen}` : 'Looking for your Quotex account', seen ? 'Linking to your Tradzen account…' : 'Your trades wait until it is seen. Open the Quotex trading page and place or open any order.');
+  } else if (seen) {
+    setStat('acct', 'ok', `Quotex account ···${seen}`, local ? 'Not linked: this is a local server.' : 'Detected.');
+  } else {
+    setStat('acct', snap ? 'warn' : '', snap ? 'Looking for your Quotex account' : 'Quotex account', snap ? 'It shows up with your first order or balance message.' : 'Open Quotex in this tab.');
+  }
+
+  // ---- role
+  if (all.feeder) setStat('role', 'ok', 'Price feed', 'This browser streams Quotex prices for everyone. Keep this tab open.');
+  else setStat('role', '', signedIn || !local ? 'Alerts and my trades' : 'Local mode', 'Gets the signals for your account and keeps your own trade history.');
+
+  $('banner').innerHTML = banners.map(([k, h]) => `<div class="banner ${k}">${h}</div>`).join('');
+
+  // ---- the pill
+  if (!snap) pill('', 'no Quotex tab');
+  else if (b && !b.ok) pill('off', 'offline');
+  else if (st === 'mismatch' || st === 'taken') pill('off', 'blocked');
+  else { const age = (Date.now() - snap.now) / 1000; if (age < 6) pill('live', 'live'); else pill('off', 'stale ' + age.toFixed(0) + 's'); }
+}
 
 async function load() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
   tabId = tab.id;
   const all = await chrome.storage.session.get(null);
+  const conn = await chrome.storage.local.get(['backendUrl', 'token', 'who']);
+  last = Object.entries(all).filter(([k]) => k.startsWith(`snap:${tabId}:`)).map(([, v]) => v);
+  const weight = (x) => x.frames.in + x.frames.out + x.sockets.length * 1000 + x.workers.length;
+  const snap = last.length ? last.slice().sort((a, b) => weight(b) - weight(a))[0] : null;
+
   const b = all.backend;
   $('backend').innerHTML = !b ? 'No data sent yet.' :
-    `<span class="${b.ok && Date.now() - b.at < 8000 ? 'ok' : 'bad'}">${b.ok ? 'connected' : 'unreachable'}</span> ${esc(b.url)}` +
-    (b.ok ? '' : ` <span class="mut">${esc(b.err)} — start the backend</span>`);
-  last = Object.entries(all).filter(([k]) => k.startsWith(`snap:${tabId}:`)).map(([, v]) => v);
-  render();
+    `<span class="${b.ok && Date.now() - b.at < 8000 ? 'ok' : 'bad'}">${b.ok ? 'connected' : 'unreachable'}</span> ${esc(b.url)}` + (b.ok ? '' : ` <span class="mut">${esc(b.err)}</span>`);
+  renderOverview(all, conn, snap);
+  renderSigned(all, conn);
+  renderDiag(snap);
 }
 
-function render() {
-  if (!last.length) {
-    $('status').innerHTML = '<span class="bad">hook not running</span>';
-    $('sockets').innerHTML = 'No heartbeat from the page. Reload the extension on chrome://extensions, then hard-reload this tab (Ctrl+Shift+R).';
+function renderSigned(all, conn) {
+  let local = true;
+  try { local = isLocalHost(new URL(conn.backendUrl || DEFAULT_URL).hostname); } catch (_) { /* ignore */ }
+  const w = all.who || conn.who;
+  const on = !!conn.token;
+  $('c-out').hidden = !on;
+  $('c-in').hidden = on && !!w;
+  if (on) {
+    $('o-who').textContent = w ? `${w.username} (${w.role})` : 'Signed in with an access token';
+    $('o-srv').textContent = (conn.backendUrl || DEFAULT_URL) + (all.feeder ? ' · price feed' : '');
+  }
+  $('l-feed-row').hidden = local;
+}
+
+// ------------------------------------------------------------------ diagnostics (what the page hook sees)
+function renderDiag(s) {
+  if (!s) {
+    $('sockets').innerHTML = 'No heartbeat from this page. Open this popup on your Quotex tab, or reload the extension on chrome://extensions and hard-reload the tab (Ctrl+Shift+R).';
+    $('acct-diag').textContent = '–';
     return;
   }
-  // The frame that actually carries the data (page may have several frames).
-  const weight = (x) => x.frames.in + x.frames.out + x.sockets.length * 1000 + x.workers.length;
-  const s = last.slice().sort((a, b) => weight(b) - weight(a))[0];
-  const ageS = ((Date.now() - s.now) / 1000).toFixed(0);
-  $('status').innerHTML = `<span class="${ageS < 6 ? 'ok' : 'bad'}">${ageS < 6 ? 'live' : 'stale ' + ageS + 's'}</span>`;
-
   $('sockets').innerHTML = s.sockets.map((k) =>
     `${esc(k.url)} <span class="${k.state === 'open' ? 'ok' : 'bad'}">${k.state}${k.closeCode ? ' (' + k.closeCode + ')' : ''}</span>
      <span class="mut">in ${k.msgsIn} / out ${k.msgsOut}</span>`).join('<br>') ||
     `<span class="mut">Hook alive (${last.length} frame${last.length > 1 ? 's' : ''}) but no WebSocket opened in the page thread.</span>`;
-  if (s.workers.length) {
-    $('sockets').innerHTML += '<br><span class="mut">Workers started by the page:</span><br>' +
-      s.workers.map((w) => `${esc(w.kind)} ${esc(w.url)}`).join('<br>');
-  }
+  if (s.workers.length) $('sockets').innerHTML += '<br><span class="mut">Workers started by the page:</span><br>' + s.workers.map((w) => `${esc(w.kind)} ${esc(w.url)}`).join('<br>');
 
   const secs = Math.max(1, (s.now - s.startedAt) / 1000);
-  $('traffic').innerHTML = `frames in ${s.frames.in} (${(s.frames.in / secs).toFixed(1)}/s), out ${s.frames.out} · ` +
-    `bytes in ${s.bytes.in} · parse errors ${s.parseErrors} · page ${esc(s.page)}`;
-
+  $('traffic').innerHTML = `frames in ${s.frames.in} (${(s.frames.in / secs).toFixed(1)}/s), out ${s.frames.out} · bytes in ${s.bytes.in} · parse errors ${s.parseErrors} · page ${esc(s.page)}`;
   const ins = s.instruments;
   $('instruments').innerHTML = ins ? `${ins.count} total · <b>${ins.otc}</b> OTC · <b>${ins.live}</b> live` : 'not received yet';
 
   const assets = Object.entries(s.assets).sort((a, b) => b[1].n - a[1].n);
   $('acount').textContent = assets.length;
   $('assets').tBodies[0].innerHTML = assets.map(([k, a]) =>
-    `<tr><td>${esc(k)}</td><td>${a.n}</td><td>${a.perMin}</td><td>${a.lastPrice}</td>` +
-    `<td class="${a.ageS > 10 ? 'bad' : ''}">${a.ageS}</td><td>${a.maxGapS}</td><td>${a.lagMeanS}</td></tr>`).join('');
-
+    `<tr><td>${esc(k)}</td><td>${a.n}</td><td>${a.perMin}</td><td>${a.lastPrice}</td><td class="${a.ageS > 10 ? 'bad' : ''}">${a.ageS}</td><td>${a.maxGapS}</td><td>${a.lagMeanS}</td></tr>`).join('');
   const ev = Object.entries(s.events).sort((a, b) => b[1].n - a[1].n);
   $('events').tBodies[0].innerHTML = ev.map(([k, e]) => `<tr><td>${esc(k)}</td><td>${e.n}</td></tr>`).join('');
+
+  const a = s.account;
+  $('acct-diag').innerHTML = !a ? 'This build of the page hook does not report it: reload the Quotex tab.' :
+    (a.known ? `<span class="ok">account number seen</span> (ends ···${esc(a.hint)})` : '<span class="warn">no account number seen yet</span>') +
+    '<br>seen in: ' + (Object.entries(a.sources || {}).map(([k, n]) => `${esc(k)} ×${n}`).join(', ') || 'no message yet');
 }
 
 $('save').onclick = () => {
@@ -62,55 +149,119 @@ $('save').onclick = () => {
   a.download = `quotex-sniffer-sample-${Date.now()}.json`;
   a.click();
 };
-$('reset').onclick = async () => {
-  if (tabId !== null) chrome.tabs.sendMessage(tabId, { __qxsCmd: 'reset' }).catch(() => {});
-};
+$('reset').onclick = async () => { if (tabId !== null) chrome.tabs.sendMessage(tabId, { __qxsCmd: 'reset' }).catch(() => {}); };
 
-const DEFAULT_URL = 'http://127.0.0.1:8787';
-const serverUrl = async () => ((await chrome.storage.local.get('backendUrl')).backendUrl || DEFAULT_URL).replace(/\/$/, '');
 $('panel').onclick = async () => {
   if (tabId === null) return;
   try { await chrome.sidePanel.open({ tabId }); window.close(); } catch (e) { chrome.tabs.create({ url: (await serverUrl()) + '/' }); }
 };
 $('tab').onclick = async () => chrome.tabs.create({ url: (await serverUrl()) + '/' });
 
-// ---- connection: which server, and the personal access token (hosted server; a local one needs neither) ----
-chrome.storage.local.get(['backendUrl', 'token']).then((c) => { $('c-url').value = c.backendUrl || ''; $('c-token').value = c.token || ''; });
-$('c-save').onclick = async () => {
-  const msg = $('c-msg');
-  let raw = $('c-url').value.trim().replace(/\/+$/, '');
-  const token = $('c-token').value.trim();
-  if (!raw) { await chrome.storage.local.remove(['backendUrl', 'token']); msg.className = 'ok'; msg.textContent = ' using the local server'; return; }
+// ------------------------------------------------------------------ connection: sign in with the Tradzen username and password
+async function deviceId() {
+  const c = await chrome.storage.local.get('device');
+  if (c.device) return c.device;
+  const id = Array.from(crypto.getRandomValues(new Uint8Array(6))).map((b) => b.toString(16).padStart(2, '0')).join('');
+  await chrome.storage.local.set({ device: id });
+  return id;
+}
+
+function parseServer() {
+  let raw = $('c-url').value.trim().replace(/\/+$/, '') || DEFAULT_URL;
   if (!/^https?:\/\//i.test(raw)) raw = 'https://' + raw;
   let u;
-  try { u = new URL(raw); } catch (e) { msg.className = 'bad'; msg.textContent = ' that is not a web address'; return; }
-  const local = ['127.0.0.1', 'localhost'].includes(u.hostname);
-  if (!local && u.protocol !== 'https:') { msg.className = 'bad'; msg.textContent = ' a remote server must use https://'; return; }
-  if (!local && !token) { msg.className = 'bad'; msg.textContent = ' paste the access token from My account'; return; }
-  if (!local) {                                                       // ask Chrome for access to this one server only (must run inside the click)
+  try { u = new URL(raw); } catch (e) { return { error: 'that is not a web address' }; }
+  const local = isLocalHost(u.hostname);
+  if (!local && u.protocol !== 'https:') return { error: 'a remote server must use https://' };
+  return { u, local };
+}
+
+chrome.storage.local.get('backendUrl').then((c) => { $('c-url').value = c.backendUrl || (DEFAULT_URL === 'http://127.0.0.1:8787' ? '' : DEFAULT_URL); });
+
+$('l-go').onclick = async () => {
+  const msg = $('l-msg');
+  setMsg(msg, 'mut', '');
+  const s = parseServer();
+  if (s.error) return setMsg(msg, 'bad', s.error);
+  const user = $('l-user').value.trim(), pass = $('l-pass').value;
+  if (s.local && !user) {                                             // a local server needs no account
+    await chrome.storage.local.set({ backendUrl: s.u.origin });
+    await chrome.storage.local.remove(['token', 'who']);
+    return setMsg(msg, 'ok', 'Using the local server: nothing to sign in to. Reload the Quotex tab once.');
+  }
+  if (!user || !pass) return setMsg(msg, 'bad', 'Enter your username and password.');
+  if (!s.local) {                                                     // ask Chrome for access to this one server only (must run inside the click)
     let granted = false;
-    try { granted = await chrome.permissions.request({ origins: [u.origin + '/*'] }); } catch (e) { granted = false; }
+    try { granted = await chrome.permissions.request({ origins: [s.u.origin + '/*'] }); } catch (e) { granted = false; }
+    if (!granted) return setMsg(msg, 'bad', 'Chrome needs your OK to reach that server.');
+  }
+  $('l-go').disabled = true;
+  setMsg(msg, 'mut', 'Signing in…');
+  try {
+    const r = await fetch(s.u.origin + '/api/auth/extension-login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user, password: pass, device: await deviceId(), feeder: $('l-feed').checked }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : 'HTTP ' + r.status);
+    await chrome.storage.local.set({ backendUrl: s.u.origin, token: j.token, who: { username: j.user.username, role: j.user.role, feeder: !!j.feeder } });
+    await chrome.storage.session.remove(['seq', 'qx', 'who', 'backend']);
+    $('l-pass').value = '';
+    setMsg(msg, 'ok', `Signed in as ${j.user.username}. Reload the Quotex tab once.`);
+    load();
+  } catch (e) {
+    setMsg(msg, 'bad', String((e && e.message) || e));
+  } finally { $('l-go').disabled = false; }
+};
+$('l-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('l-go').click(); });
+
+$('l-out').onclick = async () => {
+  await chrome.storage.local.remove(['token', 'who']);
+  await chrome.storage.session.remove(['seq', 'qx', 'who', 'backend']);
+  $('c-token').value = '';
+  setMsg($('o-msg'), 'mut', 'Signed out in this browser. To disconnect it for good, also revoke it under My account on the website.');
+  load();
+};
+
+// ---- access token fallback (the original way)
+$('c-save').onclick = async () => {
+  const msg = $('c-msg');
+  const token = $('c-token').value.trim();
+  const s = parseServer();
+  if (s.error) { msg.className = 'bad'; msg.textContent = ' ' + s.error; return; }
+  if (!s.local && !token) { msg.className = 'bad'; msg.textContent = ' paste the access token from My account'; return; }
+  if (!s.local) {
+    let granted = false;
+    try { granted = await chrome.permissions.request({ origins: [s.u.origin + '/*'] }); } catch (e) { granted = false; }
     if (!granted) { msg.className = 'bad'; msg.textContent = ' Chrome needs your OK to reach that server'; return; }
   }
-  await chrome.storage.local.set({ backendUrl: u.origin, token });
-  await chrome.storage.session.remove('seq');
+  await chrome.storage.local.set({ backendUrl: s.u.origin, token });
+  await chrome.storage.local.remove('who');
+  await chrome.storage.session.remove(['seq', 'qx', 'who']);
   msg.className = 'ok'; msg.textContent = ' saved - reload the Quotex tab once';
 };
+
 chrome.storage.local.get('forward').then((c) => { $('fwd').checked = c.forward !== false; });
 $('fwd').onchange = (e) => chrome.storage.local.set({ forward: e.target.checked });
 
-// ---- alert settings (defaults mirror background.js) ----
+// ------------------------------------------------------------------ alert settings (defaults mirror background.js)
 const DEF = { alerts: true, guard: true, sound: true, resultSound: true, desktop: true, tiers: 'AB', position: 'top-center', volume: 0.7 };
+const bound = [];
 const bind = (id, key, kind) => {
   const el = $(id);
-  chrome.storage.local.get(key).then((c) => {
-    const v = c[key] === undefined ? DEF[key] : c[key];
-    if (kind === 'check') el.checked = v; else el.value = v;
-  });
+  bound.push([el, key, kind]);
   el.onchange = el.oninput = () => chrome.storage.local.set({ [key]: kind === 'check' ? el.checked : kind === 'num' ? +el.value : el.value });
 };
-bind('s-alerts', 'alerts', 'check'); bind('s-guard', 'guard', 'check'); bind('s-sound', 'sound', 'check'); bind('s-rsound', 'resultSound', 'check'); bind('s-desktop', 'desktop', 'check');
-bind('s-tiers', 'tiers'); bind('s-pos', 'position'); bind('s-vol', 'volume', 'num');
+async function syncSettings() {
+  const c = await chrome.storage.local.get(null);
+  for (const [el, key, kind] of bound) {
+    const v = c[key] === undefined ? DEF[key] : c[key];
+    if (kind === 'check') el.checked = v; else if (document.activeElement !== el) el.value = v;
+  }
+}
+bind('s-alerts', 'alerts', 'check'); bind('q-alerts', 'alerts', 'check'); bind('s-guard', 'guard', 'check'); bind('s-sound', 'sound', 'check'); bind('q-sound', 'sound', 'check');
+bind('s-rsound', 'resultSound', 'check'); bind('s-desktop', 'desktop', 'check'); bind('s-tiers', 'tiers'); bind('s-pos', 'position'); bind('s-vol', 'volume', 'num');
+chrome.storage.onChanged.addListener((_, area) => { if (area === 'local') syncSettings(); });
+syncSettings();
+
 const vol = () => +$('s-vol').value;
 $('t-call').onclick = () => window.QXSound.play('call', vol());
 $('t-put').onclick = () => window.QXSound.play('put', vol());

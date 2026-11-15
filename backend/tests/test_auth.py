@@ -84,9 +84,9 @@ def test_env_admin_and_user_management():
 
 def _main(**env):
     d = tempfile.mkdtemp()
-    for k in ("QXS_ENV", "QXS_AUTH", "QXS_SECRET_KEY", "QXS_ADMIN_USER", "QXS_ADMIN_PASSWORD"):
+    for k in ("QXS_ENV", "QXS_AUTH", "QXS_SECRET_KEY", "QXS_ADMIN_USER", "QXS_ADMIN_PASSWORD", "QXS_QUOTEX_LINK"):
         os.environ.pop(k, None)
-    os.environ.update({"QXS_DB": str(Path(d) / "a.db"), "QXS_MARKETDATA": "off", **env})
+    os.environ.update({"QXS_DB": str(Path(d) / "a.db"), "QXS_MARKETDATA": "off", "QXS_QUOTEX_LINK": "off", **env})        # most tests are not about tying accounts: test_quotex_link.py switches it on
     sys.modules.pop("app.main", None)
     import app.main as main
     return main
@@ -212,7 +212,7 @@ def test_local_mode_is_open_to_the_machine_only():
 
 def _cleanup():
     sys.modules.pop("app.main", None)
-    for k in ("QXS_DB", "QXS_MARKETDATA", "QXS_ENV", "QXS_AUTH", "QXS_SECRET_KEY", "QXS_ADMIN_USER", "QXS_ADMIN_PASSWORD"):
+    for k in ("QXS_DB", "QXS_MARKETDATA", "QXS_ENV", "QXS_AUTH", "QXS_SECRET_KEY", "QXS_ADMIN_USER", "QXS_ADMIN_PASSWORD", "QXS_QUOTEX_LINK"):
         os.environ.pop(k, None)
 
 

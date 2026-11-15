@@ -72,7 +72,7 @@ Prices come from the Quotex tab of the account that holds the *price feed* token
 ```bash
 python3 deploy/package_extension.py https://signals.example.com
 ```
-makes `dist/tradzen-extension-signals.example.com.zip`. Users unzip it, open `chrome://extensions`, switch on Developer mode, **Load unpacked**, then click the extension, paste their access token and press *Save connection*, and reload their Quotex tab. (To avoid developer mode you can publish the zip as an unlisted item on the Chrome Web Store; review rules apply.)
+makes `dist/tradzen-extension-signals.example.com.zip`. Users unzip it, open `chrome://extensions`, switch on Developer mode, **Load unpacked**, then click the extension, open **Connection**, sign in with their Tradzen username and password (an access token from *My account* still works too), and reload their Quotex tab. The first Quotex account the extension sees is tied to that Tradzen account (`QXS_QUOTEX_LINK`); an admin can unlink it on the Users page. (To avoid developer mode you can publish the zip as an unlisted item on the Chrome Web Store; review rules apply.)
 
 ## Updating
 ```bash

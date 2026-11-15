@@ -675,12 +675,25 @@ async def ingest(request: Request) -> dict:
         raise HTTPException(400, "expected an object")
     if not isinstance(payload.get("items", []), list):
         raise HTTPException(400, "items must be a list")
-    items = payload.get("items", [])
+    items = [i for i in payload.get("items", []) if isinstance(i, dict)]
     if not features.can(user, "cap.trades.track"):
-        items = [i for i in items if isinstance(i, dict) and i.get("k") not in ("o", "b")]            # this user's plan does not record their trades
+        items = [i for i in items if i.get("k") not in ("o", "b")]            # this user's plan does not record their trades
+    # One Tradzen account <-> one Quotex account. The extension says which Quotex account its tab is logged into (a hash of the account number). Orders and balance are
+    # accepted only from the linked account; if the tab is on another account, nothing private is stored and no alerts are sent until it is the linked one again.
+    qx = payload.get("qx") if isinstance(payload.get("qx"), dict) else {}
+    link = "off"
+    if auth.enabled and user.get("via") == "token" and auth.link_quotex:
+        link = auth.qx_check(user["id"], qx.get("h"), qx.get("hint"))
+        if link != "ok" and link != "bound":
+            items = [i for i in items if i.get("k") not in ("o", "b")]        # unknown (no account number seen yet: the extension holds them) / mismatch / taken
     # Only the price-feed token feeds the shared market; every sender's own orders and balance go to their own private data. Alerts come back filtered for the sender.
-    res = engine.ingest({**payload, "items": [i for i in items if isinstance(i, dict)]}, uid=user["id"], feeder=bool(user.get("feeder")))
+    res = engine.ingest({**payload, "items": items}, uid=user["id"], feeder=bool(user.get("feeder")))
     res["events"] = [e for e in res.get("events", []) if routes_auth.event_visible(user, e, features.can, access)]
+    if link in ("mismatch", "taken"):
+        res["events"] = []                                                  # the wrong Quotex account gets no alerts either
+    if link != "off":
+        res["qx"] = {"state": link, "hint": (auth.get_user(user["id"]) or {}).get("qx_hint")}
+    res["as"] = {"username": user.get("username"), "role": user.get("role")}
     return res
 
 

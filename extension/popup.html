@@ -2,63 +2,176 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Tradzen Sniffer</title>
+<title>Tradzen</title>
 <style>
-  :root { --bg:#0b1020; --card:#141b33; --fg:#e5e7f0; --mut:#8b93b0; --ok:#22c55e; --bad:#ef4444; --acc:#8b5cf6; }
-  body { margin:0; width:460px; font:12px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
-  header { padding:10px 12px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #222a47; }
-  h1 { font-size:13px; margin:0; }
-  main { padding:10px 12px; }
-  section { background:var(--card); border-radius:8px; padding:8px 10px; margin-bottom:8px; }
-  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); margin:0 0 6px; }
-  table { width:100%; border-collapse:collapse; }
-  th, td { text-align:left; padding:2px 4px; font-variant-numeric:tabular-nums; }
-  th { color:var(--mut); font-weight:500; }
-  .scroll { max-height:150px; overflow:auto; }
-  .ok { color:var(--ok); } .bad { color:var(--bad); } .mut { color:var(--mut); }
-  button { background:var(--acc); color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; margin-right:6px; }
-  button.sec { background:#2a3358; }
-  .row { display:flex; align-items:center; gap:8px; margin:5px 0; color:var(--fg); }
-  .row2 { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; color:var(--mut); }
-  input[type=text], input[type=password] { background:#0d1328; color:var(--fg); border:1px solid #222a47; border-radius:6px; padding:4px 6px; }
-  select, input[type=range] { background:#0d1328; color:var(--fg); border:1px solid #222a47; border-radius:6px; padding:3px 6px; max-width:250px; }
-  input[type=range] { padding:0; width:170px; }
+  :root {
+    --bg:#0a0e1f; --panel:#111830; --panel2:#0d1328; --line:#1f2848; --fg:#e8eaf6; --mut:#8a93b5; --acc:#8b5cf6; --acc2:#6d3fe0;
+    --ok:#22c55e; --bad:#f43f5e; --warn:#f59e0b; --r:12px;
+  }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  body { margin:0; width:400px; min-height:420px; font:13px/1.45 Inter, system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--fg); }
+  .mut { color:var(--mut); } .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); }
+  b { font-weight:600; }
+
+  header { display:flex; align-items:center; gap:10px; padding:14px 16px 10px; }
+  .logo { width:30px; height:30px; border-radius:9px; background:linear-gradient(135deg,var(--acc),var(--acc2)); display:grid; place-items:center; box-shadow:0 4px 14px #8b5cf655; }
+  .logo svg { width:16px; height:16px; fill:#fff; }
+  header h1 { font-size:15px; margin:0; letter-spacing:.2px; }
+  header .ver { font-size:11px; color:var(--mut); }
+  .pill { margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:600; padding:4px 10px; border-radius:999px; background:#ffffff0d; border:1px solid var(--line); }
+  .pill i { width:7px; height:7px; border-radius:50%; background:var(--mut); display:block; }
+  .pill.live { color:var(--ok); border-color:#22c55e55; background:#22c55e14; } .pill.live i { background:var(--ok); box-shadow:0 0 8px var(--ok); }
+  .pill.off { color:var(--bad); border-color:#f43f5e55; background:#f43f5e14; } .pill.off i { background:var(--bad); }
+
+  nav { display:flex; gap:2px; padding:0 12px; border-bottom:1px solid var(--line); }
+  nav button { flex:1; background:none; border:0; color:var(--mut); font:inherit; font-weight:600; padding:9px 4px; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  nav button:hover { color:var(--fg); }
+  nav button.on { color:var(--fg); border-bottom-color:var(--acc); }
+  .tab { display:none; padding:14px 16px 16px; } .tab.on { display:block; }
+
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:12px 14px; margin-bottom:10px; }
+  .card h2 { margin:0 0 8px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--mut); }
+  .stat { display:flex; align-items:center; gap:12px; }
+  .stat .ic { width:34px; height:34px; border-radius:10px; background:#8b5cf622; display:grid; place-items:center; flex:none; font-size:16px; }
+  .stat .ic.ok { background:#22c55e22; } .stat .ic.bad { background:#f43f5e22; } .stat .ic.warn { background:#f59e0b22; }
+  .stat .t { font-weight:600; } .stat .s { color:var(--mut); font-size:12px; word-break:break-all; }
+  .stat + .stat { margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+
+  .banner { border-radius:var(--r); padding:10px 12px; margin-bottom:10px; font-size:12.5px; border:1px solid; }
+  .banner.bad { background:#f43f5e14; border-color:#f43f5e66; color:#fda4af; } .banner.warn { background:#f59e0b14; border-color:#f59e0b66; color:#fcd34d; }
+  .banner b { color:var(--fg); }
+
+  .row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:7px 0; }
+  .row + .row { border-top:1px solid var(--line); }
+  .row label { cursor:pointer; flex:1; }
+  .row small { display:block; color:var(--mut); font-size:11.5px; }
+
+  /* switch */
+  input.sw { appearance:none; -webkit-appearance:none; width:34px; height:20px; border-radius:999px; background:#2a3358; position:relative; cursor:pointer; flex:none; transition:.15s; margin:0; }
+  input.sw::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; transition:.15s; }
+  input.sw:checked { background:var(--acc); } input.sw:checked::after { left:16px; }
+
+  input[type=text], input[type=password], select { width:100%; background:var(--panel2); color:var(--fg); border:1px solid var(--line); border-radius:9px; padding:8px 10px; font:inherit; outline:none; }
+  input[type=text]:focus, input[type=password]:focus, select:focus { border-color:var(--acc); box-shadow:0 0 0 3px #8b5cf633; }
+  select { width:auto; max-width:200px; padding:6px 8px; }
+  input[type=range] { accent-color:var(--acc); width:150px; }
+  .field { margin-bottom:9px; } .field > span { display:block; font-size:11.5px; color:var(--mut); margin-bottom:4px; }
+
+  button.btn { background:var(--acc); color:#fff; border:0; border-radius:9px; padding:8px 14px; font:inherit; font-weight:600; cursor:pointer; transition:.12s; }
+  button.btn:hover { background:var(--acc2); } button.btn:disabled { opacity:.5; cursor:default; }
+  button.btn.sec { background:#1b2444; color:var(--fg); border:1px solid var(--line); } button.btn.sec:hover { background:#232d54; }
+  button.btn.block { width:100%; } .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  a.link, button.link { background:none; border:0; color:#a78bfa; cursor:pointer; padding:0; font:inherit; text-decoration:underline; }
+  .msg { margin-top:8px; font-size:12px; min-height:16px; }
+
+  table { width:100%; border-collapse:collapse; font-size:11.5px; }
+  th, td { text-align:left; padding:3px 4px; font-variant-numeric:tabular-nums; } th { color:var(--mut); font-weight:500; }
+  .scroll { max-height:140px; overflow:auto; }
+  details > summary { cursor:pointer; color:var(--mut); font-size:12px; margin:6px 0; }
+  .foot { color:var(--mut); font-size:11px; text-align:center; padding:2px 16px 14px; }
 </style>
 </head>
 <body>
-<header><h1>Tradzen Sniffer <span class="mut">v0.4 · read-only</span></h1><span id="status" class="mut">waiting…</span></header>
-<main>
-  <section><h2>Alerts</h2>
-    <label class="row"><input type="checkbox" id="s-alerts"> Show alert cards on the Quotex page</label>
-    <label class="row"><input type="checkbox" id="s-sound"> Play sound for new signals</label>
-    <label class="row"><input type="checkbox" id="s-rsound"> Play win / loss sound when a signal settles</label>
-    <label class="row"><input type="checkbox" id="s-guard"> Trading guard alerts (daily target, loss limit, overtrading)</label>
-    <label class="row"><input type="checkbox" id="s-desktop"> Desktop notification when the Quotex tab is not in front</label>
-    <div class="row2"><span>Signals</span>
-      <select id="s-tiers"><option value="AB">Tier A + B (more signals)</option><option value="A">Tier A only (strict)</option></select></div>
-    <div class="row2"><span>Card position</span>
-      <select id="s-pos"><option value="top-center">Top centre</option><option value="top-right">Top right</option><option value="bottom-right">Bottom right</option><option value="bottom-left">Bottom left</option></select></div>
-    <div class="row2"><span>Volume</span><input type="range" id="s-vol" min="0" max="1" step="0.05"></div>
-    <div style="margin-top:6px"><button id="t-alert">Send test alert</button><button id="t-call" class="sec">▲ sound</button><button id="t-put" class="sec">▼ sound</button><button id="t-win" class="sec">win</button></div>
-  </section>
-  <section><h2>Signal backend</h2>
-    <div id="backend" class="mut">–</div>
-    <div class="row2"><span>Server</span><input type="text" id="c-url" placeholder="http://127.0.0.1:8787" spellcheck="false" style="width:250px"></div>
-    <div class="row2"><span>Access token</span><input type="password" id="c-token" placeholder="qxs_… (from My account on the server)" autocomplete="off" spellcheck="false" style="width:250px"></div>
-    <div style="margin:6px 0"><button id="c-save">Save connection</button><span id="c-msg" class="mut"></span></div>
-    <label class="mut" style="display:block;margin:6px 0"><input type="checkbox" id="fwd" checked> Send market data to the local backend</label>
-    <button id="panel">Open signal panel</button><button id="tab" class="sec">Open in tab</button>
-  </section>
-  <section><h2>Sockets</h2><div id="sockets" class="mut">No WebSocket seen on this tab yet.</div></section>
-  <section><h2>Traffic</h2><div id="traffic" class="mut">–</div></section>
-  <section><h2>Instruments</h2><div id="instruments" class="mut">–</div></section>
-  <section><h2>Assets streaming (<span id="acount">0</span>)</h2>
-    <div class="scroll"><table id="assets"><thead><tr><th>Symbol</th><th>Ticks</th><th>/min</th><th>Last</th><th>Age s</th><th>Max gap s</th><th>Lag s</th></tr></thead><tbody></tbody></table></div></section>
-  <section><h2>Events</h2>
-    <div class="scroll"><table id="events"><thead><tr><th>Event</th><th>Count</th></tr></thead><tbody></tbody></table></div></section>
-  <button id="save">Save sample JSON</button><button id="reset" class="sec">Reset counters</button>
-  <p class="mut">Samples are redacted (tokens, session, balance, emails). Check the file before sharing it.</p>
-</main>
+<header>
+  <div class="logo"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg></div>
+  <div><h1>Tradzen</h1><div class="ver">v0.5 · read-only</div></div>
+  <span id="status" class="pill"><i></i><span>waiting…</span></span>
+</header>
+
+<nav>
+  <button data-tab="home" class="on">Overview</button>
+  <button data-tab="alerts">Alerts</button>
+  <button data-tab="conn">Connection</button>
+  <button data-tab="diag">Diagnostics</button>
+</nav>
+
+<!-- ============================================================ overview -->
+<section class="tab on" id="tab-home">
+  <div id="banner"></div>
+  <div class="card">
+    <div class="stat"><div class="ic" id="i-srv">☁</div><div><div class="t" id="t-srv">Not connected</div><div class="s" id="s-srv">Sign in under Connection.</div></div></div>
+    <div class="stat"><div class="ic" id="i-acct">◎</div><div><div class="t" id="t-acct">Quotex account</div><div class="s" id="s-acct">Waiting for your Quotex tab…</div></div></div>
+    <div class="stat"><div class="ic" id="i-role">⚡</div><div><div class="t" id="t-role">Alerts</div><div class="s" id="s-role">Signals and your own trades.</div></div></div>
+  </div>
+  <div class="card">
+    <h2>Quick settings</h2>
+    <div class="row"><label for="q-alerts">Alert cards on the Quotex page</label><input class="sw" type="checkbox" id="q-alerts"></div>
+    <div class="row"><label for="q-sound">Sound for new signals</label><input class="sw" type="checkbox" id="q-sound"></div>
+  </div>
+  <div class="btns" style="margin-top:0">
+    <button class="btn" id="tab">Open Tradzen</button>
+    <button class="btn sec" id="panel">Open signal panel</button>
+    <button class="btn sec" id="t-alert">Send test alert</button>
+  </div>
+</section>
+
+<!-- ============================================================ alerts -->
+<section class="tab" id="tab-alerts">
+  <div class="card">
+    <h2>What to show</h2>
+    <div class="row"><label for="s-alerts">Alert cards<small>On the Quotex page</small></label><input class="sw" type="checkbox" id="s-alerts"></div>
+    <div class="row"><label for="s-sound">Sound for new signals</label><input class="sw" type="checkbox" id="s-sound"></div>
+    <div class="row"><label for="s-rsound">Win / loss sound<small>When a signal settles</small></label><input class="sw" type="checkbox" id="s-rsound"></div>
+    <div class="row"><label for="s-guard">Trading guard alerts<small>Daily target, loss limit, overtrading</small></label><input class="sw" type="checkbox" id="s-guard"></div>
+    <div class="row"><label for="s-desktop">Desktop notifications<small>When the Quotex tab is not in front</small></label><input class="sw" type="checkbox" id="s-desktop"></div>
+  </div>
+  <div class="card">
+    <h2>Look and sound</h2>
+    <div class="row"><span>Signals</span><select id="s-tiers"><option value="AB">Tier A + B (more signals)</option><option value="A">Tier A only (strict)</option></select></div>
+    <div class="row"><span>Card position</span><select id="s-pos"><option value="top-center">Top centre</option><option value="top-right">Top right</option><option value="bottom-right">Bottom right</option><option value="bottom-left">Bottom left</option></select></div>
+    <div class="row"><span>Volume</span><input type="range" id="s-vol" min="0" max="1" step="0.05"></div>
+    <div class="btns"><button class="btn sec" id="t-call">▲ sound</button><button class="btn sec" id="t-put">▼ sound</button><button class="btn sec" id="t-win">win</button></div>
+  </div>
+</section>
+
+<!-- ============================================================ connection -->
+<section class="tab" id="tab-conn">
+  <div class="card" id="c-in">
+    <h2>Sign in</h2>
+    <div class="field"><span>Server</span><input type="text" id="c-url" placeholder="http://127.0.0.1:8787" spellcheck="false" autocomplete="off"></div>
+    <div class="field"><span>Username</span><input type="text" id="l-user" autocomplete="username" spellcheck="false"></div>
+    <div class="field"><span>Password</span><input type="password" id="l-pass" autocomplete="current-password"></div>
+    <div class="row" id="l-feed-row" style="border:0;padding-top:2px"><label for="l-feed">This browser is the price feed<small>Admins only: the tab that streams Quotex prices for everyone</small></label><input class="sw" type="checkbox" id="l-feed"></div>
+    <button class="btn block" id="l-go">Sign in</button>
+    <div class="msg" id="l-msg"></div>
+    <p class="mut" style="margin:6px 0 0;font-size:11.5px">Use the same username and password as on the website. Only your own Quotex account can send your trades.</p>
+  </div>
+  <div class="card" id="c-out" hidden>
+    <h2>Signed in</h2>
+    <div class="stat"><div class="ic ok">✓</div><div><div class="t" id="o-who">–</div><div class="s" id="o-srv">–</div></div></div>
+    <div class="btns"><button class="btn sec" id="l-out">Sign out of this browser</button></div>
+    <div class="msg mut" id="o-msg"></div>
+  </div>
+  <div class="card">
+    <h2>Data</h2>
+    <div class="row"><label for="fwd">Send market data to the local backend<small>Turn off to pause everything this extension sends</small></label><input class="sw" type="checkbox" id="fwd" checked></div>
+    <div id="backend" class="mut" style="margin-top:4px;font-size:12px">–</div>
+  </div>
+  <details>
+    <summary>Use an access token instead</summary>
+    <div class="card">
+      <div class="field"><span>Access token</span><input type="password" id="c-token" placeholder="qxs_… (from My account on the website)" autocomplete="off" spellcheck="false"></div>
+      <button class="btn sec" id="c-save">Save connection</button><span id="c-msg" class="mut"></span>
+    </div>
+  </details>
+</section>
+
+<!-- ============================================================ diagnostics -->
+<section class="tab" id="tab-diag">
+  <div class="card"><h2>Sockets</h2><div id="sockets" class="mut">No WebSocket seen on this tab yet.</div></div>
+  <div class="card"><h2>Traffic</h2><div id="traffic" class="mut">–</div></div>
+  <div class="card"><h2>Instruments</h2><div id="instruments" class="mut">–</div></div>
+  <div class="card"><h2>Assets streaming (<span id="acount">0</span>)</h2>
+    <div class="scroll"><table id="assets"><thead><tr><th>Symbol</th><th>Ticks</th><th>/min</th><th>Last</th><th>Age s</th><th>Gap s</th><th>Lag s</th></tr></thead><tbody></tbody></table></div></div>
+  <div class="card"><h2>Events</h2>
+    <div class="scroll"><table id="events"><thead><tr><th>Event</th><th>Count</th></tr></thead><tbody></tbody></table></div></div>
+  <div class="card"><h2>Quotex account detection</h2><div id="acct-diag" class="mut">–</div></div>
+  <div class="btns" style="margin-top:0"><button class="btn sec" id="save">Save sample JSON</button><button class="btn sec" id="reset">Reset counters</button></div>
+  <p class="mut" style="font-size:11.5px">Samples are redacted (tokens, session, balance, emails). Check the file before sharing it.</p>
+</section>
+
+<div class="foot">Tradzen only reads your own Quotex tab. It never trades, clicks or logs in.</div>
 <script src="sound.js"></script>
 <script src="popup.js"></script>
 </body>

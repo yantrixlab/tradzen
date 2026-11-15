@@ -28,7 +28,7 @@ FORMAT = 1
 DB_NAME = "signals.db"
 FILE_DIRS = ("ai", "edgelab", "ideas")          # what the background jobs wrote next to the database (models, reports); backups and logs are not part of it
 MAX_BYTES = 8 * 1024 ** 3
-COUNT_TABLES = ("candles", "sentiment", "instruments", "signals", "strategies", "backtest_runs", "broker_trades")
+COUNT_TABLES = ("candles", "sentiment", "instruments", "signals", "strategies", "backtest_runs", "broker_trades", "style_signals")
 
 
 class SeedError(Exception):

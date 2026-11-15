@@ -234,8 +234,18 @@ def m014_strategy_owner(conn: sqlite3.Connection) -> None:
     _add_column(conn, "backtest_runs", "owner_id", "INTEGER")
 
 
+def m015_quotex_link(conn: sqlite3.Connection) -> None:
+    """The Quotex account a Tradzen account is tied to. qx_hash is a keyed hash of the account number the extension saw (the number itself is never stored), qx_hint the last
+    three digits so the person can recognise it, qx_at when it was linked. One Quotex account can belong to one Tradzen account only (unique index)."""
+    _add_column(conn, "users", "qx_hash", "TEXT")
+    _add_column(conn, "users", "qx_hint", "TEXT")
+    _add_column(conn, "users", "qx_at", "REAL")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_qx ON users(qx_hash) WHERE qx_hash IS NOT NULL")
+
+
 MIGRATIONS = [(1, m001_foundation), (2, m002_backtests), (3, m003_settings), (4, m004_manual_trades), (5, m005_sweeps), (6, m006_research),
-              (7, m007_broker_trades), (8, m008_broker_trades_hidden), (9, m009_guard_alerts), (10, m010_style), (11, m011_style_step), (12, m012_accounts), (13, m013_features), (14, m014_strategy_owner)]
+              (7, m007_broker_trades), (8, m008_broker_trades_hidden), (9, m009_guard_alerts), (10, m010_style), (11, m011_style_step), (12, m012_accounts), (13, m013_features), (14, m014_strategy_owner),
+              (15, m015_quotex_link)]
 
 
 def schema_version(conn: sqlite3.Connection) -> int:

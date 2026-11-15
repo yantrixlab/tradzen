@@ -40,7 +40,11 @@ Without it the database is thrown away at every deploy. This folder holds the ma
 
 (`QXS_ENV=production` and `QXS_DB` are already set inside the image.)
 
-**Health Check** (if you enable it in Coolify): path `/healthz`, port `8787`. The image also has its own health check.
+**Health Check:** leave Coolify's own *Healthcheck* switched **off**. The image has its own built-in check (Python, `/healthz`) and Coolify picks it up ("Using the custom healthcheck from the Dockerfile" in the deploy log). Coolify prints a generic warning about `curl`/`wget` at the end of a failed deploy; ignore it, the built-in check does not need them. The check waits 60 seconds before the first try, so a deploy takes about a minute longer than the build.
+
+**If the deploy says "New container is unhealthy"**, read the *Container logs* right below it: the real cause is there. The usual one is a missing or build-time-only environment variable (`QXS_SECRET_KEY must be set...`, or a weak admin password). Coolify keeps the old container running when the new one fails, so nothing breaks.
+
+**Domain must be HTTPS.** Sign-in cookies are marked Secure, so a plain `http://` domain (for example Coolify's auto-generated address) will not keep you signed in. Use `https://your-domain` (a real domain, or a `https://name.<server-ip>.sslip.io` address for a first test).
 
 ## 4. Deploy
 Press **Deploy** and open the logs. The first build takes several minutes. The server is ready when the log shows:
@@ -62,7 +66,7 @@ Later, to add newer candles without touching accounts or strategies, upload the 
 The seed file contains your own trades: do not share it or commit it.
 
 ## 6. Connect your Quotex tab (the price feed)
-1. On the site: **My account → Chrome extension**, tick **Price feed**, create the token, copy it (shown once).
+1. (Easy way, used in step 3: sign in inside the extension popup under **Connection**, tick **This browser is the price feed**.) Or on the site: **My account → Chrome extension**, tick **Price feed**, create the token, copy it (shown once).
 2. On your computer, from the project root, build the extension for your domain:
    ```powershell
    backend\.venv\Scripts\python deploy\package_extension.py https://app.yourdomain.com

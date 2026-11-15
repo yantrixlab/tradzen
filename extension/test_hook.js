@@ -130,12 +130,29 @@ bin({ id: 'abc-1', asset: 'AUDUSD_otc', amount: 1, command: 0, openTimestamp: 17
 text('451-["s_orders/close",{"_placeholder":true,"num":0}]');
 bin({ deals: [{ id: 'abc-1', profit: 0.83, openPrice: 0.6774, closePrice: 0.6776, liveBalance: 5555.55, nickname: 'zed' }] });
 ws.send('42["authorization",{"session":"SECRETSECRETSECRETSECRETSECRETSECRET123","isDemo":1}]');
-const orders = JSON.parse(JSON.stringify(win.__qxs.drainFeed())).filter((i) => i.k === 'o');
+const drained = JSON.parse(JSON.stringify(win.__qxs.drainFeed()));
+const orders = drained.filter((i) => i.k === 'o');
 assert.strictEqual(orders.length, 3, 'two answers and one request, nothing from the auth event');
 assert.strictEqual(orders[0].dir, 'out'); assert.strictEqual(orders[0].d.requestId, 7); assert.strictEqual(orders[0].d.action, 'call');
 assert.strictEqual(orders[1].n, 's_orders/open'); assert.strictEqual(orders[1].d.id, 'abc-1'); assert.strictEqual(orders[1].d.isDemo, 0);
 assert.strictEqual(orders[2].d.deals[0].profit, 0.83);
 assert(!/99887|zed|me@example|SECRET/.test(JSON.stringify(orders)), 'no balance, account or session values in the order feed');
+
+// which Quotex account this is: the number is read from the account's own order / balance messages only, reported once, and a different one must repeat before it counts
+assert.deepStrictEqual(drained.filter((i) => i.k === 'a'), [{ k: 'a', u: '99887' }], 'the first account number is reported once, as its own item');
+const snapA = JSON.parse(JSON.stringify(win.__qxs.snapshot().account));
+assert.strictEqual(snapA.known, true); assert.strictEqual(snapA.hint, '887');
+assert(snapA.sources['s_orders/open'] >= 1, 'the popup learns which messages carried it');
+assert(!JSON.stringify(win.__qxs.snapshot()).includes('99887'), 'the page snapshot never holds the whole number');
+text('451-["leaderboard/list",{"_placeholder":true,"num":0}]');
+bin({ top: [{ uid: 111222, nickname: 'someone else' }] });
+text('451-["s_orders/close",{"_placeholder":true,"num":0}]');
+bin({ deals: [{ id: 'abc-2', uid: 99887, profit: 0.5 }] });
+assert.strictEqual(win.__qxs.drainFeed().filter((i) => i.k === 'a').length, 0, 'other traders\' numbers are ignored and the same number is not reported again');
+for (let n = 0; n < 2; n++) { text('451-["s_balance",{"_placeholder":true,"num":0}]'); bin({ uid: 555666, liveBalance: 1 }); }
+assert.strictEqual(win.__qxs.drainFeed().filter((i) => i.k === 'a').length, 0, 'two sightings of another number are not enough to call it a switch');
+text('451-["s_balance",{"_placeholder":true,"num":0}]'); bin({ uid: 555666, liveBalance: 1 });
+assert.strictEqual(JSON.stringify(win.__qxs.drainFeed().filter((i) => i.k === 'a')), '[{"k":"a","u":"555666"}]', 'the third sighting switches the account');
 
 // heartbeat with no sockets + worker tracking
 const w = new win.Worker('https://qxbroker.com/js/chart.worker.js?v=1');

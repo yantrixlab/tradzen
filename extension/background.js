@@ -15,7 +15,7 @@ let queued = 0;
 let isFeeder = true, lastPoll = 0;
 function forward(items, tabId) {
   if (!isFeeder) {
-    items = items.filter((i) => i && (i.k === 'o' || i.k === 'b'));
+    items = items.filter((i) => i && (i.k === 'o' || i.k === 'b' || i.k === 'a' || (i.k === 'ev' && i.e === 'hook-start')));      // own orders / balance, and which Quotex account this is
     if (!items.length && Date.now() - lastPoll < 1500) return;
   }
   lastPoll = Date.now();
@@ -24,9 +24,63 @@ function forward(items, tabId) {
   chain = chain.then(() => doForward(items, tabId)).catch(() => {}).finally(() => { queued--; });
 }
 
+// ------------------------------------------------------------------ which Quotex account this tab is logged into
+// hook.js reports the account number it sees in the account's own messages ({k:'a', u}). It is turned into a SHA-256 here and only that leaves the browser; the server ties
+// it to the Tradzen account. Orders and balance are held back until the account is known (a hosted server refuses them from an unknown or a different Quotex account).
+const ACCT_SALT = 'tradzen-qx-v1:';
+const acctByTab = new Map();                       // tabId -> { h, hint }
+const held = new Map();                            // tabId -> private items waiting for the account number
+let acctLoaded = false, needsLink = null;          // needsLink: null = not known yet (the first answer says), true / false
+const isPrivate = (i) => i && (i.k === 'o' || i.k === 'b');
+const HOLD_MAX = 300, HOLD_MS = 10 * 60 * 1000;
+
+async function loadAcct() {
+  if (acctLoaded) return;
+  acctLoaded = true;
+  const s = await chrome.storage.session.get(['acctByTab', 'needsLink']);
+  for (const [k, v] of Object.entries(s.acctByTab || {})) acctByTab.set(Number(k), v);
+  if (typeof s.needsLink === 'boolean') needsLink = s.needsLink;
+}
+function saveAcct() { chrome.storage.session.set({ acctByTab: Object.fromEntries(acctByTab) }); }
+
+async function sha256hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Take the account-number items out of a batch and remember the account of this tab; a new page load forgets it until it is seen again. */
+async function applyAcct(items, tabId) {
+  const rest = [];
+  for (const i of items) {
+    if (i && i.k === 'a') {
+      if (i.u == null) acctByTab.delete(tabId);
+      else { const u = String(i.u); acctByTab.set(tabId, { h: await sha256hex(ACCT_SALT + u), hint: u.slice(-3) }); }
+      saveAcct();
+    } else {
+      if (i && i.k === 'ev' && i.e === 'hook-start') { acctByTab.delete(tabId); held.delete(tabId); saveAcct(); }
+      rest.push(i);
+    }
+  }
+  return rest;
+}
+
+/** Private items wait here while the account is unknown; once it is known they go out first. */
+function sortPrivate(items, tabId, known) {
+  const mine = held.get(tabId) || [];
+  const fresh = mine.filter((x) => Date.now() - x.at < HOLD_MS);
+  const priv = items.filter(isPrivate), pub = items.filter((i) => !isPrivate(i));
+  if (needsLink === false || known) { held.delete(tabId); return [...fresh.map((x) => x.item), ...items]; }
+  if (priv.length) held.set(tabId, [...fresh, ...priv.map((item) => ({ item, at: Date.now() }))].slice(-HOLD_MAX));
+  return pub;
+}
+
 async function doForward(items, tabId) {
   const cfg = await getSettings();
   if (cfg.forward === false) return;
+  await loadAcct();
+  items = await applyAcct(items, tabId);
+  const acct = acctByTab.get(tabId) || null;
+  items = sortPrivate(items, tabId, !!acct);
   if (!seqLoaded) { const s = await chrome.storage.session.get('seq'); lastSeq = s.seq ?? null; seqLoaded = true; }
   const conn = await chrome.storage.local.get(['backendUrl', 'token']);
   const url = (conn.backendUrl || DEFAULT_BACKEND).replace(/\/$/, '');
@@ -37,7 +91,7 @@ async function doForward(items, tabId) {
   const timer = setTimeout(() => ctl.abort(), 8000);          // a hung backend must never stall the sender queue
   try {
     const r = await fetch(url + '/ingest', { method: 'POST', headers, signal: ctl.signal,
-                                             body: JSON.stringify({ items, after_seq: lastSeq }) });
+                                             body: JSON.stringify({ items, after_seq: lastSeq, qx: acct || undefined }) });
     ok = r.ok; if (!ok) err = r.status === 401 ? 'HTTP 401 - the access token is missing, wrong or revoked' : 'HTTP ' + r.status; else j = await r.json();
   } catch (e) { err = ctl.signal.aborted ? 'timeout after 8 s' : String((e && e.message) || e); }
   finally { clearTimeout(timer); }
@@ -45,6 +99,9 @@ async function doForward(items, tabId) {
   if (!j) return;
   if (typeof j.seq === 'number') { lastSeq = j.seq; chrome.storage.session.set({ seq: j.seq }); }
   if (typeof j.feeder === 'boolean') isFeeder = j.feeder;
+  needsLink = !!j.qx;                                                    // only a server that ties accounts answers with the state
+  chrome.storage.session.set({ needsLink, qx: j.qx ? { ...j.qx, at: Date.now() } : null, who: j.as || null, feeder: !!j.feeder });
+  if (j.qx && (j.qx.state === 'mismatch' || j.qx.state === 'taken')) held.delete(tabId);
   if (j.events && j.events.length) await handleEvents(j.events, tabId, cfg);
 }
 
