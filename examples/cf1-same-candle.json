@@ -1,0 +1,55 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "expiry_candles": 1,
+  "indicators": [
+    {
+      "id": "ha",
+      "type": "heikin"
+    },
+    {
+      "id": "macd",
+      "type": "macd",
+      "fast": 12,
+      "slow": 26,
+      "signal": 9
+    }
+  ],
+  "factors": [
+    {
+      "id": "confluence",
+      "name": "Heikin-Ashi continuation + MACD flip on the same candle",
+      "weight": 100,
+      "kind": "expr",
+      "call": "cross_above(macd.hist, 0) and ha.green and ha.green[1] and ha.nolow",
+      "put": "cross_below(macd.hist, 0) and ha.red and ha.red[1] and ha.nohigh",
+      "vote": 1
+    }
+  ],
+  "filters": [
+    {
+      "gap": 3,
+      "type": "one_per_run"
+    },
+    {
+      "type": "min_payout",
+      "value": 80
+    }
+  ]
+}

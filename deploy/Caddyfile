@@ -1,0 +1,25 @@
+# Caddy: automatic HTTPS (Let's Encrypt) in front of the Tradzen backend.
+# QXS_DOMAIN comes from .env, e.g. signals.example.com (DNS A/AAAA record must point at this server).
+# For a test on your own machine use QXS_DOMAIN=localhost (Caddy then makes a local certificate).
+
+{$QXS_DOMAIN} {
+	encode zstd gzip
+
+	# nothing the app needs is bigger than this (the price feed sends small batches)
+	request_body {
+		max_size 6MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	reverse_proxy backend:8787 {
+		# the backend trusts this header for the sign-in lock-out and the session log: always overwrite it with the address Caddy really saw
+		header_up X-Forwarded-For {remote_host}
+		transport http {
+			response_header_timeout 60s
+		}
+	}
+}

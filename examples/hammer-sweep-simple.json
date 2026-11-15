@@ -1,0 +1,57 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [60, 300, 900],
+  "scope": { "symbols": null, "market": null },
+  "gates": { "min_candles": 60, "min_agree": 1, "max_opposing_weight": 100, "min_strength": 0, "tier_a": null },
+  "expiry_candles": 1,
+  "indicators": [],
+  "factors": [
+    {
+      "id": "hammer_sweep_simple",
+      "name": "Hammer sweep (signal on the red candle)",
+      "weight": 100,
+      "kind": "pattern",
+      "call": {
+        "steps": [
+          {
+            "label": "Green run-up: each candle makes a higher high",
+            "color": "green", "shape": "any", "min": 3, "max": 6,
+            "rels": [{ "prop": "high", "op": ">", "ref": "prev", "refprop": "high", "scope": "each" }]
+          },
+          {
+            "label": "Green hammer: its lower wick breaks the previous candle's low",
+            "color": "green", "shape": "hammer", "min": 1, "max": 1,
+            "rels": [{ "prop": "low", "op": "<", "ref": "prev", "refprop": "low", "scope": "each" }]
+          },
+          {
+            "label": "Red candle goes below the hammer's wick  ->  BUY now",
+            "color": "red", "shape": "any", "min": 1, "max": 1,
+            "rels": [{ "prop": "low", "op": "<", "ref": 1, "refprop": "low", "scope": "each" }]
+          }
+        ]
+      },
+      "put": {
+        "steps": [
+          {
+            "label": "Red run-down: each candle makes a lower low",
+            "color": "red", "shape": "any", "min": 3, "max": 6,
+            "rels": [{ "prop": "low", "op": "<", "ref": "prev", "refprop": "low", "scope": "each" }]
+          },
+          {
+            "label": "Red shooting star: its upper wick breaks the previous candle's high",
+            "color": "red", "shape": "star", "min": 1, "max": 1,
+            "rels": [{ "prop": "high", "op": ">", "ref": "prev", "refprop": "high", "scope": "each" }]
+          },
+          {
+            "label": "Green candle goes above the star's wick  ->  SELL now",
+            "color": "green", "shape": "any", "min": 1, "max": 1,
+            "rels": [{ "prop": "high", "op": ">", "ref": 1, "refprop": "high", "scope": "each" }]
+          }
+        ]
+      },
+      "vote": 1
+    }
+  ],
+  "filters": []
+}

@@ -1,0 +1,61 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "expiry_candles": 1,
+  "indicators": [
+    {
+      "id": "ms",
+      "type": "structure",
+      "swing": 3,
+      "max_age": 120
+    },
+    {
+      "id": "eg",
+      "type": "engulf",
+      "swing": 3,
+      "trend_age": 120,
+      "max_age": 120,
+      "min_body": 0.5,
+      "max_run": 3,
+      "visits": 1,
+      "brk_atr": 0.3
+    }
+  ],
+  "factors": [
+    {
+      "id": "engulf_zone",
+      "name": "Engulfing-candle zones with the structure: strong candle on the first visit",
+      "weight": 100,
+      "kind": "expr",
+      "call": "ms.bias == 1 and eg.dz_visit == 1 and green and body > 0.5 * range and close > eg.dz_lo",
+      "put": "ms.bias == -1 and eg.sz_visit == 1 and red and body < -0.5 * range and close < eg.sz_hi",
+      "vote": 1
+    }
+  ],
+  "filters": [
+    {
+      "gap": 3,
+      "type": "one_per_run"
+    },
+    {
+      "type": "min_payout",
+      "value": 80
+    }
+  ]
+}

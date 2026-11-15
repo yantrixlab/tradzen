@@ -1,0 +1,51 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "expiry_candles": 1,
+  "indicators": [
+    {
+      "id": "ms",
+      "type": "structure",
+      "swing": 3,
+      "max_age": 120
+    },
+    {
+      "id": "e21",
+      "type": "ema",
+      "n": 21
+    }
+  ],
+  "factors": [
+    {
+      "id": "follow",
+      "name": "Follow the structure on every candle (diagnostic)",
+      "weight": 100,
+      "kind": "expr",
+      "call": "ms.trend == 1",
+      "put": "ms.trend == -1",
+      "vote": 1
+    }
+  ],
+  "filters": [
+    {
+      "type": "min_payout",
+      "value": 80
+    }
+  ]
+}

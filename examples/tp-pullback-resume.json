@@ -1,0 +1,55 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "expiry_candles": 1,
+  "indicators": [
+    {
+      "id": "ms",
+      "type": "structure",
+      "swing": 3,
+      "max_age": 120
+    },
+    {
+      "id": "e21",
+      "type": "ema",
+      "n": 21
+    }
+  ],
+  "factors": [
+    {
+      "id": "resume",
+      "name": "Structure trend, pullback, then the move resumes",
+      "weight": 100,
+      "kind": "expr",
+      "call": "ms.trend == 1 and count(red, 5)[1] >= 2 and close[1] > ms.sl and green and body > 0.5 * range and close > high[1]",
+      "put": "ms.trend == -1 and count(green, 5)[1] >= 2 and close[1] < ms.sh and red and body < -0.5 * range and close < low[1]",
+      "vote": 1
+    }
+  ],
+  "filters": [
+    {
+      "gap": 3,
+      "type": "one_per_run"
+    },
+    {
+      "type": "min_payout",
+      "value": 80
+    }
+  ]
+}

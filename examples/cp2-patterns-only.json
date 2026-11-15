@@ -1,0 +1,66 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "expiry_candles": 1,
+  "indicators": [],
+  "factors": [
+    {
+      "id": "rejection",
+      "name": "Rejection wick (hammer / shooting star)",
+      "weight": 30,
+      "kind": "expr",
+      "call": "hammer and lower_wick >= 0.5 * range",
+      "put": "star and upper_wick >= 0.5 * range",
+      "vote": 1
+    },
+    {
+      "id": "engulf",
+      "name": "Engulfing candle",
+      "weight": 25,
+      "kind": "expr",
+      "call": "bull_engulf",
+      "put": "bear_engulf",
+      "vote": 1
+    },
+    {
+      "id": "control",
+      "name": "Close control (strong body closing at the extreme)",
+      "weight": 20,
+      "kind": "expr",
+      "call": "green and body >= 0.6 * range and close >= low + 0.8 * range",
+      "put": "red and -body >= 0.6 * range and close <= low + 0.2 * range",
+      "vote": 1
+    },
+    {
+      "id": "exhaustion",
+      "name": "Exhaustion after a run",
+      "weight": 25,
+      "kind": "expr",
+      "call": "red[1] and red[2] and red and abs(body) < abs(body[1]) and lower_wick > abs(body)",
+      "put": "green[1] and green[2] and green and abs(body) < abs(body[1]) and upper_wick > abs(body)",
+      "vote": 1
+    }
+  ],
+  "filters": [
+    {
+      "type": "min_payout",
+      "value": 80
+    }
+  ]
+}

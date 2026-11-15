@@ -1,0 +1,80 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "expiry_candles": 1,
+  "indicators": [
+    {
+      "id": "e9",
+      "type": "ema",
+      "n": 9
+    },
+    {
+      "id": "e21",
+      "type": "ema",
+      "n": 21
+    },
+    {
+      "id": "e50",
+      "type": "ema",
+      "n": 50
+    },
+    {
+      "id": "a14",
+      "type": "atr",
+      "n": 14
+    },
+    {
+      "id": "ad",
+      "type": "adx",
+      "n": 14
+    },
+    {
+      "id": "ms",
+      "type": "structure",
+      "swing": 3,
+      "max_age": 120
+    }
+  ],
+  "factors": [
+    {
+      "id": "trend",
+      "name": "Trending market, trade with the trend (silent when sideways)",
+      "weight": 100,
+      "kind": "expr",
+      "call": "e9 > e21 and e21 > e50 and ad.adx >= 22 and (e9 - e21) >= 0.3 * a14 and close > e9",
+      "put": "e9 < e21 and e21 < e50 and ad.adx >= 22 and (e21 - e9) >= 0.3 * a14 and close < e9",
+      "vote": 1
+    },
+    {
+      "id": "shift",
+      "name": "Shift into a down-trend",
+      "weight": 100,
+      "kind": "expr",
+      "call": "0 > 1",
+      "put": "e9 < e21 and ms.hh == -1 and close < e21 and ad.adx >= 18 and ad.adx > ad.adx[3] and close < e9",
+      "vote": 1
+    }
+  ],
+  "filters": [
+    {
+      "type": "min_payout",
+      "value": 80
+    }
+  ]
+}

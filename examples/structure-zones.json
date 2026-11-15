@@ -1,0 +1,27 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [60, 300, 900],
+  "scope": {"symbols": null, "market": null},
+  "gates": {"min_candles": 60, "min_agree": 1, "max_opposing_weight": 100, "min_strength": 0, "tier_a": null},
+  "expiry_candles": 1,
+  "indicators": [
+    {"id": "ms", "type": "structure", "swing": 3, "max_age": 120},
+    {"id": "zn", "type": "zones", "atr_n": 14, "base_atr": 2.5, "base_len": 8, "brk_atr": 0.3, "max_age": 250, "max_zones": 10, "memory": 3, "move_atr": 1}
+  ],
+  "factors": [
+    {
+      "id": "structure_zone_confirmation",
+      "name": "Market structure + strong fresh zone + confirmation candle",
+      "weight": 100,
+      "kind": "expr",
+      "call": "ms.trend == 1 and zn.dz_since <= 2 and zn.dz_tests <= 1 and zn.dz_move >= 1.5 and zn.room_up >= 1.5 and green and body > 0.5 * range and close > high[1] and close > zn.dz_hi and low >= zn.dz_lo",
+      "put": "ms.trend == -1 and zn.sz_since <= 2 and zn.sz_tests <= 1 and zn.sz_move >= 1.5 and zn.room_dn >= 1.5 and red and body < -0.5 * range and close < low[1] and close < zn.sz_lo and high <= zn.sz_hi",
+      "vote": 1
+    }
+  ],
+  "filters": [
+    {"gap": 3, "type": "one_per_run"},
+    {"type": "min_payout", "value": 80}
+  ]
+}

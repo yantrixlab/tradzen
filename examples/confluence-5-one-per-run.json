@@ -1,0 +1,25 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [60, 300, 900],
+  "scope": { "symbols": null, "market": null },
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 2,
+    "max_opposing_weight": 25,
+    "min_strength": 30,
+    "tier_a": { "agree": 3, "strength": 40 }
+  },
+  "expiry_candles": 1,
+  "indicators": [],
+  "factors": [
+    { "id": "bollinger", "name": "Bollinger Band Bounce", "weight": 30, "kind": "fn", "fn": "bollinger_bounce", "params": { "k": 2, "n": 20 } },
+    { "id": "rsi_divergence", "name": "RSI Divergence", "weight": 25, "kind": "fn", "fn": "rsi_divergence", "params": { "lookback": 45, "n_rsi": 14 } },
+    { "id": "stochastic", "name": "Stochastic %K/%D Cross", "weight": 20, "kind": "fn", "fn": "stochastic_cross", "params": {} },
+    { "id": "cci", "name": "CCI Extreme + Reversal", "weight": 15, "kind": "fn", "fn": "cci_reversal", "params": { "n": 20 } },
+    { "id": "candlestick", "name": "Candlestick Pattern", "weight": 10, "kind": "fn", "fn": "candlestick", "params": {} }
+  ],
+  "filters": [
+    { "type": "one_per_run", "gap": 3 }
+  ]
+}

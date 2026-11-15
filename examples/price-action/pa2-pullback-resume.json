@@ -1,0 +1,50 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "indicators": [
+    {
+      "id": "ema9",
+      "type": "ema",
+      "n": 9
+    },
+    {
+      "id": "ema21",
+      "type": "ema",
+      "n": 21
+    }
+  ],
+  "factors": [
+    {
+      "id": "signal",
+      "name": "Pullback then resume",
+      "weight": 100,
+      "kind": "expr",
+      "call": "count(ema9 > ema21 and close > ema21, 8) >= 8 and red[1] and green and body > 0.6 * range and close > high[1]",
+      "put": "count(ema9 < ema21 and close < ema21, 8) >= 8 and green[1] and red and body < -0.6 * range and close < low[1]",
+      "vote": 1
+    }
+  ],
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "filters": [
+    {
+      "type": "one_per_run",
+      "gap": 2
+    }
+  ],
+  "expiry_candles": 1
+}

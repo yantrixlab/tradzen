@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tradzen panel</title>
+<style>
+  html, body { margin:0; height:100%; background:#0a0e1f; color:#8a93b2; font:12px system-ui, sans-serif; }
+  iframe { border:0; width:100%; height:calc(100% - 26px); display:block; }
+  .bar { height:26px; display:flex; align-items:center; justify-content:space-between; padding:0 8px; }
+  a { color:#c4b5fd; }
+</style>
+</head>
+<body>
+<div class="bar"><span>Blank? Start the backend (see README) —</span><a href="http://127.0.0.1:8787/" target="_blank">open in a tab</a></div>
+<iframe id="dash" title="Tradzen dashboard"></iframe>
+<script src="sidepanel.js"></script>
+</body>
+</html>

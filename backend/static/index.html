@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tradzen</title>
+<style>
+  :root {
+    --bg:#0a0e1f; --card:#111830; --card2:#0d1328; --line:#1e2747; --fg:#e6e8f2; --mut:#8a93b2;
+    --acc:#8b5cf6; --acc2:#6d3fe0; --up:#22c55e; --down:#ef4444; --warn:#f59e0b;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; padding:20px 16px 60px; }
+  body.embed .wrap { padding:10px 10px 30px; }
+  body.embed .hide-embed { display:none; }
+  header { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  .logo { width:40px; height:40px; border-radius:10px; background:linear-gradient(135deg,var(--acc),var(--acc2)); display:grid; place-items:center; font-size:20px; }
+  h1 { font-size:20px; margin:0; } .sub { color:var(--mut); font-size:12px; }
+  .pill { margin-left:auto; padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid var(--line); background:var(--card2); white-space:nowrap; }
+  .pill.ok { color:var(--up); border-color:#14532d; } .pill.bad { color:var(--down); border-color:#7f1d1d; } .pill.wait { color:var(--warn); border-color:#78350f; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .card h2 { margin:0 0 10px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--mut); display:flex; justify-content:space-between; align-items:center; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .big { font-size:26px; font-weight:700; text-align:center; } .lbl { color:var(--mut); font-size:11px; text-align:center; text-transform:uppercase; letter-spacing:.04em; }
+  .tile { background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:10px 6px; text-align:center; }
+  .tile.up { border-color:#14532d; background:#0b1f17; } .tile.down { border-color:#7f1d1d; background:#241016; }
+  .tile b { display:block; font-size:22px; } .tile small { color:var(--mut); }
+  button, .btn { background:var(--card2); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer; font:inherit; }
+  button:hover { border-color:var(--acc); } button.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .seg { display:flex; gap:6px; flex-wrap:wrap; } .seg button { flex:1; min-width:70px; }
+  input[type=search] { width:100%; background:var(--card2); border:1px solid var(--line); color:var(--fg); border-radius:8px; padding:8px 10px; margin:8px 0; font:inherit; }
+  .chips { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:6px; max-height:170px; overflow:auto; }
+  .chip { text-align:left; font-family:ui-monospace,Consolas,monospace; font-size:12px; padding:7px 8px; display:flex; gap:6px; align-items:center; }
+  .chip.sel { border-color:var(--acc); color:#c4b5fd; background:#1a1440; } .chip.off { opacity:.45; }
+  .dot { width:7px; height:7px; border-radius:50%; background:#475069; flex:none; } .dot.on { background:var(--up); box-shadow:0 0 6px var(--up); }
+  .dirbox { border:1px solid var(--line); border-radius:12px; padding:14px; background:var(--card2); }
+  .dirbox.call { border-color:#14532d; background:linear-gradient(180deg,#0b1f17,#0d1328); } .dirbox.put { border-color:#7f1d1d; background:linear-gradient(180deg,#241016,#0d1328); }
+  .dirrow { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+  .dir { font-size:24px; font-weight:800; } .dir.call { color:var(--up); } .dir.put { color:var(--down); } .dir.skip { color:var(--mut); }
+  .bar { position:relative; height:9px; border-radius:6px; background:#1a2242; margin:8px 0 4px; overflow:hidden; } .bar i { position:absolute; left:0; top:0; bottom:0; border-radius:6px; }
+  .scale { display:flex; justify-content:space-between; color:var(--mut); font-size:10px; }
+  .factor { display:grid; grid-template-columns:44px 1fr auto; gap:8px; padding:6px 0; border-top:1px solid var(--line); align-items:center; }
+  .factor:first-of-type { border-top:0; } .w { font-size:11px; color:#c4b5fd; background:#1a1440; border-radius:6px; text-align:center; padding:2px 0; }
+  .v { font-weight:700; font-variant-numeric:tabular-nums; } .v.p { color:var(--up); } .v.n { color:var(--down); } .v.z { color:var(--mut); }
+  .note { color:var(--mut); font-size:12px; } canvas { width:100%; height:200px; display:block; border-radius:10px; background:var(--card2); }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; } th { text-align:left; color:var(--mut); font-weight:500; font-size:11px; text-transform:uppercase; padding:4px 6px; }
+  td { padding:6px; border-top:1px solid var(--line); font-size:13px; }
+  .res { padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; } .res.win { background:#0b2a19; color:var(--up); } .res.loss { background:#2f1118; color:var(--down); }
+  .res.pending { background:#2a2208; color:var(--warn); } .res.draw, .res.void, .res.skip { background:#1a2242; color:var(--mut); }
+  .c-call { color:var(--up); font-weight:700; } .c-put { color:var(--down); font-weight:700; }
+  .riskchip { display:inline-block; margin-left:4px; padding:0 5px; border-radius:5px; font-size:10px; font-weight:800; color:var(--warn); background:#2a2208; border:1px solid #78350f; cursor:help; }
+  details summary { cursor:pointer; color:#c4b5fd; } details p { color:var(--mut); font-size:13px; margin:8px 0 0; }
+  .prog { height:5px; background:#1a2242; border-radius:4px; margin-top:6px; overflow:hidden; } .prog i { display:block; height:100%; background:var(--acc); }
+  .tabs { display:flex; gap:6px; } .tabs button { flex:1; }
+  label.chk { color:var(--mut); font-size:12px; display:flex; gap:6px; align-items:center; text-transform:none; letter-spacing:0; }
+
+  /* ---- modern cards, collapsible sections, strategy cards, analysis ---- */
+  .card { background:linear-gradient(180deg,#131b36,#0f1630); box-shadow:0 10px 30px rgba(0,0,0,.25); }
+  .coll-head { all:unset; box-sizing:border-box; width:100%; display:flex; align-items:center; gap:12px; cursor:pointer; padding:2px 0; }
+  .coll-head:focus-visible { outline:2px solid var(--acc); outline-offset:4px; border-radius:8px; }
+  .coll-title { font-size:13px; font-weight:700; letter-spacing:.02em; } .coll-title .sub { display:block; font-weight:500; margin-top:1px; }
+  .coll-sum { margin-left:auto; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .chev { width:26px; height:26px; border-radius:8px; display:grid; place-items:center; background:var(--card2); border:1px solid var(--line); color:var(--mut); transition:transform .25s ease; flex:none; }
+  .coll-head[aria-expanded=true] .chev { transform:rotate(180deg); color:#c4b5fd; border-color:var(--acc); }
+  .coll-body { margin-top:14px; border-top:1px solid var(--line); padding-top:14px; }
+  .coll-body[hidden] { display:none; }
+  .tag { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; border:1px solid var(--line); background:var(--card2); color:var(--mut); }
+  .tag.live { color:var(--up); border-color:#14532d; background:#0b1f17; } .tag.paper { color:#c4b5fd; border-color:#4c3a99; background:#1a1440; } .tag.off { color:var(--warn); border-color:#78350f; background:#2a2208; }
+  .tag.up { color:var(--up); border-color:#14532d; background:#0b1f17; } .tag.down { color:var(--down); border-color:#7f1d1d; background:#241016; }
+  .sgrid { display:grid; grid-template-columns:1fr; gap:8px; }
+  .scard { border:1px solid var(--line); background:var(--card2); border-radius:12px; padding:10px 12px; transition:border-color .2s, background .2s; }
+  .scard.live { border-color:#14532d; background:linear-gradient(180deg,#0b1f17,#0d1328); }
+  .scard.paused { opacity:.72; }
+  .scard-top { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+  .scard b { font-size:13.5px; } .scard-meta { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:9px; flex-wrap:wrap; }
+  .segc { display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:#0a0f22; }
+  .segc button { all:unset; cursor:pointer; padding:5px 12px; font-size:12px; font-weight:700; color:var(--mut); border-right:1px solid var(--line); transition:background .15s, color .15s; }
+  .segc button:last-child { border-right:0; } .segc button:hover { color:var(--fg); }
+  .segc button:focus-visible { outline:2px solid var(--acc); outline-offset:-2px; }
+  .segc button.m-paused.on { background:#2a2208; color:var(--warn); } .segc button.m-paper.on { background:#2a1f66; color:#c4b5fd; } .segc button.m-live.on { background:#0f3320; color:var(--up); }
+  .sstat { text-align:right; font-size:12px; font-variant-numeric:tabular-nums; } .sstat b { font-size:12.5px; }
+  .toolrow { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; } .toolrow a { color:#c4b5fd; font-size:12px; margin-left:auto; text-decoration:none; }
+  .toolrow a:hover { text-decoration:underline; }
+
+  /* ---- "why are no signals coming?" banner, signal-table group rows ---- */
+  .health { border:1px solid #78350f; background:linear-gradient(180deg,#2a2208,#17140a); border-radius:14px; padding:12px 14px; margin-bottom:12px; }
+  .health[hidden] { display:none; } .health.bad { border-color:#7f1d1d; background:linear-gradient(180deg,#2a1016,#170a0e); }
+  .health .hh { display:flex; align-items:center; gap:8px; font-weight:800; font-size:13px; color:var(--warn); } .health.bad .hh { color:var(--down); }
+  .health .hr { margin-top:10px; } .health .hr b { font-size:13px; } .health .hd { color:var(--mut); font-size:12px; margin-top:3px; line-height:1.45; }
+  .health .fix { margin-top:6px; padding:6px 9px; border-radius:8px; background:rgba(255,255,255,.05); font-size:12px; line-height:1.45; } .health .fix b { color:#c4b5fd; }
+  .health details { margin-top:10px; } .health details summary { font-size:12px; }
+  /* ---- readiness bars: how close each strategy is to a signal if the forming candle closed now ---- */
+  .rdy { margin-top:7px; max-width:260px; } .rdy .rt { display:flex; justify-content:space-between; gap:8px; font-size:11px; font-weight:700; margin-bottom:3px; }
+  .rdy .track { height:6px; border-radius:6px; background:#1a2242; overflow:hidden; position:relative; }
+  .rdy .fill { height:100%; border-radius:6px; width:0; transition:width .6s ease, background-color .4s ease, box-shadow .4s ease; }
+  .rdy.far .fill { background:#475069; } .rdy.build .fill { background:#38bdf8; } .rdy.near .fill { background:#f59e0b; } .rdy.close .fill { background:#fb923c; animation:rpulse 1.1s ease-in-out infinite; }
+  .rdy.ready.call .fill { background:var(--up); box-shadow:0 0 10px var(--up); animation:rpulse 1s ease-in-out infinite; } .rdy.ready.put .fill { background:var(--down); box-shadow:0 0 10px var(--down); animation:rpulse 1s ease-in-out infinite; }
+  .rdy.blocked .fill { background:repeating-linear-gradient(45deg,#7c3aed,#7c3aed 6px,#5b21b6 6px,#5b21b6 12px); } .rdy.warm .fill { background:#334155; }
+  .rdy.far .rt { color:var(--mut); } .rdy.build .rt { color:#38bdf8; } .rdy.near .rt { color:#f59e0b; } .rdy.close .rt { color:#fb923c; } .rdy.ready.call .rt { color:var(--up); } .rdy.ready.put .rt { color:var(--down); }
+  .rdy.blocked .rt { color:#a78bfa; } .rdy.warm .rt { color:var(--mut); }
+  @keyframes rpulse { 50% { opacity:.65; } }
+  .miss { margin:8px 0 2px; font-size:12px; color:var(--mut); } .miss code { color:#c4b5fd; font-size:11.5px; }
+  .rlegend { display:flex; flex-wrap:wrap; gap:10px; font-size:11px; color:var(--mut); margin:0 0 8px; } .rlegend i { display:inline-block; width:10px; height:6px; border-radius:3px; margin-right:4px; vertical-align:middle; }
+  @media (prefers-reduced-motion:reduce) { .rdy .fill { animation:none !important; transition:none; } }
+  tr.grp td { background:#0f1630; color:#c4b5fd; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; border-top:1px solid var(--line); padding:7px 6px; }
+  .tag.live-s { color:var(--up); border-color:#14532d; background:#0b1f17; padding:0 6px; font-size:10px; }
+
+  .hero { border:1px solid var(--line); border-radius:14px; padding:16px; background:var(--card2); position:relative; overflow:hidden; }
+  .hero.call { border-color:#14532d; background:radial-gradient(120% 140% at 0% 0%,#0f3320 0%,#0d1328 60%); } .hero.put { border-color:#7f1d1d; background:radial-gradient(120% 140% at 0% 0%,#3a1219 0%,#0d1328 60%); }
+  .hero-top { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+  .hero .k { font-size:10.5px; letter-spacing:.1em; color:var(--mut); font-weight:700; } .hero .dir { font-size:28px; margin-top:2px; }
+  .hero .who { font-size:13px; margin-top:2px; } .meter { height:7px; border-radius:6px; background:#1a2242; overflow:hidden; margin-top:10px; } .meter i { display:block; height:100%; border-radius:6px; }
+  .consensus { margin:14px 0 4px; } .consensus .row { display:flex; justify-content:space-between; font-size:11.5px; font-weight:700; margin-bottom:5px; }
+  .consensus .tr { display:flex; height:9px; border-radius:6px; overflow:hidden; background:#1a2242; } .consensus .tr i { display:block; height:100%; }
+  .group-h { display:flex; justify-content:space-between; align-items:center; margin:16px 0 8px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--mut); font-weight:700; }
+  details.srow { border:1px solid var(--line); border-radius:12px; background:var(--card2); margin-bottom:6px; overflow:hidden; transition:border-color .2s; }
+  details.srow.call { border-color:#1b5a37; } details.srow.put { border-color:#7a2430; }
+  details.srow > summary { list-style:none; display:grid; grid-template-columns:10px 1fr auto 18px; gap:10px; align-items:center; padding:9px 12px; cursor:pointer; color:var(--fg); }
+  details.srow > summary::-webkit-details-marker { display:none; } details.srow > summary:hover { background:#111a38; }
+  .sdot { width:9px; height:9px; border-radius:50%; background:#475069; } .srow.call .sdot { background:var(--up); box-shadow:0 0 8px var(--up); } .srow.put .sdot { background:var(--down); box-shadow:0 0 8px var(--down); }
+  .sname { font-weight:700; font-size:13px; display:flex; gap:7px; align-items:center; flex-wrap:wrap; } .sname .meter { width:150px; margin-top:6px; height:5px; }
+  .sdir { text-align:right; font-weight:800; font-size:13px; } .sdir small { display:block; color:var(--mut); font-weight:500; font-size:11px; }
+  .schev { color:var(--mut); font-size:12px; transition:transform .2s; } details.srow[open] .schev { transform:rotate(180deg); }
+  .sbody { padding:2px 12px 12px; border-top:1px solid var(--line); } .sbody .why { margin:10px 0 2px; font-size:12px; color:var(--mut); }
+  .sbody .why b { color:var(--fg); }
+  .empty { padding:18px; text-align:center; color:var(--mut); border:1px dashed var(--line); border-radius:12px; }
+  @media (min-width:700px) { .sgrid { grid-template-columns:1fr 1fr; } }
+
+  /* ---- streaming-count bubbles, live refresh bar, processing animation ---- */
+  .tabs button { position:relative; }
+  .bub { position:absolute; top:-9px; right:-5px; min-width:20px; height:20px; padding:0 6px; border-radius:999px; background:var(--up); color:#04150b; font-size:11px; font-weight:800; display:grid; place-items:center; border:2px solid #0f1630; box-shadow:0 0 10px rgba(34,197,94,.55); pointer-events:none; line-height:1; }
+  .bub[hidden] { display:none; }
+  .bub.pop { animation:pop .45s ease; }
+  @keyframes pop { 0% { transform:scale(.5); } 60% { transform:scale(1.3); } 100% { transform:scale(1); } }
+  .livebar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 6px; }
+  .livebar-r { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  .livebar select { background:var(--card2); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:5px 6px; font:inherit; font-size:12px; max-width:150px; }
+  .livedot { width:9px; height:9px; border-radius:50%; background:var(--up); flex:none; animation:beat 2s ease-out infinite; }
+  .livedot.busy { background:var(--acc); animation:beatp .8s ease-out infinite; }
+  .livedot.off { background:#475069; animation:none; } .livedot.err { background:var(--down); animation:none; }
+  @keyframes beat { 0% { box-shadow:0 0 0 0 rgba(34,197,94,.65); } 100% { box-shadow:0 0 0 9px rgba(34,197,94,0); } }
+  @keyframes beatp { 0% { box-shadow:0 0 0 0 rgba(139,92,246,.8); } 100% { box-shadow:0 0 0 10px rgba(139,92,246,0); } }
+  .rbtn { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; font-size:12px; }
+  .rbtn .spin { display:inline-block; font-size:14px; line-height:1; }
+  .rbtn.busy .spin { animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .scanline { height:3px; background:#1a2242; border-radius:3px; overflow:hidden; margin-bottom:10px; position:relative; }
+  .scanline i { position:absolute; left:0; top:0; bottom:0; width:0; background:var(--acc); transition:width .5s linear; }
+  .scanline.busy i { width:35%; left:-35%; transition:none; background:linear-gradient(90deg,transparent,#a78bfa,transparent); animation:scan 1s ease-in-out infinite; }
+  @keyframes scan { to { left:100%; } }
+  .dots::after { content:''; animation:dots 1.2s steps(1,end) infinite; }
+  @keyframes dots { 0% { content:''; } 25% { content:'.'; } 50% { content:'..'; } 75% { content:'...'; } }
+  .skel { border-radius:12px; background:linear-gradient(90deg,#0d1328 25%,#18224d 50%,#0d1328 75%); background-size:200% 100%; animation:shimmer 1.3s linear infinite; }
+  @keyframes shimmer { to { background-position:-200% 0; } }
+  .hero.flash { animation:flash .9s ease-out; }
+  @keyframes flash { 0% { box-shadow:0 0 0 0 rgba(139,92,246,.85); } 100% { box-shadow:0 0 0 18px rgba(139,92,246,0); } }
+  @media (prefers-reduced-motion:reduce) {
+    .livedot, .rbtn.busy .spin, .skel, .hero.flash, .dots::after, .bub.pop { animation:none; }
+    .scanline.busy i { animation:none; left:0; width:100%; opacity:.6; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">⚡</div>
+    <div><h1>Quotex Signal</h1><div class="sub">multi-strategy signals · accuracy is measured from settled signals, not promised</div></div>
+    <span id="feed" class="pill wait">connecting…</span>
+  </header>
+
+  <div id="health" class="health" hidden role="status" aria-live="polite"></div>
+
+  <div class="card">
+    <h2><span>Signal stats</span><button id="clear" title="Delete all recorded signals">Clear</button></h2>
+    <div class="grid2" style="margin-bottom:8px">
+      <div class="tile"><div class="big" id="st-total">0</div><div class="lbl">Signals issued</div></div>
+      <div class="tile"><div class="big" id="st-acc">–</div><div class="lbl">Win accuracy</div></div>
+    </div>
+    <div class="grid3">
+      <div class="tile up"><b id="st-call">0</b><small>BUY / CALL</small></div>
+      <div class="tile down"><b id="st-put">0</b><small>SELL / PUT</small></div>
+      <div class="tile"><b id="st-skip">0</b><small>SKIP</small></div>
+    </div>
+    <p class="note" id="st-note" style="margin:10px 0 0"></p>
+    <table style="margin-top:8px"><thead><tr><th>Tier</th><th>Signals</th><th>W / L</th><th>Accuracy</th></tr></thead><tbody id="tiers"></tbody></table>
+    <p class="note" style="margin:6px 0 0"><b>A</b> = strict (≥3 factors agree, strength ≥ 40). <b>B</b> = looser (2 factors agree) — more signals, expected to be weaker; the table shows whether that is true.</p>
+  </div>
+
+  <div class="card">
+    <button class="coll-head" id="strat-toggle" aria-expanded="false" aria-controls="strat-body">
+      <span class="coll-title">Strategies <span class="sub note">side-by-side, same rules for all</span></span>
+      <span class="coll-sum" id="strat-sum"></span>
+      <span class="chev" aria-hidden="true">▾</span>
+    </button>
+    <div class="coll-body" id="strat-body" hidden>
+      <div class="toolrow"><input type="search" id="sq" placeholder="Search strategies…" style="margin:0;max-width:240px"><a href="/admin/live" target="_blank" rel="noreferrer">Full controls: pause all, presets, bulk apply ↗</a></div>
+      <div class="sgrid" id="strats"></div>
+      <p class="note" style="margin:10px 0 0"><b>Off</b> = not running · <b>Paper</b> = recorded and measured, no alerts · <b>Live</b> = alerts on. A live strategy is auto-muted if its last 100 settled signals are clearly below break-even.
+      Judge a strategy only after a few hundred settled signals.</p>
+    </div>
+  </div>
+
+  <details class="card hide-embed"><summary>How this strategy works</summary>
+    <p>Five factors vote on the last closed candle: Bollinger band bounce (30), RSI divergence (25), Stochastic %K/%D cross (20), CCI extreme + reversal (15),
+    candlestick pattern (10). A signal is issued only when at least 3 factors agree and opposing weight is small; otherwise SKIP.
+    The signal is for the <b>next</b> candle and is settled automatically when it closes (win if price closed in the signalled direction).
+    "Strength" is a heuristic 0–100 — it is <b>not</b> a win probability. The win accuracy above is what actually happened, with a 95% interval, compared with the break-even rate implied by the payout.</p>
+  </details>
+
+  <div class="card">
+    <h2><span>Select pair</span><label class="chk"><input type="checkbox" id="only-stream"> streaming only</label></h2>
+    <div class="tabs"><button data-m="OTC" class="on">OTC Market<span class="bub" id="bub-OTC" hidden title="pairs streaming now"></span></button><button data-m="LIVE">Live Market<span class="bub" id="bub-LIVE" hidden title="pairs streaming now"></span></button></div>
+    <input type="search" id="q" placeholder="Search pairs…">
+    <div class="chips" id="chips"></div>
+    <div class="note" style="margin-top:8px">Only pairs open in your Quotex tab stream data (green dot). Open another pair on Quotex to add it.</div>
+    <h2 style="margin:12px 0 6px">Timeframe</h2>
+    <div class="seg" id="tfs"></div>
+  </div>
+
+  <div class="card">
+    <h2><span id="pair-title">No pair</span><span id="countdown" style="text-transform:none"></span></h2>
+    <iframe id="chart" title="Price chart with supply / demand zones and market structure" allow="fullscreen" style="width:100%;height:640px;border:0;display:block;border-radius:10px;background:var(--card2)"></iframe>
+    <div class="grid2" style="margin-top:8px"><div class="note" id="price-line"></div><div class="note" id="sent-line" style="text-align:right"></div></div>
+    <div class="prog"><i id="warm"></i></div><div class="note" id="warm-note"></div>
+  </div>
+
+  <div class="card" id="ai-card">
+    <h2><span>AI advisor · next candle</span><span id="ai-badge" class="tag off">…</span></h2>
+    <div id="ai-body" class="note">Reading…</div>
+  </div>
+
+  <div class="card">
+    <h2><span>Strategy analysis · last closed candle</span><span id="an-sub" class="note" style="text-transform:none;letter-spacing:0"></span></h2>
+    <div class="livebar">
+      <span class="livedot off" id="live-dot"></span><span class="note" id="live-txt">Waiting for data…</span>
+      <span class="livebar-r">
+        <select id="refresh-mode" title="How often the signals are recalculated">
+          <option value="smart">Auto: smart</option><option value="2">Every 2 s</option><option value="5">Every 5 s</option>
+          <option value="10">Every 10 s</option><option value="30">Every 30 s</option><option value="off">Manual only</option>
+        </select>
+        <button id="refresh-now" class="rbtn" title="Recalculate signals now"><span class="spin">⟳</span> Refresh</button>
+      </span>
+    </div>
+    <div class="scanline" id="scanline"><i></i></div>
+    <div id="analysis"><div class="skel" style="height:150px"></div></div>
+  </div>
+
+  <div class="card">
+    <h2><span>Recent signals</span><label class="chk"><input type="checkbox" id="show-skips"> show skips</label></h2>
+    <div style="overflow:auto"><table><thead><tr><th>Candle</th><th>Pair</th><th>TF</th><th>Strategy</th><th>Signal</th><th>Tier</th><th>Str.</th><th>Result</th></tr></thead><tbody id="recent"></tbody></table></div>
+  </div>
+
+  <details class="card"><summary>Feed log (why data paused)</summary>
+    <table style="margin-top:8px"><tbody id="feedlog"></tbody></table>
+    <p class="note">Shows tab visibility, socket open/close and tick gaps. "tick-gap … arrived Ns after the previous one" = delivery paused; a small N = ticks were lost upstream.</p>
+  </details>
+</div>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+if (new URLSearchParams(location.search).has('embed')) document.body.classList.add('embed');
+const V = { symbol: null, tf: null, market: 'OTC', q: '', onlyStream: false, showSkips: false };
+try { Object.assign(V, JSON.parse(localStorage.getItem('qxs-view') || '{}')); } catch (_) {}
+const saveView = () => { try { localStorage.setItem('qxs-view', JSON.stringify(V)); } catch (_) {} };
+let last = null, auto = true;
+const TFN = { 60: '1m', 300: '5m', 900: '15m' };
+const fmtP = (p) => p == null ? '–' : (Math.abs(p) >= 100 ? p.toFixed(2) : p.toFixed(5));
+const pct = (x) => x == null ? '–' : (x * 100).toFixed(1) + '%';
+const hhmm = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+async function poll() {
+  try {
+    const qs = new URLSearchParams();
+    if (V.symbol && !auto) qs.set('symbol', V.symbol);
+    if (V.tf) qs.set('tf', V.tf);
+    const r = await fetch('/api/state?' + qs);
+    last = await r.json();
+    render(last);
+  } catch (e) {
+    const f = $('#feed'); f.className = 'pill bad'; f.textContent = 'backend unreachable';
+  }
+}
+
+function render(s) {
+  const recv = s.ingest.last_recv, age = recv ? s.now - recv : null;
+  const streaming = s.symbols.filter((x) => x.streaming).length;
+  const f = $('#feed');
+  if (age != null && age < 10) { f.className = 'pill ok'; f.textContent = `live · ${streaming} pair${streaming === 1 ? '' : 's'} streaming`; }
+  else if (recv) { f.className = 'pill bad'; f.textContent = `no data for ${Math.round(age)}s`; }
+  else { f.className = 'pill wait'; f.textContent = 'waiting for extension data'; }
+
+  const st = s.stats;
+  $('#st-total').textContent = st.total; $('#st-call').textContent = st.calls; $('#st-put').textContent = st.puts; $('#st-skip').textContent = st.skips;
+  $('#st-acc').textContent = st.accuracy == null ? '–' : pct(st.accuracy);
+  const be = st.breakeven ? ` Break-even at the average payout: ${pct(st.breakeven)}.` : '';
+  $('#st-note').textContent = st.settled
+    ? `${st.wins}W / ${st.losses}L settled (${st.draws} draws, ${st.pending} pending), 95% interval ${pct(st.ci_low)}–${pct(st.ci_high)}.${be}` +
+      (st.settled < 100 ? ' Too few signals to judge yet — you need a few hundred.' : '')
+    : 'No settled signals yet. Signals appear when a candle closes and the pair has 60+ candles.';
+
+  $('#tiers').innerHTML = ['A', 'B'].map((k) => {
+    const t = s.tiers[k];
+    return `<tr><td><b>${k}</b></td><td>${t.total}</td><td>${t.wins} / ${t.losses}</td><td>${pct(t.accuracy)}${t.settled ? ` <span class="note">(${pct(t.ci_low)}–${pct(t.ci_high)})</span>` : ''}</td></tr>`;
+  }).join('');
+  const hist = (s.ingest.hist || []).map((h) => ({ t: h.at, e: 'history received', d: `${h.asset}: ${h.rows} rows, tf=${h.tf ?? '?'} → ${h.result}` }));
+  $('#feedlog').innerHTML = [...(s.feed_events || []), ...hist].sort((a, b) => b.t - a.t).slice(0, 30).map((e) =>
+    `<tr><td class="note">${new Date(e.t * 1000).toLocaleTimeString()}</td><td>${esc(e.e)}</td><td class="note">${esc(e.d ?? '')}</td></tr>`).join('') ||
+    '<tr><td class="note">No events yet.</td></tr>';
+
+  for (const m of ['OTC', 'LIVE']) {                                  // streaming-count bubble on each market tab
+    const n = s.symbols.filter((x) => x.market === m && x.streaming).length, el = $('#bub-' + m);
+    if (el.dataset.n !== String(n)) {
+      const had = el.dataset.n !== undefined;
+      el.dataset.n = n; el.textContent = n; el.hidden = n === 0; el.title = `${n} ${m === 'OTC' ? 'OTC' : 'live'} pair${n === 1 ? '' : 's'} streaming now`;
+      if (had && n) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+    }
+  }
+  const sl = s.selected, pk = sl ? `${sl.symbol}|${sl.tf}` : '';     // recalculate straight away on a pair change or a new closed candle
+  const ck = sl && sl.candles && sl.candles.length ? sl.candles[sl.candles.length - 1].t : 0;
+  if (pk !== pairKey) { pairKey = pk; candleT = ck; pollBoard(); }
+  else if (ck && ck !== candleT) { candleT = ck; if (refreshMode !== 'off') { pollBoard(); setTimeout(pollBoard, 2000); } }
+
+  renderHealth(s.health);
+  renderStrategies(s);
+  renderChips(s);
+  $('#tfs').innerHTML = s.tfs.map((t) => `<button data-tf="${t}" class="${(s.selected ? s.selected.tf : V.tf) == t ? 'on' : ''}">${TFN[t] || t}</button>`).join('');
+  renderSelected(s.selected);
+  renderRecent(s.recent);
+}
+
+// ---- "why are no signals coming?": shown only while signals are paused, with the cause and what to do (the server works it out: engine.feed_health) ----
+let healthNotesOpen = false;
+function renderHealth(h) {
+  const el = $('#health');
+  if (!h || !h.paused) { el.hidden = true; el.dataset.sig = ''; el.innerHTML = ''; return; }
+  const hard = h.reasons.filter((r) => r.level !== 'info'), notes = h.reasons.filter((r) => r.level === 'info');
+  const bad = hard.some((r) => r.level === 'bad');
+  const item = (r) => `<div class="hr"><b>${esc(r.title)}</b><div class="hd">${esc(r.detail)}</div>
+    ${r.need ? `<div class="prog"><i style="width:${Math.min(100, (100 * r.have) / r.need)}%"></i></div>` : ''}
+    ${r.fix ? `<div class="fix"><b>What to do:</b> ${esc(r.fix)}</div>` : ''}</div>`;
+  const html = `<div class="hh"><span>${bad ? '⛔' : '⏸'}</span><span>Signals are paused</span></div>${hard.map(item).join('')}
+    ${notes.length ? `<details id="health-notes" ${healthNotesOpen ? 'open' : ''}><summary>Also good to know (${notes.length})</summary>${notes.map((r) => `<div class="hr"><b>${esc(r.title)}</b><div class="hd">${esc(r.detail)}</div></div>`).join('')}</details>` : ''}`;
+  el.className = 'health' + (bad ? ' bad' : ''); el.hidden = false;
+  if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }       // rewrite only when the text changed, so an opened note stays open
+}
+
+// ---- strategies section: collapsible (collapsed by default), modern cards with Off / Paper / Live segmented controls ----
+const MODE_LABEL = { paused: 'Off', paper: 'Paper', live: 'Live' };
+let stratOpen = false;
+try { stratOpen = localStorage.getItem('qxs-strats-open') === '1'; } catch (_) {}
+function setStratOpen(open) {
+  stratOpen = open;
+  $('#strat-toggle').setAttribute('aria-expanded', String(open));
+  $('#strat-body').hidden = !open;
+  try { localStorage.setItem('qxs-strats-open', open ? '1' : '0'); } catch (_) {}
+}
+
+function renderStrategies(s) {
+  const all = (s.strategies || []).filter((x) => ['live', 'paper', 'paused'].includes(x.status));
+  const n = (m) => all.filter((x) => x.status === m).length;
+  const liveNames = all.filter((x) => x.status === 'live').map((x) => x.name);
+  $('#strat-sum').innerHTML = `<span class="tag live" title="${esc(liveNames.join(', ') || 'none')}">${n('live')} live</span><span class="tag paper">${n('paper')} paper</span><span class="tag off">${n('paused')} off</span>`;
+  if (!stratOpen) return;                                           // nothing to draw while collapsed
+  const el = $('#strats');
+  const q = ($('#sq').value || '').toLowerCase();
+  const order = { live: 0, paper: 1, paused: 2 };
+  const rows = all.filter((x) => (x.name + x.key).toLowerCase().includes(q))
+    .sort((a, b) => order[a.status] - order[b.status] || b.stats.settled - a.stats.settled || a.name.localeCompare(b.name));
+  el.innerHTML = rows.map((x) => {
+    const st = x.stats, be = st.breakeven;
+    let verdict = '<span class="tag">no data</span>';
+    if (st.settled >= 30 && be != null) verdict = st.ci_low > be ? '<span class="tag up">above break-even</span>' : st.ci_high < be ? '<span class="tag down">below break-even</span>' : '<span class="tag">near break-even</span>';
+    else if (st.settled) verdict = '<span class="tag off">small sample</span>';
+    const seg = ['paused', 'paper', 'live'].map((m) => `<button class="m-${m} ${x.status === m ? 'on' : ''}" data-sid="${x.id}" data-mode="${m}" aria-pressed="${x.status === m}">${MODE_LABEL[m]}</button>`).join('');
+    return `<div class="scard ${x.status}">
+      <div class="scard-top"><div style="min-width:0"><b>${esc(x.name)}</b><div class="note">${esc((x.tags || []).join(' · '))}</div></div>
+        <div>${x.muted ? '<span class="tag down" title="auto-muted: recent results clearly below break-even">muted</span>' : ''}${x.error ? `<span class="tag down" title="${esc(x.error)}">error</span>` : ''}</div></div>
+      <div class="scard-meta"><div class="segc" role="group" aria-label="mode for ${esc(x.name)}">${seg}</div>
+        <div class="sstat"><b>${st.total} signals</b> · ${st.wins}W/${st.losses}L · ${pct(st.accuracy)}<div style="margin-top:3px">${verdict}</div></div></div></div>`;
+  }).join('') || '<div class="empty">No strategies match.</div>';
+}
+
+// ---- strategy analysis: what every APPLIED strategy says about the selected pair right now ----
+let board = null, boardKey = '';
+const openRows = new Set();
+let paperOpen = false;
+let liveOpen = false;                                                 // both groups start collapsed; the choice for the live group is remembered
+try { liveOpen = localStorage.getItem('qxs-live-open') === '1'; } catch (_) {}
+let boardBusy = false, boardAt = 0, boardErr = false, lastSig = '', pairKey = '', candleT = 0, barMsg = '';
+let refreshMode = 'smart';                                           // smart = every 5 s plus right after each candle closes
+try { refreshMode = localStorage.getItem('qxs-refresh') || 'smart'; } catch (_) {}
+const SMART_MS = 5000;
+const intervalMs = () => refreshMode === 'off' ? Infinity : refreshMode === 'smart' ? SMART_MS : +refreshMode * 1000;
+
+async function pollBoard() {
+  if (boardBusy) return;
+  const sel = last && last.selected;
+  if (!sel) { board = null; boardAt = Date.now(); renderAnalysis(); updateLiveBar(); return; }
+  const key = `${sel.symbol}|${sel.tf}`;
+  boardBusy = true; updateLiveBar();
+  const t0 = Date.now();
+  try {
+    const r = await fetch(`/api/analyze/all?symbol=${encodeURIComponent(sel.symbol)}&tf=${sel.tf}`);
+    if (!r.ok) throw new Error(r.status);
+    board = await r.json(); boardKey = key; boardErr = false;
+  } catch (_) { boardErr = true; /* keep the last board */ }
+  const wait = 700 - (Date.now() - t0);
+  if (wait > 0) await new Promise((res) => setTimeout(res, wait));   // keep the "analysing" animation visible long enough to notice
+  boardBusy = false; boardAt = Date.now();
+  renderAnalysis(); updateLiveBar();
+  const cur = last && last.selected;
+  if (cur && `${cur.symbol}|${cur.tf}` !== key) pollBoard();          // the pair changed while we were fetching
+}
+
+function updateLiveBar() {
+  const n = board ? board.strategies.length : 0, bar = $('#scanline');
+  $('#refresh-now').classList.toggle('busy', boardBusy); bar.classList.toggle('busy', boardBusy);
+  let cls = 'off', msg;
+  const ago = Math.round((Date.now() - boardAt) / 1000);
+  if (boardBusy) { cls = 'busy'; msg = `Analysing${n ? ' ' + n + ' strateg' + (n === 1 ? 'y' : 'ies') : ''}<span class="dots"></span>`; }
+  else if (boardErr) { cls = 'err'; msg = 'Could not reach the backend - retrying'; }
+  else if (!boardAt) msg = 'Waiting for the first analysis';
+  else if (!(last && last.selected)) msg = 'No pair streaming yet';
+  else if (refreshMode === 'off') msg = `Auto-refresh is off · updated ${ago}s ago`;
+  else if (document.hidden) msg = 'Paused while this tab is hidden';
+  else { cls = ''; msg = `Live · updated ${ago}s ago · next in ${Math.max(0, Math.ceil((intervalMs() - (Date.now() - boardAt)) / 1000))}s`; }
+  $('#live-dot').className = 'livedot ' + cls;
+  if (msg !== barMsg) { barMsg = msg; $('#live-txt').innerHTML = msg; }  // only rewrite when it changed, so the dots animation is not restarted
+  bar.firstElementChild.style.width = boardBusy || refreshMode === 'off' || !boardAt ? '' : Math.min(100, (100 * (Date.now() - boardAt)) / intervalMs()) + '%';
+}
+
+setInterval(() => {                                                    // one scheduler for the whole panel
+  updateLiveBar();
+  if (!document.hidden && Date.now() - readyAt >= 2000) pollReady();      // readiness bars: every 2 s, independent of the board's refresh mode
+  if (!document.hidden && Date.now() - aiAt >= 10000) pollAi();
+  if (boardBusy || document.hidden || refreshMode === 'off') return;
+  if (Date.now() - boardAt >= intervalMs()) pollBoard();
+}, 500);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { poll(); pollBoard(); } });
+
+// ---- AI advisor card: its reading of the newest closed candle for the selected pair, and honestly whether it has earned the right to be believed ----
+let aiAt = 0, aiBusy = false;
+async function pollAi() {
+  const sel = last && last.selected;
+  if (aiBusy) return;
+  aiBusy = true;
+  try {
+    const [rd, st] = await Promise.all([sel ? fetch(`/api/ai/read?symbol=${encodeURIComponent(sel.symbol)}&tf=${sel.tf}`).then((r) => r.json()) : Promise.resolve({ available: false, note: 'Open a pair on Quotex (or pick one) to see its reading.' }), fetch('/api/ai/status').then((r) => r.json())]);
+    const rep = st.report, lv = st.live, b = $('#ai-badge');
+    b.className = 'tag ' + (st.usable ? 'live' : 'off');
+    b.textContent = st.usable ? 'proven' : st.training.running ? `training ${Math.round(100 * st.training.progress)}%` : rep ? 'no proven skill' : 'not trained';
+    const lines = [];
+    if (rd.available) {
+      const p = rd.p_up, side = p >= 0.5 ? 'UP' : 'DOWN', pp = Math.max(p, 1 - p);
+      lines.push(`<div>Reading for <b>${esc(sel ? sel.symbol : '')}</b>: leans <b class="${p >= 0.5 ? 'c-call' : 'c-put'}">${side} ${(pp * 100).toFixed(1)}%</b> ${st.usable ? '' : '<span class="note">(not believed - see below)</span>'}</div>`);
+    } else lines.push(`<div>${esc(rd.note || 'No reading yet.')}</div>`);
+    if (rep) lines.push(`<div class="note" style="margin-top:6px">Tested on ${rep.n_test.toLocaleString()} unseen candles: AUC ${rep.auc.toFixed(3)} (0.500 = coin flip; ±0.005 is luck). ${esc(rep.why)}</div>`);
+    if (!st.usable && rep) lines.push('<div class="note" style="margin-top:4px">So it confirms or vetoes nothing. It keeps learning from every new candle and is retested every night; it only gets a say once it beats chance on data it never saw.</div>');
+    if (lv && lv.n) lines.push(`<div class="note" style="margin-top:4px">Live record: ${lv.n} call${lv.n === 1 ? '' : 's'} scored${lv.n >= 100 ? `, ${pct(lv.acc)} right` : ' - too few to mean anything yet'}.</div>`);
+    if (rep && rep.map && (rep.map.favour.length || rep.map.avoid.length)) {
+      const f = (c) => `${esc(c.dim)}: ${esc(c.cell)} (${pct(c.win)})`;
+      lines.push(`<div class="note" style="margin-top:4px">${rep.map.favour.length ? 'Better in: ' + rep.map.favour.slice(0, 3).map(f).join('; ') + '. ' : ''}${rep.map.avoid.length ? 'Worse in: ' + rep.map.avoid.slice(0, 3).map(f).join('; ') + '.' : ''}</div>`);
+    }
+    $('#ai-body').innerHTML = lines.join('');
+  } catch (_) { /* keep the last card */ }
+  aiBusy = false; aiAt = Date.now();
+}
+
+// ---- readiness: how close each strategy is to a signal if the candle that is forming closed as it is (server: /api/readiness); updated in place, never re-rendering the rows ----
+let ready = null, readyKey = '', readyBusy = false, readyAt = 0;
+async function pollReady() {
+  const sel = last && last.selected;
+  if (!sel || readyBusy) return;
+  readyBusy = true;
+  const key = `${sel.symbol}|${sel.tf}`;
+  try {
+    const r = await fetch(`/api/readiness?symbol=${encodeURIComponent(sel.symbol)}&tf=${sel.tf}`);
+    if (r.ok) { ready = await r.json(); readyKey = key; }
+  } catch (_) { /* keep the last reading */ }
+  readyBusy = false; readyAt = Date.now();
+  applyReady();
+}
+const arrow = (d) => (d === 'CALL' ? '▲' : d === 'PUT' ? '▼' : '');
+function readyView(r) {
+  if (!r) return { cls: 'warm', label: 'reading…', pct: 0, tip: '' };
+  if (r.state === 'warming') return { cls: 'warm', label: `warming up · ${r.have}/${r.need} candles`, pct: Math.min(100, (100 * r.have) / r.need), tip: 'Not enough candles yet for this strategy.' };
+  if (r.state === 'error') return { cls: 'warm', label: 'could not read', pct: 0, tip: r.reason || '' };
+  const side = r.lead === 'CALL' ? r.call : r.lead === 'PUT' ? r.put : null, pct = Math.round(100 * (r.p || 0));
+  const conds = side && side.total && side.total !== 100 ? ` · ${side.met}/${side.total} conditions` : '';
+  const miss = side && side.missing && side.missing.length ? ` Still missing: ${side.missing.join(' ; ')}.` : '';
+  if (r.state === 'ready') return { cls: `ready ${r.lead === 'CALL' ? 'call' : 'put'}`, label: `READY ${arrow(r.lead)} ${r.lead} · if this candle closes as it is`, pct: 100, tip: 'Every rule holds on the candle that is forming. It can still change until it closes.' };
+  if (r.state === 'blocked') return { cls: 'blocked', label: `${arrow(r.lead)} rules met, but blocked: ${(r.reason || '').replace(/^filtered: /, '')}`.slice(0, 80), pct: 100, tip: r.reason || '' };
+  const cls = pct >= 80 ? 'close' : pct >= 60 ? 'near' : pct >= 34 ? 'build' : 'far';
+  return { cls, label: r.lead ? `${arrow(r.lead)} ${pct}%${conds}` : 'nothing yet', pct, tip: `Share of the rule that holds right now (not a chance of winning).${miss}` };
+}
+function applyReady() {
+  const R = ready && last && last.selected && readyKey === `${last.selected.symbol}|${last.selected.tf}` ? ready.strategies : null;
+  document.querySelectorAll('.rdy[data-sid]').forEach((el) => {
+    const r = R ? R[el.dataset.sid] : null, v = readyView(r);
+    const html = `<div class="rt"><span>${esc(v.label)}</span></div><div class="track" title="${esc(v.tip)}"><div class="fill" style="width:${v.pct}%"></div></div>`;
+    el.className = `rdy ${v.cls}`;
+    if (el.dataset.h !== v.label) { el.dataset.h = v.label; el.innerHTML = html; } else { const f = el.querySelector('.fill'); if (f) f.style.width = v.pct + '%'; }
+  });
+  document.querySelectorAll('.miss[data-sid]').forEach((el) => {
+    const r = R ? R[el.dataset.sid] : null, side = r && r.lead ? (r.lead === 'CALL' ? r.call : r.put) : null;
+    el.innerHTML = r && r.state === 'building' && side && side.missing.length ? `<b>Waiting for</b> (${arrow(r.lead)} ${r.lead} side): ${side.missing.map((m) => `<code>${esc(m)}</code>`).join(' · ')}`
+      : r && r.state === 'blocked' ? `<b>Blocked:</b> ${esc(r.reason)}` : r && r.state === 'ready' ? '<b>Every rule holds</b> on the forming candle - a signal is issued if it closes like this.' : '';
+  });
+  const hint = $('#live-hint');                                          // the closest live strategy, visible even while the group is collapsed
+  if (hint && R && board) {
+    const liveIds = board.strategies.filter((s) => s.status === 'live').map((s) => String(s.id));
+    const best = liveIds.map((id) => ({ id, r: R[id] })).filter((x) => x.r && ['building', 'ready'].includes(x.r.state) && x.r.lead && x.r.p > 0).sort((a, b) => b.r.p - a.r.p)[0];
+    const nm = best && (board.strategies.find((s) => String(s.id) === best.id) || {}).name;
+    hint.innerHTML = best ? `closest: <b style="color:${best.r.state === 'ready' ? (best.r.lead === 'CALL' ? 'var(--up)' : 'var(--down)') : '#fb923c'}">${esc(nm)} ${arrow(best.r.lead)} ${Math.round(100 * best.r.p)}%</b> · ` : '';
+  }
+}
+
+function votePill(v) { const c = v > 0.05 ? 'p' : v < -0.05 ? 'n' : 'z'; return `<span class="v ${c}">${v > 0 ? '+' : ''}${v}</span>`; }
+
+function rowHtml(r) {
+  const cls = r.direction === 'CALL' ? 'call' : r.direction === 'PUT' ? 'put' : '';
+  const dirTxt = r.direction === 'CALL' ? '<span class="c-call">▲ CALL</span>' : r.direction === 'PUT' ? '<span class="c-put">▼ PUT</span>' : '<span style="color:var(--mut)">no signal</span>';
+  const col = r.direction === 'CALL' ? 'var(--up)' : 'var(--down)';
+  const mode = r.status === 'live' ? '<span class="tag live">live</span>' : '<span class="tag paper">paper</span>';
+  const facs = (r.factors || []).map((f) => `<div class="factor"><span class="w">${f.weight}%</span><div><b>${esc(f.name)}</b><div class="note">${esc(f.note)}</div></div>${votePill(f.vote)}</div>`).join('');
+  const why = r.direction === 'SKIP' ? `<div class="why">${r.warming ? 'Still warming up.' : '<b>Why no signal:</b> ' + esc(r.reason || 'no factor active')}</div>`
+    : `<div class="why">Score <b>${r.score > 0 ? '+' : ''}${r.score}</b> · strength <b>${r.strength}</b> · ${r.agree} factor${r.agree === 1 ? '' : 's'} agree${r.tier ? ' · Tier ' + esc(r.tier) : ''}</div>`;
+  return `<details class="srow ${cls}" data-id="${r.id}" ${openRows.has(r.id) ? 'open' : ''}>
+    <summary><span class="sdot"></span>
+      <div><div class="sname">${esc(r.name)} ${mode}${r.tier ? `<span class="tag">Tier ${esc(r.tier)}</span>` : ''}</div>
+        ${r.direction !== 'SKIP' ? `<div class="meter"><i style="width:${r.strength}%;background:${col}"></i></div>` : ''}
+        <div class="rdy" data-sid="${r.id}"></div></div>
+      <div class="sdir">${dirTxt}${r.direction !== 'SKIP' ? `<small>strength ${r.strength}</small>` : ''}</div><span class="schev">▾</span></summary>
+    <div class="sbody">${why}<div class="miss" data-sid="${r.id}"></div><div style="margin-top:6px">${facs || '<div class="note">No factor detail.</div>'}</div></div></details>`;
+}
+
+function renderAnalysis() {
+  const A = $('#analysis'), sel = last && last.selected;
+  if (!sel) { $('#an-sub').textContent = ''; A.innerHTML = '<div class="empty">Open a chart on Quotex with the extension enabled.</div>'; return; }
+  if (!board || boardKey !== `${sel.symbol}|${sel.tf}`) { if (!A.querySelector('.skel')) A.innerHTML = '<div class="skel" style="height:150px"></div><div class="skel" style="height:44px;margin-top:8px"></div><div class="skel" style="height:44px;margin-top:8px"></div>'; return; }
+  const inst = (last.symbols.find((x) => x.symbol === sel.symbol) || {});
+  const rows = board.strategies;
+  $('#an-sub').textContent = `${inst.name || sel.symbol} · ${TFN[sel.tf]} · ${rows.length} running`;
+  if (!rows.length) { A.innerHTML = '<div class="empty">No strategy is running on this pair/timeframe. Switch some on in the Strategies section above.</div>'; return; }
+
+  const live = rows.filter((r) => r.status === 'live'), paper = rows.filter((r) => r.status !== 'live');
+  const liveSig = live.filter((r) => r.direction !== 'SKIP').sort((a, b) => b.strength - a.strength);
+  const top = liveSig[0];
+  const callsL = liveSig.filter((r) => r.direction === 'CALL').length, putsL = liveSig.length - callsL;
+  const conflict = callsL && putsL;
+  const cls = !top ? '' : conflict ? '' : top.direction === 'CALL' ? 'call' : 'put';
+  const heroTitle = !top ? 'No live signal' : conflict ? 'Live strategies disagree' : top.direction === 'CALL' ? '▲ BUY / CALL' : '▼ SELL / PUT';
+  const heroSub = !top ? `${live.length} live strateg${live.length === 1 ? 'y' : 'ies'} analysed - none has a signal on the last closed candle`
+    : conflict ? `${callsL} say CALL, ${putsL} say PUT - treat as no trade`
+    : `<b>${esc(top.name)}</b>${liveSig.length > 1 ? ` + ${liveSig.length - 1} more live strateg${liveSig.length === 2 ? 'y' : 'ies'} agree` : ''}`;
+  const total = rows.length, c = board.calls, p = board.puts, nu = board.neutral;
+  const ls = sel.last_signal;
+  const lsHtml = ls ? `<div class="note" style="margin-top:12px">Last issued by the default strategy on this pair: <b class="${ls.direction === 'CALL' ? 'c-call' : ls.direction === 'PUT' ? 'c-put' : ''}">${ls.direction}</b> (${hhmm(ls.target_t)} candle) → <span class="res ${esc(ls.status)}">${esc(ls.status.toUpperCase())}</span></div>` : '';
+
+  const sig = `${sel.symbol}|${sel.tf}|${board.last_candle}|${heroTitle}|${top ? top.name : ''}`;   // pulse the card when the verdict changes
+  const flash = lastSig && lastSig !== sig && lastSig.split('|').slice(0, 2).join('|') === sig.split('|').slice(0, 2).join('|') ? ' flash' : '';
+  lastSig = sig;
+  const sorter = (a, b) => (a.direction === 'SKIP') - (b.direction === 'SKIP') || b.strength - a.strength || a.name.localeCompare(b.name);
+  A.innerHTML = `<div class="hero ${cls}${flash}">
+      <div class="hero-top"><div><div class="k">LIVE SIGNAL · NEXT CANDLE</div><div class="dir ${cls || 'skip'}">${heroTitle}</div><div class="who note">${heroSub}</div></div>
+        <div style="text-align:right"><div class="k">PAIR</div><b>${esc(inst.name || sel.symbol)}</b><div class="note">${TFN[sel.tf]}${board.last_candle ? ' · after ' + hhmm(board.last_candle + sel.tf) : ''}</div></div></div>
+      ${top && !conflict ? `<div class="meter"><i style="width:${top.strength}%;background:${top.direction === 'CALL' ? 'var(--up)' : 'var(--down)'}"></i></div>` : ''}
+      <div class="consensus"><div class="row"><span style="color:var(--up)">▲ ${c} CALL</span><span style="color:var(--mut)">${nu} neutral</span><span style="color:var(--down)">${p} PUT ▼</span></div>
+        <div class="tr"><i style="width:${(c / total) * 100}%;background:var(--up)"></i><i style="width:${(nu / total) * 100}%;background:#2a3358"></i><i style="width:${(p / total) * 100}%;background:var(--down)"></i></div>
+        <div class="note" style="margin-top:6px">All ${total} running strategies (live + paper)${board.candles < 60 ? ' · <span style="color:var(--warn)">only ' + board.candles + ' candles stored, some are still warming up</span>' : ''}</div></div>
+    </div>
+    <details id="live-group" ${liveOpen ? 'open' : ''}><summary class="group-h" style="cursor:pointer;margin:0 0 8px"><span>Live strategies (${live.length})</span><span class="note" style="text-transform:none;letter-spacing:0"><span id="live-hint"></span>${callsL ? `<span class="c-call">▲ ${callsL}</span> · ` : ''}${putsL ? `<span class="c-put">▼ ${putsL}</span> · ` : ''}${live.length - liveSig.length} no signal · show / hide</span></summary>
+        <div class="rlegend"><span><i style="background:#475069"></i>far</span><span><i style="background:#38bdf8"></i>building</span><span><i style="background:#f59e0b"></i>near</span><span><i style="background:#fb923c"></i>almost</span><span><i style="background:var(--up)"></i>ready ▲</span><span><i style="background:var(--down)"></i>ready ▼</span><span><i style="background:#7c3aed"></i>blocked</span><span>bars show how much of a strategy's rule holds on the forming candle</span></div>
+      ${live.length ? live.sort(sorter).map(rowHtml).join('') : '<div class="empty">No strategy is Live. Paper strategies are measured but never alert.</div>'}</details>
+    ${paper.length ? `<details id="paper-group" ${paperOpen ? 'open' : ''} style="margin-top:12px"><summary class="group-h" style="cursor:pointer;margin:0 0 8px"><span>Paper strategies (${paper.length}) - measured, no alerts</span><span class="note" style="text-transform:none;letter-spacing:0">show / hide</span></summary>${paper.sort(sorter).map(rowHtml).join('')}</details>` : ''}
+    ${lsHtml}`;
+  applyReady();                                                           // the rows were just rewritten: put the latest readiness straight back
+}
+
+document.addEventListener('toggle', (e) => {                                    // remember which rows are open across the 1-2 s refreshes
+  const d = e.target;
+  if (!(d instanceof HTMLElement)) return;
+  if (d.id === 'paper-group') paperOpen = d.open;
+  else if (d.id === 'live-group') { liveOpen = d.open; try { localStorage.setItem('qxs-live-open', d.open ? '1' : '0'); } catch (_) {} }
+  else if (d.id === 'health-notes') healthNotesOpen = d.open;
+  else if (d.classList && d.classList.contains('srow')) { const id = +d.dataset.id; d.open ? openRows.add(id) : openRows.delete(id); }
+}, true);
+
+function renderChips(s) {
+  let list = s.symbols.filter((x) => x.market === V.market);
+  if (V.onlyStream) list = list.filter((x) => x.streaming);
+  if (V.q) list = list.filter((x) => (x.name + x.symbol).toLowerCase().includes(V.q.toLowerCase()));
+  const sel = s.selected && s.selected.symbol;
+  $('#chips').innerHTML = list.map((x) => `<button class="chip ${x.symbol === sel ? 'sel' : ''} ${x.streaming ? '' : 'off'}" data-sym="${esc(x.symbol)}" title="${x.streaming ? 'streaming' : 'not streaming – open it on Quotex'}">
+      <span class="dot ${x.streaming ? 'on' : ''}"></span>${esc(x.name.replace(' (OTC)', ''))}${x.payout ? ` <span class="note">${x.payout}%</span>` : ''}</button>`).join('') ||
+    '<div class="note">No pairs yet.</div>';
+}
+
+function renderSelected(sel) {
+  if (!sel) {
+    $('#pair-title').textContent = 'No pair streaming';
+    ['#price-line', '#sent-line', '#warm-note', '#countdown'].forEach((id) => { $(id).textContent = ''; });
+    $('#warm').style.width = '0%'; renderAnalysis(); return;
+  }
+  const inst = (last.symbols.find((x) => x.symbol === sel.symbol) || {});
+  $('#pair-title').textContent = `${inst.name || sel.symbol} · ${TFN[sel.tf]}`;
+  $('#price-line').innerHTML = `Price <b>${fmtP(sel.last_price)}</b>${inst.payout ? ` · payout ${inst.payout}%` : ''}`;
+  $('#sent-line').textContent = sel.sentiment ? `Trader sentiment: ${sel.sentiment.pct}%` : '';
+  const an = sel.analysis, have = an.candles, need = an.need;
+  $('#warm').style.width = Math.min(100, 100 * have / need) + '%';
+  const gap = sel.gap;
+  $('#warm-note').textContent = have >= need ? (an.bridged ? `${have} candles loaded — a short data gap was bridged; signals are paused for 8 candles after it` : `${have} candles loaded — analysis active`)
+    : gap ? `Warming up: ${have}/${need} contiguous candles. Data gap: ${gap.missing} candle(s) missing before ${hhmm(gap.before)} (feed paused). ` +
+            `On Quotex switch to another pair and back (or change the timeframe) to reload history, or wait for ${need - have} more candles.`
+    : `Warming up: ${have}/${need} candles (history loads when you open the chart; otherwise it fills live)`;
+  drawChart(sel);
+  renderAnalysis();
+}
+
+function renderRecent(rows) {
+  // LIVE strategies' signals first (the server sends their newest ones separately, so paper strategies cannot push them out), then the paper strategies'
+  const liveIds = new Set((last.strategies || []).filter((x) => x.status === 'live').map((x) => x.id));
+  const show = (r) => V.showSkips || r.direction !== 'SKIP';
+  const seen = new Set();
+  const liveRows = [...(last.recent_live || []), ...rows.filter((r) => liveIds.has(r.strategy_id))].filter((r) => show(r) && !seen.has(r.id) && seen.add(r.id))
+    .sort((a, b) => b.target_t - a.target_t || b.id - a.id).slice(0, 15);
+  const paperRows = rows.filter((r) => !liveIds.has(r.strategy_id) && show(r)).slice(0, 25);
+  const line = (r) => {
+    const inst = last.symbols.find((x) => x.symbol === r.symbol);
+    const sname = ((last.strategies || []).find((x) => x.id === r.strategy_id) || {}).name || '';
+    return `<tr><td>${hhmm(r.target_t)}</td><td>${esc((inst ? inst.name : r.symbol).replace(' (OTC)', ''))}</td><td>${TFN[r.tf] || r.tf}</td>
+      <td class="note" title="${esc(sname)}">${esc(sname.length > 22 ? sname.slice(0, 21) + '…' : sname)}${liveIds.has(r.strategy_id) ? ' <span class="tag live-s">live</span>' : r.mode === 'paper' ? ' <span class="res draw">paper</span>' : ''}</td>
+      <td class="${r.direction === 'CALL' ? 'c-call' : r.direction === 'PUT' ? 'c-put' : ''}">${r.direction}${r.risk && r.risk.tag === 'risky' ? ` <span class="riskchip" title="${esc(r.risk.reasons.join('\n'))}">⚠ RISKY</span>` : ''}</td><td>${esc(r.tier || '')}</td><td>${r.strength}</td>
+      <td><span class="res ${esc(r.status)}">${esc(r.status.toUpperCase())}</span></td></tr>`;
+  };
+  const head = (t, n) => `<tr class="grp"><td colspan="8">${t} <span class="note" style="text-transform:none;letter-spacing:0">(${n})</span></td></tr>`;
+  $('#recent').innerHTML = head('Live strategies', liveRows.length) + (liveRows.map(line).join('') || '<tr><td colspan="8" class="note">No signal from a live strategy yet.</td></tr>')
+    + head('Paper strategies', paperRows.length) + (paperRows.map(line).join('') || '<tr><td colspan="8" class="note">No paper signals yet.</td></tr>');
+}
+
+// The chart is the admin app's full chart (supply / demand zones, HH/HL/LH/LL structure, strategy picker, zoom, overview strip) shown in a frame.
+// The frame is loaded once; after that only the pair / timeframe are posted to it, so its zoom and chosen strategy survive refreshes and pair changes.
+let chartPair = '';
+function drawChart(sel) {
+  const fr = $('#chart');
+  if (!sel) return;
+  const pair = `${sel.symbol}|${sel.tf}`;
+  if (!fr.getAttribute('src')) { fr.src = `/admin/embed-chart?symbol=${encodeURIComponent(sel.symbol)}&tf=${sel.tf}&t=${Date.now()}`; chartPair = pair; return; }
+  if (pair !== chartPair && fr.contentWindow) { chartPair = pair; fr.contentWindow.postMessage({ qxs: 'pair', symbol: sel.symbol, tf: sel.tf }, location.origin); }
+}
+
+setInterval(() => {
+  const el = $('#countdown');
+  if (!last || !last.selected || !last.selected.forming) { el.textContent = ''; return; }
+  const sel = last.selected, end = sel.forming.t + sel.tf;
+  const rem = Math.max(0, end - (Date.now() / 1000 + sel.offset));
+  el.textContent = `candle closes in ${Math.floor(rem / 60)}:${String(Math.floor(rem % 60)).padStart(2, '0')}`;
+}, 250);
+
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.sym) { V.symbol = b.dataset.sym; auto = false; saveView(); poll(); }
+  else if (b.dataset.tf) { V.tf = +b.dataset.tf; saveView(); poll(); }
+  else if (b.dataset.m) { V.market = b.dataset.m; document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b)); saveView(); if (last) renderChips(last); }
+  else if (b.id === 'clear') { if (confirm('Delete all recorded signals and stats?')) { await fetch('/api/clear', { method: 'POST' }); poll(); } }
+  else if (b.id === 'refresh-now') { poll(); pollBoard(); }
+  else if (b.id === 'strat-toggle') { setStratOpen(!stratOpen); if (last) renderStrategies(last); }
+  else if (b.dataset.mode && b.dataset.sid) {
+    if (b.classList.contains('on')) return;
+    b.disabled = true;
+    const r = await fetch('/api/strategies/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [+b.dataset.sid], status: b.dataset.mode }) });
+    if (!r.ok) alert('Could not change mode: ' + (await r.text()));
+    await poll(); pollBoard();
+  }
+});
+$('#sq').addEventListener('input', () => { if (last) renderStrategies(last); });
+$('#q').addEventListener('input', (e) => { V.q = e.target.value; if (last) renderChips(last); });
+$('#only-stream').addEventListener('change', (e) => { V.onlyStream = e.target.checked; saveView(); if (last) renderChips(last); });
+$('#show-skips').addEventListener('change', (e) => { V.showSkips = e.target.checked; saveView(); if (last) renderRecent(last.recent); });
+$('#only-stream').checked = V.onlyStream; $('#show-skips').checked = V.showSkips;
+document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x.dataset.m === V.market));
+setStratOpen(stratOpen);                          // collapsed by default; remembers if you opened it
+$('#refresh-mode').value = refreshMode;
+$('#refresh-mode').addEventListener('change', (e) => { refreshMode = e.target.value; try { localStorage.setItem('qxs-refresh', refreshMode); } catch (_) {} if (refreshMode !== 'off') pollBoard(); updateLiveBar(); });
+$('#chart').addEventListener('load', () => {       // a pair change that happened while the frame was still loading would otherwise be missed
+  const sel = last && last.selected, fr = $('#chart');
+  if (sel && fr.contentWindow) { chartPair = `${sel.symbol}|${sel.tf}`; fr.contentWindow.postMessage({ qxs: 'pair', symbol: sel.symbol, tf: sel.tf }, location.origin); }
+});
+poll(); setInterval(poll, 1000);
+</script>
+</body>
+</html>

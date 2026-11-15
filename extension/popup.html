@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tradzen Sniffer</title>
+<style>
+  :root { --bg:#0b1020; --card:#141b33; --fg:#e5e7f0; --mut:#8b93b0; --ok:#22c55e; --bad:#ef4444; --acc:#8b5cf6; }
+  body { margin:0; width:460px; font:12px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:10px 12px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #222a47; }
+  h1 { font-size:13px; margin:0; }
+  main { padding:10px 12px; }
+  section { background:var(--card); border-radius:8px; padding:8px 10px; margin-bottom:8px; }
+  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--mut); margin:0 0 6px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:2px 4px; font-variant-numeric:tabular-nums; }
+  th { color:var(--mut); font-weight:500; }
+  .scroll { max-height:150px; overflow:auto; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .mut { color:var(--mut); }
+  button { background:var(--acc); color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; margin-right:6px; }
+  button.sec { background:#2a3358; }
+  .row { display:flex; align-items:center; gap:8px; margin:5px 0; color:var(--fg); }
+  .row2 { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; color:var(--mut); }
+  input[type=text], input[type=password] { background:#0d1328; color:var(--fg); border:1px solid #222a47; border-radius:6px; padding:4px 6px; }
+  select, input[type=range] { background:#0d1328; color:var(--fg); border:1px solid #222a47; border-radius:6px; padding:3px 6px; max-width:250px; }
+  input[type=range] { padding:0; width:170px; }
+</style>
+</head>
+<body>
+<header><h1>Tradzen Sniffer <span class="mut">v0.4 · read-only</span></h1><span id="status" class="mut">waiting…</span></header>
+<main>
+  <section><h2>Alerts</h2>
+    <label class="row"><input type="checkbox" id="s-alerts"> Show alert cards on the Quotex page</label>
+    <label class="row"><input type="checkbox" id="s-sound"> Play sound for new signals</label>
+    <label class="row"><input type="checkbox" id="s-rsound"> Play win / loss sound when a signal settles</label>
+    <label class="row"><input type="checkbox" id="s-guard"> Trading guard alerts (daily target, loss limit, overtrading)</label>
+    <label class="row"><input type="checkbox" id="s-desktop"> Desktop notification when the Quotex tab is not in front</label>
+    <div class="row2"><span>Signals</span>
+      <select id="s-tiers"><option value="AB">Tier A + B (more signals)</option><option value="A">Tier A only (strict)</option></select></div>
+    <div class="row2"><span>Card position</span>
+      <select id="s-pos"><option value="top-center">Top centre</option><option value="top-right">Top right</option><option value="bottom-right">Bottom right</option><option value="bottom-left">Bottom left</option></select></div>
+    <div class="row2"><span>Volume</span><input type="range" id="s-vol" min="0" max="1" step="0.05"></div>
+    <div style="margin-top:6px"><button id="t-alert">Send test alert</button><button id="t-call" class="sec">▲ sound</button><button id="t-put" class="sec">▼ sound</button><button id="t-win" class="sec">win</button></div>
+  </section>
+  <section><h2>Signal backend</h2>
+    <div id="backend" class="mut">–</div>
+    <div class="row2"><span>Server</span><input type="text" id="c-url" placeholder="http://127.0.0.1:8787" spellcheck="false" style="width:250px"></div>
+    <div class="row2"><span>Access token</span><input type="password" id="c-token" placeholder="qxs_… (from My account on the server)" autocomplete="off" spellcheck="false" style="width:250px"></div>
+    <div style="margin:6px 0"><button id="c-save">Save connection</button><span id="c-msg" class="mut"></span></div>
+    <label class="mut" style="display:block;margin:6px 0"><input type="checkbox" id="fwd" checked> Send market data to the local backend</label>
+    <button id="panel">Open signal panel</button><button id="tab" class="sec">Open in tab</button>
+  </section>
+  <section><h2>Sockets</h2><div id="sockets" class="mut">No WebSocket seen on this tab yet.</div></section>
+  <section><h2>Traffic</h2><div id="traffic" class="mut">–</div></section>
+  <section><h2>Instruments</h2><div id="instruments" class="mut">–</div></section>
+  <section><h2>Assets streaming (<span id="acount">0</span>)</h2>
+    <div class="scroll"><table id="assets"><thead><tr><th>Symbol</th><th>Ticks</th><th>/min</th><th>Last</th><th>Age s</th><th>Max gap s</th><th>Lag s</th></tr></thead><tbody></tbody></table></div></section>
+  <section><h2>Events</h2>
+    <div class="scroll"><table id="events"><thead><tr><th>Event</th><th>Count</th></tr></thead><tbody></tbody></table></div></section>
+  <button id="save">Save sample JSON</button><button id="reset" class="sec">Reset counters</button>
+  <p class="mut">Samples are redacted (tokens, session, balance, emails). Check the file before sharing it.</p>
+</main>
+<script src="sound.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+# Tradzen on a VPS: the backend (not reachable from outside) behind Caddy, which serves HTTPS on your domain.
+# 1. cp .env.example .env   and fill it in      2. docker compose up -d --build      (full steps in DEPLOY.md)
+
+services:
+  backend:
+    build: .
+    image: tradzen:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      QXS_ENV: production
+      QXS_DB: /app/backend/data/signals.db
+      QXS_SEED: /seed/tradzen-seed.tar.gz   # used only on the very first start (no database yet): your existing data, see DEPLOY.md
+    volumes:
+      - qxs-data:/app/backend/data          # the database, every user's private database, the backups
+      - ./seed:/seed:ro                     # put tradzen-seed.tar.gz here before the first start
+    expose:
+      - "8787"                              # only the proxy reaches it
+    mem_limit: ${QXS_MEM_LIMIT:-2g}
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      QXS_DOMAIN: ${QXS_DOMAIN:?set QXS_DOMAIN in .env (for example signals.example.com)}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data                    # the certificates
+      - caddy-config:/config
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  qxs-data:
+  caddy-data:
+  caddy-config:

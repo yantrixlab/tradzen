@@ -1,0 +1,82 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "expiry_candles": 1,
+  "indicators": [
+    {
+      "id": "ms",
+      "type": "structure",
+      "swing": 3,
+      "max_age": 120
+    }
+  ],
+  "factors": [
+    {
+      "id": "rejection",
+      "name": "Rejection wick (hammer / shooting star)",
+      "weight": 30,
+      "kind": "expr",
+      "call": "(hammer and lower_wick >= 0.5 * range) and ms.bias >= 0",
+      "put": "(star and upper_wick >= 0.5 * range) and ms.bias <= 0",
+      "vote": 1
+    },
+    {
+      "id": "engulf",
+      "name": "Engulfing candle",
+      "weight": 25,
+      "kind": "expr",
+      "call": "(bull_engulf) and ms.bias >= 0",
+      "put": "(bear_engulf) and ms.bias <= 0",
+      "vote": 1
+    },
+    {
+      "id": "control",
+      "name": "Close control (strong body closing at the extreme)",
+      "weight": 20,
+      "kind": "expr",
+      "call": "(green and body >= 0.6 * range and close >= low + 0.8 * range) and ms.bias >= 0",
+      "put": "(red and -body >= 0.6 * range and close <= low + 0.2 * range) and ms.bias <= 0",
+      "vote": 1
+    },
+    {
+      "id": "exhaustion",
+      "name": "Exhaustion after a run",
+      "weight": 25,
+      "kind": "expr",
+      "call": "(red[1] and red[2] and red and abs(body) < abs(body[1]) and lower_wick > abs(body)) and ms.bias >= 0",
+      "put": "(green[1] and green[2] and green and abs(body) < abs(body[1]) and upper_wick > abs(body)) and ms.bias <= 0",
+      "vote": 1
+    },
+    {
+      "id": "last_colour",
+      "name": "Lean with the last candle's colour",
+      "weight": 10,
+      "kind": "expr",
+      "call": "(green) and ms.bias >= 0",
+      "put": "(red) and ms.bias <= 0",
+      "vote": 1
+    }
+  ],
+  "filters": [
+    {
+      "type": "min_payout",
+      "value": 80
+    }
+  ]
+}

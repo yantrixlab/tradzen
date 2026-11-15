@@ -1,0 +1,21 @@
+# secrets and personal data: never commit these
+.env
+seed/
+# phase0 is an early experiment with a saved Quotex session (session.json): keep it out of any repository
+phase0/
+*.db
+*.db-wal
+*.db-shm
+backend/data/
+
+# build output and caches
+node_modules/
+admin/dist/
+backend/static/admin/
+dist/
+.venv/
+.venv-ml/
+__pycache__/
+*.pyc
+.pytest_cache/
+.vscode/

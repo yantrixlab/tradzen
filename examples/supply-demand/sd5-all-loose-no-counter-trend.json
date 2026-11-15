@@ -1,0 +1,203 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "indicators": [],
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "expiry_candles": 1,
+  "factors": [
+    {
+      "id": "supply_demand_zone",
+      "name": "S/D zone - all loosened, not against trend",
+      "weight": 100,
+      "kind": "pattern",
+      "vote": 1,
+      "call": {
+        "steps": [
+          {
+            "label": "Demand zone: base candle (small body) - the zone is this candle's high-low range",
+            "color": "any",
+            "shape": "any",
+            "min": 1,
+            "max": 3,
+            "rels": []
+          },
+          {
+            "label": "Strong move UP out of the zone, closing above it",
+            "color": "green",
+            "shape": "strong",
+            "min": 1,
+            "max": 3,
+            "rels": [
+              {
+                "prop": "close",
+                "op": ">",
+                "ref": 0,
+                "refprop": "high",
+                "scope": "last"
+              }
+            ]
+          },
+          {
+            "label": "Price comes back DOWN into the zone, without breaking below it",
+            "color": "any",
+            "shape": "any",
+            "min": 1,
+            "max": 5,
+            "rels": [
+              {
+                "prop": "low",
+                "op": "<=",
+                "ref": 0,
+                "refprop": "high",
+                "scope": "any"
+              },
+              {
+                "prop": "low",
+                "op": ">=",
+                "ref": 0,
+                "refprop": "low",
+                "scope": "each"
+              },
+              {
+                "prop": "high",
+                "op": "<",
+                "ref": 1,
+                "refprop": "high",
+                "scope": "each"
+              }
+            ]
+          },
+          {
+            "label": "CONFIRMATION: strong green candle that closes above the pullback -> BUY now",
+            "color": "green",
+            "shape": "any",
+            "min": 1,
+            "max": 1,
+            "rels": [
+              {
+                "prop": "close",
+                "op": ">",
+                "ref": "prev",
+                "refprop": "high",
+                "scope": "each"
+              },
+              {
+                "prop": "low",
+                "op": ">=",
+                "ref": 0,
+                "refprop": "low",
+                "scope": "each"
+              }
+            ]
+          }
+        ]
+      },
+      "put": {
+        "steps": [
+          {
+            "label": "Supply zone: base candle (small body) - the zone is this candle's high-low range",
+            "color": "any",
+            "shape": "any",
+            "min": 1,
+            "max": 3,
+            "rels": []
+          },
+          {
+            "label": "Strong move DOWN out of the zone, closing below it",
+            "color": "red",
+            "shape": "strong",
+            "min": 1,
+            "max": 3,
+            "rels": [
+              {
+                "prop": "close",
+                "op": "<",
+                "ref": 0,
+                "refprop": "low",
+                "scope": "last"
+              }
+            ]
+          },
+          {
+            "label": "Price comes back UP into the zone, without breaking above it",
+            "color": "any",
+            "shape": "any",
+            "min": 1,
+            "max": 5,
+            "rels": [
+              {
+                "prop": "high",
+                "op": ">=",
+                "ref": 0,
+                "refprop": "low",
+                "scope": "any"
+              },
+              {
+                "prop": "high",
+                "op": "<=",
+                "ref": 0,
+                "refprop": "high",
+                "scope": "each"
+              },
+              {
+                "prop": "low",
+                "op": ">",
+                "ref": 1,
+                "refprop": "low",
+                "scope": "each"
+              }
+            ]
+          },
+          {
+            "label": "CONFIRMATION: strong red candle that closes below the pullback -> SELL now",
+            "color": "red",
+            "shape": "any",
+            "min": 1,
+            "max": 1,
+            "rels": [
+              {
+                "prop": "close",
+                "op": "<",
+                "ref": "prev",
+                "refprop": "low",
+                "scope": "each"
+              },
+              {
+                "prop": "high",
+                "op": "<=",
+                "ref": 0,
+                "refprop": "high",
+                "scope": "each"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "filters": [
+    {
+      "type": "trend_alignment",
+      "value": "not_against"
+    },
+    {
+      "type": "min_payout",
+      "value": 80
+    }
+  ]
+}

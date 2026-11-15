@@ -1,0 +1,50 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "indicators": [
+    {
+      "id": "ema9",
+      "type": "ema",
+      "n": 9
+    },
+    {
+      "id": "ema21",
+      "type": "ema",
+      "n": 21
+    }
+  ],
+  "factors": [
+    {
+      "id": "signal",
+      "name": "Efficient move",
+      "weight": 100,
+      "kind": "expr",
+      "call": "close > close[5] and abs(close - close[5]) > 3 * sma(abs(body), 5) and green",
+      "put": "close < close[5] and abs(close - close[5]) > 3 * sma(abs(body), 5) and red",
+      "vote": 1
+    }
+  ],
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "filters": [
+    {
+      "type": "one_per_run",
+      "gap": 2
+    }
+  ],
+  "expiry_candles": 1
+}

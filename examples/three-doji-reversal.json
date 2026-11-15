@@ -1,0 +1,49 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [60, 300, 900],
+  "scope": { "symbols": null, "market": null },
+  "indicators": [],
+  "factors": [
+    {
+      "id": "three_doji",
+      "name": "Three doji reversal",
+      "weight": 100,
+      "kind": "pattern",
+      "vote": 1,
+      "call": {
+        "steps": [
+          { "label": "Downtrend (red, lower lows)", "color": "red", "shape": "any", "min": 2, "max": 6,
+            "rels": [ { "prop": "low", "op": "<", "ref": "prev", "refprop": "low", "scope": "each" } ] },
+          { "label": "Red doji #1 (its low is the line to hold)", "color": "red", "shape": "weak", "min": 1, "max": 1, "rels": [] },
+          { "label": "Red doji #2 (body stays above doji #1's low)", "color": "red", "shape": "weak", "min": 1, "max": 1,
+            "rels": [ { "prop": "open", "op": ">", "ref": 1, "refprop": "low", "scope": "each" },
+                      { "prop": "close", "op": ">", "ref": 1, "refprop": "low", "scope": "each" } ] },
+          { "label": "Red doji #3 (body stays above doji #1's low)", "color": "red", "shape": "weak", "min": 1, "max": 1,
+            "rels": [ { "prop": "open", "op": ">", "ref": 1, "refprop": "low", "scope": "each" },
+                      { "prop": "close", "op": ">", "ref": 1, "refprop": "low", "scope": "each" } ] },
+          { "label": "Green confirmation candle (BUY signal)", "color": "green", "shape": "any", "min": 1, "max": 1,
+            "rels": [ { "prop": "close", "op": ">", "ref": "prev", "refprop": "open", "scope": "each" } ] }
+        ]
+      },
+      "put": {
+        "steps": [
+          { "label": "Uptrend (green, higher highs)", "color": "green", "shape": "any", "min": 2, "max": 6,
+            "rels": [ { "prop": "high", "op": ">", "ref": "prev", "refprop": "high", "scope": "each" } ] },
+          { "label": "Green doji #1 (its high is the line to hold)", "color": "green", "shape": "weak", "min": 1, "max": 1, "rels": [] },
+          { "label": "Green doji #2 (body stays below doji #1's high)", "color": "green", "shape": "weak", "min": 1, "max": 1,
+            "rels": [ { "prop": "open", "op": "<", "ref": 1, "refprop": "high", "scope": "each" },
+                      { "prop": "close", "op": "<", "ref": 1, "refprop": "high", "scope": "each" } ] },
+          { "label": "Green doji #3 (body stays below doji #1's high)", "color": "green", "shape": "weak", "min": 1, "max": 1,
+            "rels": [ { "prop": "open", "op": "<", "ref": 1, "refprop": "high", "scope": "each" },
+                      { "prop": "close", "op": "<", "ref": 1, "refprop": "high", "scope": "each" } ] },
+          { "label": "Red confirmation candle (SELL signal)", "color": "red", "shape": "any", "min": 1, "max": 1,
+            "rels": [ { "prop": "close", "op": "<", "ref": "prev", "refprop": "open", "scope": "each" } ] }
+        ]
+      }
+    }
+  ],
+  "gates": { "min_candles": 60, "min_agree": 1, "max_opposing_weight": 100, "min_strength": 0, "tier_a": null },
+  "filters": [],
+  "expiry_candles": 1
+}

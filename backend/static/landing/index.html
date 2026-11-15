@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tradzen - signals with an honest track record for Quotex traders</title>
+<meta name="description" content="Tradzen shows live signal alerts on your Quotex tab, tracks your real trades and profit, guards you against overtrading and publishes every strategy's measured record, including the ones that do not beat break-even.">
+<meta property="og:title" content="Tradzen - signals with an honest track record">
+<meta property="og:description" content="Live alerts in your browser, your own trade journal, a trading guard and strategies judged by their real, measured results.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0a0e1f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%238b5cf6'/%3E%3Cpath d='M18 4 8 18h7l-1 10 10-14h-7z' fill='white'/%3E%3C/svg%3E">
+<style>
+  :root { --bg:#0a0e1f; --panel:#111830; --panel2:#0d1328; --line:#1e2747; --fg:#e6e8f2; --mut:#8a93b2; --acc:#8b5cf6; --acc2:#6d3fe0; --up:#22c55e; --down:#ef4444; --warn:#f59e0b; }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 Inter, "Segoe UI", system-ui, -apple-system, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:inherit; }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 20px; }
+  header.top { position:sticky; top:0; z-index:5; background:rgba(10,14,31,.86); backdrop-filter:blur(10px); border-bottom:1px solid var(--line); }
+  header .row { display:flex; align-items:center; justify-content:space-between; height:64px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:19px; text-decoration:none; }
+  .logo { width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,var(--acc),var(--acc2)); display:grid; place-items:center; }
+  nav.links { display:flex; gap:24px; font-size:14px; color:var(--mut); }
+  nav.links a { text-decoration:none; } nav.links a:hover { color:var(--fg); }
+  .btn { display:inline-block; padding:10px 18px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--fg); text-decoration:none; font-weight:600; font-size:15px; }
+  .btn:hover { border-color:var(--acc); }
+  .btn.primary { background:var(--acc); border-color:var(--acc); color:#fff; } .btn.primary:hover { background:var(--acc2); }
+  .btn.big { padding:14px 26px; font-size:16px; }
+  .hero { padding:84px 0 64px; text-align:center; background:radial-gradient(900px 380px at 50% -40px, rgba(139,92,246,.22), transparent); }
+  .pill { display:inline-block; padding:5px 14px; border:1px solid var(--line); border-radius:99px; color:var(--mut); font-size:13px; background:var(--panel2); }
+  h1 { font-size:clamp(34px,6vw,60px); line-height:1.08; margin:22px auto 18px; max-width:860px; letter-spacing:-.02em; }
+  h1 em { font-style:normal; background:linear-gradient(90deg,#c4b5fd,var(--acc)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .lead { max-width:680px; margin:0 auto 30px; font-size:19px; color:var(--mut); }
+  .cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  .fine { margin-top:16px; font-size:13px; color:var(--mut); }
+  section { padding:64px 0; }
+  section.alt { background:var(--panel2); border-block:1px solid var(--line); }
+  h2 { font-size:clamp(26px,4vw,38px); margin:0 0 10px; letter-spacing:-.01em; text-align:center; }
+  .sub { color:var(--mut); text-align:center; max-width:640px; margin:0 auto 38px; }
+  .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  .card h3 { margin:12px 0 6px; font-size:18px; } .card p { margin:0; color:var(--mut); font-size:15px; }
+  .ico { width:42px; height:42px; border-radius:11px; display:grid; place-items:center; background:rgba(139,92,246,.14); color:#c4b5fd; font-size:21px; }
+  .steps { counter-reset:s; display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+  .step { position:relative; padding:22px 22px 22px 70px; background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+  .step::before { counter-increment:s; content:counter(s); position:absolute; left:20px; top:20px; width:34px; height:34px; border-radius:50%; background:var(--acc); color:#fff; display:grid; place-items:center; font-weight:700; }
+  .step h3 { margin:0 0 4px; font-size:17px; } .step p { margin:0; color:var(--mut); font-size:15px; }
+  .mock { max-width:420px; margin:0 auto; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.4); }
+  .mock .top { display:flex; justify-content:space-between; font-size:12px; color:var(--mut); letter-spacing:.08em; }
+  .mock .sig { display:flex; align-items:center; gap:12px; margin:14px 0 6px; }
+  .mock .dir { padding:6px 14px; border-radius:9px; background:rgba(34,197,94,.14); color:var(--up); font-weight:700; }
+  .mock .row2 { display:flex; justify-content:space-between; font-size:14px; padding:8px 0; border-top:1px solid var(--line); color:var(--mut); }
+  .mock b { color:var(--fg); }
+  .split { display:grid; gap:40px; grid-template-columns:1fr 1fr; align-items:center; }
+  .split h2, .split .sub { text-align:left; margin-left:0; }
+  .bars { display:grid; gap:10px; margin-top:6px; }
+  .bar { height:10px; border-radius:99px; background:var(--line); position:relative; }
+  .bar i { position:absolute; top:0; bottom:0; border-radius:99px; background:rgba(139,92,246,.45); }
+  .bar u { position:absolute; top:-4px; width:2px; height:18px; background:#fff; opacity:.8; }
+  .bar s { position:absolute; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; border-radius:50%; background:var(--acc); border:2px solid var(--bg); }
+  .tick { list-style:none; padding:0; margin:0; display:grid; gap:10px; } .tick li { padding-left:30px; position:relative; color:var(--mut); } .tick li::before { content:"✓"; position:absolute; left:0; color:var(--up); font-weight:700; }
+  .tick b { color:var(--fg); }
+  details { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 20px; margin-bottom:10px; }
+  summary { cursor:pointer; font-weight:600; } details p { color:var(--mut); margin:10px 0 0; }
+  .final { text-align:center; padding:72px 0; background:radial-gradient(700px 300px at 50% 100%, rgba(139,92,246,.2), transparent); }
+  footer { border-top:1px solid var(--line); padding:32px 0 44px; color:var(--mut); font-size:13px; }
+  footer .risk { max-width:900px; margin:0 0 14px; }
+  @media (max-width:760px) { nav.links { display:none; } .split { grid-template-columns:1fr; } .hero { padding-top:56px; } }
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap row">
+  <a class="brand" href="/"><span class="logo"><svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true"><path d="M18 4 8 18h7l-1 10 10-14h-7z" fill="#fff"/></svg></span>Tradzen</a>
+  <nav class="links" aria-label="Sections"><a href="#features">Features</a><a href="#how">How it works</a><a href="#honest">Track record</a><a href="#faq">FAQ</a></nav>
+  <a class="btn primary" href="/admin">Sign in</a>
+</div></header>
+
+<main>
+<div class="hero"><div class="wrap">
+  <span class="pill">Built for Quotex traders · read-only · invite-only</span>
+  <h1>Signals you can <em>check</em>, not just believe</h1>
+  <p class="lead">Live alerts on your Quotex tab, a journal of your real trades, a guard against overtrading and a public record for every strategy - wins, losses and the ones that do not beat break-even.</p>
+  <div class="cta"><a class="btn primary big" href="/admin">Sign in</a>{{REQUEST_ACCESS}}</div>
+  <p class="fine">Accounts are created by the team. No card needed to look around.</p>
+</div></div>
+
+<section id="features"><div class="wrap">
+  <h2>Everything in one place</h2>
+  <p class="sub">A Chrome extension reads your own Quotex tab; the dashboard turns it into decisions you can review.</p>
+  <div class="grid">
+    <div class="card"><div class="ico">⚡</div><h3>Live signal alerts</h3><p>A card and a sound on your Quotex page the moment a strategy you follow signals, with its direction, strength, expiry and its own record next to it.</p></div>
+    <div class="card"><div class="ico">$</div><h3>My trades</h3><p>Every real trade you place, with profit and loss per day and pair, your balance in your own currency, and a one-step martingale view of what it did to your account.</p></div>
+    <div class="card"><div class="ico">🛡</div><h3>Trading guard</h3><p>A daily target, a loss limit, a losing-streak break and overtrading alerts. It tells you when to stop and suggests a stake that fits your balance.</p></div>
+    <div class="card"><div class="ico">✎</div><h3>My style</h3><p>Learns the habits behind your own wins and losses, tells you which ones really work, and is honest about how much evidence there is.</p></div>
+    <div class="card"><div class="ico">❖</div><h3>Strategy library</h3><p>Strategies the team tested and published. Add the ones you want; each shows win rate, its uncertainty and break-even, never just a headline number.</p></div>
+    <div class="card"><div class="ico">⚙</div><h3>Build and backtest</h3><p>Create your own strategies and test them on stored candles with the same rules as live, then run them on paper before you trust them.</p></div>
+  </div>
+</div></section>
+
+<section id="how" class="alt"><div class="wrap">
+  <h2>How it works</h2>
+  <p class="sub">Set up in a few minutes.</p>
+  <div class="steps">
+    <div class="step"><h3>Get an account</h3><p>The team creates your login and a plan. You choose your own password on first sign-in.</p></div>
+    <div class="step"><h3>Add the extension</h3><p>Install the Chrome extension and paste your personal access token. It only watches your Quotex tab.</p></div>
+    <div class="step"><h3>Trade with context</h3><p>Receive alerts, see your journal fill in, and let the guard keep you inside your own limits.</p></div>
+  </div>
+</div></section>
+
+<section id="honest"><div class="wrap split">
+  <div>
+    <h2>An honest track record</h2>
+    <p class="sub">Most signal services show a win rate and stop. Tradzen shows what the number is worth.</p>
+    <ul class="tick">
+      <li><b>Win rate with its range.</b> A small sample gets a wide range, not a big claim.</li>
+      <li><b>Break-even built in.</b> Every record is compared with the win rate your payout needs.</li>
+      <li><b>Muted automatically.</b> A strategy that is clearly losing stops alerting until it recovers.</li>
+      <li><b>Paper first.</b> New ideas prove themselves on paper before they are allowed to alert anyone.</li>
+    </ul>
+  </div>
+  <div class="mock" role="img" aria-label="Example of a strategy record: 56 percent win rate with a range from 49 to 63 percent, against 53 percent break-even">
+    <div class="top"><span>EXAMPLE RECORD</span><span>312 SETTLED</span></div>
+    <div class="sig"><span class="dir">▲ CALL</span><span><b>EUR/USD (OTC)</b><br><span style="color:var(--mut);font-size:13px">1 min · expires 14:32:00</span></span></div>
+    <div class="row2"><span>Win rate</span><b>56% <span style="color:var(--mut);font-weight:400">(49%-63%)</span></b></div>
+    <div class="bars"><div class="bar"><i style="left:49%;width:14%"></i><u style="left:53%"></u><s style="left:56%"></s></div></div>
+    <div class="row2" style="margin-top:12px"><span>Break-even at this payout</span><b>53%</b></div>
+    <div class="row2"><span>Verdict</span><b style="color:var(--warn)">Promising - not proven</b></div>
+  </div>
+</div></section>
+
+<section class="alt"><div class="wrap split">
+  <div class="card" style="font-size:15px"><div class="ico">🔒</div><h3>Private by design</h3><p>Your trades, balance, guard settings and learned style live in a database of their own that no other user can read. The extension only observes - it never trades, clicks, or sees your Quotex password.</p></div>
+  <div>
+    <h2>Built to stay in your control</h2>
+    <ul class="tick">
+      <li><b>Read-only.</b> Tradzen never places or changes a trade for you.</li>
+      <li><b>Your data is yours.</b> Per-user storage, revocable access tokens, sign-out everywhere.</li>
+      <li><b>You decide what to follow.</b> Receive only the strategies you add, or switch any of them off.</li>
+    </ul>
+  </div>
+</div></section>
+
+<section id="faq"><div class="wrap" style="max-width:820px">
+  <h2>Questions</h2>
+  <p class="sub">Short, straight answers.</p>
+  <details><summary>Do the signals make money?</summary><p>No one can promise that, and we do not. Many strategies do not beat break-even, and the dashboard shows it. Use the records to decide what to follow, and never risk money you cannot afford to lose.</p></details>
+  <details><summary>Does Tradzen place trades for me?</summary><p>No. It is read-only: it observes your own Quotex tab to show alerts and keep your journal. You place every trade yourself.</p></details>
+  <details><summary>Is it safe to install?</summary><p>The extension only runs on Quotex pages, sends prices (or just your own trades) to your Tradzen account over HTTPS, and never reads your Quotex login. You can revoke its access token any time on your account page.</p></details>
+  <details><summary>How do I get access?</summary><p>Accounts are created by the team. {{HOW_TO_ACCESS}}</p></details>
+  <details><summary>Which browser do I need?</summary><p>Google Chrome (or a Chromium browser) on a computer, with your Quotex tab open while you trade.</p></details>
+  <details><summary>Is it available in my country?</summary><p>Binary and digital options services are restricted or banned in some countries. Check the rules that apply to you before you use any trading tool.</p></details>
+</div></section>
+
+<div class="final"><div class="wrap">
+  <h2>Trade with the numbers in front of you</h2>
+  <p class="sub">Sign in to open your dashboard.</p>
+  <div class="cta"><a class="btn primary big" href="/admin">Sign in</a>{{REQUEST_ACCESS}}</div>
+</div></div>
+</main>
+
+<footer><div class="wrap">
+  <p class="risk"><b>Risk warning.</b> Trading binary and digital options is high risk and most people lose money. Tradzen is an analysis and journaling tool, not financial advice, and past results do not promise future ones. It is not affiliated with, endorsed by or connected to Quotex or any broker.</p>
+  <p>© Tradzen · <a href="/admin">Sign in</a></p>
+</div></footer>
+</body>
+</html>

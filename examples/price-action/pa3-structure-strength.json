@@ -1,0 +1,50 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "scope": {
+    "symbols": null,
+    "market": null
+  },
+  "indicators": [
+    {
+      "id": "ema9",
+      "type": "ema",
+      "n": 9
+    },
+    {
+      "id": "ema21",
+      "type": "ema",
+      "n": 21
+    }
+  ],
+  "factors": [
+    {
+      "id": "signal",
+      "name": "Higher highs / higher lows",
+      "weight": 100,
+      "kind": "expr",
+      "call": "lowest(low, 3) > lowest(low, 3)[3] and highest(high, 3) > highest(high, 3)[3] and green and body > 0.5 * range",
+      "put": "highest(high, 3) < highest(high, 3)[3] and lowest(low, 3) < lowest(low, 3)[3] and red and body < -0.5 * range",
+      "vote": 1
+    }
+  ],
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 1,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
+  },
+  "filters": [
+    {
+      "type": "one_per_run",
+      "gap": 2
+    }
+  ],
+  "expiry_candles": 1
+}

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Alert card preview</title>
+<style>
+  body { margin:0; height:100vh; background:#141824; color:#9aa3c4; font:13px system-ui; background-image: radial-gradient(circle at 30% 40%, #1c2336, #0d111c); }
+  .bar { position:fixed; bottom:12px; left:12px; display:flex; gap:8px; flex-wrap:wrap; z-index:1; }
+  button { background:#232b45; color:#e9ecf8; border:1px solid #33406a; border-radius:8px; padding:7px 12px; cursor:pointer; }
+</style></head>
+<body>
+<div class="bar">
+  <button onclick="fire('call')">CALL tier A</button><button onclick="fire('put')">PUT tier A</button>
+  <button onclick="fire('callB')">CALL tier B (new sample)</button>
+  <button onclick="result('win')">result: WIN</button><button onclick="result('loss')">result: LOSS</button>
+  <button onclick="QXSound.play('call',.7)">▲ sound</button><button onclick="QXSound.play('put',.7)">▼ sound</button>
+  <button onclick="QXSound.play('win',.7)">win sound</button><button onclick="QXSound.play('loss',.7)">loss sound</button>
+</div>
+<script>
+  // stand-in for the extension API so notify.js runs outside Chrome's extension context
+  window.chrome = { runtime: { onMessage: { addListener: (f) => { window.__h = f; } } } };
+</script>
+<script src="../sound.js"></script>
+<script src="../notify.js"></script>
+<script>
+  let n = 0;
+  const base = () => { const now = Date.now() / 1000, b = Math.floor(now / 60) * 60; return { now, b }; };
+  function make(kind) {
+    const { now, b } = base(); n++;
+    const call = kind.startsWith('call'), tierB = kind.endsWith('B');
+    return { seq: n, kind: 'signal', t: now, id: n, symbol: 'AUDJPY_otc', name: call ? 'AUD/JPY (OTC)' : 'CHF/JPY (OTC)', market: 'OTC', tf: 60,
+      direction: call ? 'CALL' : 'PUT', tier: tierB ? 'B' : 'A', strength: tierB ? 35 : 62, score: 62, agree: tierB ? 2 : 3, status: 'pending',
+      entry: 108.407, exit: null, basis_t: b, target_t: b + 60, expire_t: now + 52, payout: 86, breakeven: 1 / 1.86, price: 108.407, now,
+      sentiment: 61, factors: [{ name: 'Bollinger Band Bounce', vote: call ? 1 : -1, note: 'closed outside band' }, { name: 'Stochastic %K/%D Cross', vote: call ? 1 : -1, note: '' },
+        { name: 'CCI Extreme + Reversal', vote: call ? 0.6 : -0.6, note: '' }],
+      tier_stats: tierB ? { n: 0, wins: 0, losses: 0 } : { n: 84, wins: 47, losses: 37, acc: 0.56, lo: 0.45, hi: 0.66 },
+      pair_stats: { n: 12, wins: 7, losses: 5, acc: 0.58 } };
+  }
+  const S = { alerts: true, sound: true, volume: 0.7, position: 'top-center' };
+  function fire(kind) { const ev = make(kind); window.__last = ev; window.__h({ __qxsNotify: ev, settings: S, sound: kind, playHere: false }); }
+  function result(status) {
+    const ev = window.__last || make('call');
+    window.__h({ __qxsNotify: { ...ev, kind: 'result', status, exit: status === 'win' ? 108.43 : 108.39, t: Date.now() / 1000,
+      tier_stats: { n: 85, wins: status === 'win' ? 48 : 47, losses: status === 'win' ? 37 : 38, acc: 0.565, lo: 0.46, hi: 0.66 } }, settings: S });
+  }
+  const q = new URLSearchParams(location.search);
+  setTimeout(() => { fire('call'); if (q.has('two')) fire('put'); if (q.get('result')) setTimeout(() => result(q.get('result')), 400); }, 300);
+</script>
+</body></html>

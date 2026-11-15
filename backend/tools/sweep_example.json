@@ -1,0 +1,16 @@
+{
+  "label": "confluence: how tight should it be?",
+  "tfs": [60],
+  "holdout_fraction": 0.3,
+  "min_trades": 1500,
+  "candidates": [
+    {
+      "strategy_id": 1,
+      "grid": {
+        "gates.min_agree": [2, 3],
+        "gates.min_strength": [30, 50],
+        "gates.tier_a": [null]
+      }
+    }
+  ]
+}
