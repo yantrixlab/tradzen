@@ -192,8 +192,13 @@ $('save').onclick = () => {
 $('reset').onclick = async () => { if (tabId !== null) chrome.tabs.sendMessage(tabId, { __qxsCmd: 'reset' }).catch(() => {}); };
 
 $('panel').onclick = async () => {
+  const url = await serverUrl();
+  let host = '';
+  try { host = new URL(url).hostname; } catch (_) { /* ignore */ }
+  // A hosted server cannot be shown inside the side panel (its page forbids being framed, and the panel's own address is the local one): open the live board in a tab.
+  if (!isLocalHost(host)) { chrome.tabs.create({ url: url + '/admin/live' }); window.close(); return; }
   if (tabId === null) return;
-  try { await chrome.sidePanel.open({ tabId }); window.close(); } catch (e) { chrome.tabs.create({ url: (await serverUrl()) + '/' }); }
+  try { await chrome.sidePanel.open({ tabId }); window.close(); } catch (e) { chrome.tabs.create({ url: url + '/' }); }
 };
 $('tab').onclick = async () => chrome.tabs.create({ url: (await serverUrl()) + '/' });
 

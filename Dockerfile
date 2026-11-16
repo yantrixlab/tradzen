@@ -20,6 +20,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app
 COPY --from=admin /src/backend/static/admin ./static/admin
 COPY backend/static/landing ./static/landing
+# the Chrome extension: the server packages it for its own address (/download/extension.zip)
+COPY extension /app/extension
 # a user without privileges owns the data folder (a named volume keeps what it finds there)
 RUN useradd --system --uid 10001 --home-dir /app qxs && mkdir -p data && chown -R qxs:qxs /app
 USER qxs

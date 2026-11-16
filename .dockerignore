@@ -10,7 +10,6 @@ backend/tools
 backend/static/admin
 admin/dist
 seed
-extension
 phase0
 examples
 dist

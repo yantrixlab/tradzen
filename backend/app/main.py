@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import backup, expr, seed as seedmod, indreg, routes_auth, routes_control
+from . import backup, expr, extpack, seed as seedmod, indreg, routes_auth, routes_control
 from .auth import COOKIE as COOKIE_NAME, from_env
 from .strategy_access import Access, is_staff
 from .feature_flags import Features
@@ -1256,11 +1256,62 @@ NO_CACHE = {"Cache-Control": "no-cache, must-revalidate"}
 
 LANDING_FILE = ROOT / "static" / "landing" / "index.html"
 
+# ---- the extension, packaged for this server (a download button on the landing page and in the admin panel)
+EXT_DIR = Path(os.getenv("QXS_EXTENSION_DIR") or (ROOT.parent / "extension"))
+_ext_cache: dict[str, bytes] = {}
 
-def _landing_html() -> str:
+
+def _public_origin(request: Request) -> str | None:
+    """The https address users reach this server at: QXS_PUBLIC_URL, else https://QXS_DOMAIN, else the address of this very request (when it is https)."""
+    for raw in (os.getenv("QXS_PUBLIC_URL", "").strip(), f"https://{os.getenv('QXS_DOMAIN', '').strip()}" if os.getenv("QXS_DOMAIN", "").strip() else ""):
+        if raw:
+            try:
+                return extpack.origin_of(raw)
+            except extpack.PackError:
+                continue
+    try:
+        return extpack.origin_of(f"{request.url.scheme}://{request.url.netloc}")
+    except extpack.PackError:
+        return None
+
+
+def _extension_zip(request: Request) -> tuple[str, bytes] | None:
+    origin = _public_origin(request)
+    if not origin or not extpack.available(EXT_DIR):
+        return None
+    key = origin + "|" + str(extpack.version(EXT_DIR))
+    if key not in _ext_cache:
+        if len(_ext_cache) >= 8:
+            _ext_cache.clear()
+        _ext_cache[key] = extpack.build_zip(EXT_DIR, origin)
+    return origin, _ext_cache[key]
+
+
+@app.get("/download/extension.json")
+async def extension_info(request: Request) -> dict:
+    """Is the extension offered here, and which version (public: the landing page and the admin panel ask)."""
+    origin = _public_origin(request)
+    return {"available": bool(origin and extpack.available(EXT_DIR)), "version": extpack.version(EXT_DIR), "url": "/download/extension.zip", "server": origin}
+
+
+@app.get("/download/extension.zip")
+async def extension_download(request: Request) -> Response:
+    """The Chrome extension for THIS server (it already points at it and may reach only it). Public: it holds no secrets; signing in still needs an account."""
+    got = await asyncio.to_thread(_extension_zip, request)
+    if got is None:
+        raise HTTPException(404, "the extension is not offered here (it needs an https address and the extension files on the server)")
+    origin, data = got
+    host = origin.split("//", 1)[1].replace(":", "-")
+    return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="tradzen-extension-{host}.zip"', "Cache-Control": "no-cache"})
+
+
+def _landing_html(request: Request | None = None) -> str:
     """The public marketing page. QXS_CONTACT (a mailto: or https:// link) turns on the "Request access" buttons; accounts are created by the admin, there is no sign-up."""
     import html as _html
     page = LANDING_FILE.read_text(encoding="utf-8")
+    ext = request is not None and bool(_public_origin(request)) and extpack.available(EXT_DIR)
+    page = page.replace("{{GET_EXTENSION}}", '<a class="btn big" href="/download/extension.zip" download>Download the Chrome extension</a>' if ext else "")
+    page = page.replace("{{GET_EXTENSION_NAV}}", '<a href="/download/extension.zip" download>Extension</a>' if ext else "")
     contact = os.getenv("QXS_CONTACT", "").strip()
     if contact.startswith(("mailto:", "https://")):
         href = _html.escape(contact, quote=True)
@@ -1269,9 +1320,9 @@ def _landing_html() -> str:
 
 
 @app.get("/landing")
-async def landing() -> Response:
+async def landing(request: Request) -> Response:
     """The marketing page, always reachable (a preview on a local machine too)."""
-    return HTMLResponse(_landing_html(), headers=NO_CACHE)
+    return HTMLResponse(_landing_html(request), headers=NO_CACHE)
 
 
 @app.get("/robots.txt")
@@ -1286,7 +1337,7 @@ async def index(request: Request) -> Response:
         cookie = request.cookies.get(COOKIE_NAME)
         if cookie and auth.user_from_session(cookie):               # already signed in: straight to the dashboard
             return RedirectResponse("/admin", status_code=302)
-        return HTMLResponse(_landing_html(), headers=NO_CACHE)       # everybody else sees the marketing page (the classic page has no sign-in)
+        return HTMLResponse(_landing_html(request), headers=NO_CACHE)       # everybody else sees the marketing page (the classic page has no sign-in)
     return FileResponse(ROOT / "static" / "index.html", headers=NO_CACHE)
 
 

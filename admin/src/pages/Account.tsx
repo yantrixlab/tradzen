@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { ago } from '../format';
 import { useMe } from '../hooks';
+import { useExtension } from '../components/AccountBar';
 import { Badge, Card, Empty, PageTitle } from '../components/ui';
 
 interface Token { id: number; label: string; feeder: boolean; created: number; last_used: number | null }
@@ -127,6 +128,26 @@ function SharedCandles() {
   );
 }
 
+/** Where users get the Chrome extension, and how to install it. */
+function GetExtensionCard() {
+  const { data } = useExtension();
+  if (!data?.available) return null;
+  return (
+    <Card title="Get the Chrome extension">
+      <div className="space-y-3 text-sm">
+        <a href="/download/extension.zip" download className="btn btn-primary inline-block">⬇ Download the extension{data.version ? ` (v${data.version})` : ''}</a>
+        <ol className="list-decimal space-y-1 pl-5">
+          <li>Unzip the downloaded file to a folder you will keep.</li>
+          <li>In Chrome open <code>chrome://extensions</code> and switch on <b>Developer mode</b>.</li>
+          <li>Click <b>Load unpacked</b> and choose that folder.</li>
+          <li>Click the Tradzen icon, open <b>Connection</b> and sign in with your Tradzen username and password. Reload your Quotex tab.</li>
+        </ol>
+        <p className="note">It already points at this server. It only reads your own Quotex tab: it never trades, clicks or logs in. To update, download it again, replace the folder's files and press reload on <code>chrome://extensions</code>.</p>
+      </div>
+    </Card>
+  );
+}
+
 /** The live prices this account's extension streams (one account holds each pair; the price feed has priority). */
 function LivePrices() {
   const q = useQuery({ queryKey: ['livefeed-mine'], queryFn: () => api<{ enabled: boolean; paused: { reason: string } | null; holding: { symbol: string; name: string }[]; today: { applied: number; bad: number }; week: { applied: number; bad: number; shadow_ok: number; shadow_bad: number } }>('/api/livefeed/mine'), refetchInterval: 15000 });
@@ -158,6 +179,7 @@ export default function Account() {
       <PageTitle title="My account" sub={<>Signed in as <b className="text-fg">{u.username}</b> · role <b className="text-fg">{u.role}</b></>} />
       <div className="grid gap-4 lg:grid-cols-2">
         {me.auth_enabled ? <Card title="Password"><PasswordForm /></Card> : <Card title="Password"><p className="note">Sign-in is switched off on this local server, so there is no password to change.</p></Card>}
+        {me.auth_enabled && <GetExtensionCard />}
         {me.auth_enabled ? <Tokens isAdmin={u.role === 'admin'} /> : <Card title="Chrome extension"><p className="note">On this local server the extension needs no token.</p></Card>}
         {me.auth_enabled && <QuotexLink linked={!!u.qx_linked} hint={u.qx_hint} at={u.qx_at} enforced={me.quotex_link !== false} />}
         {me.auth_enabled && <SharedCandles />}

@@ -72,7 +72,7 @@
 <body>
 <header class="top"><div class="wrap row">
   <a class="brand" href="/"><span class="logo"><svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true"><path d="M18 4 8 18h7l-1 10 10-14h-7z" fill="#fff"/></svg></span>Tradzen</a>
-  <nav class="links" aria-label="Sections"><a href="#features">Features</a><a href="#how">How it works</a><a href="#honest">Track record</a><a href="#faq">FAQ</a></nav>
+  <nav class="links" aria-label="Sections"><a href="#features">Features</a><a href="#how">How it works</a><a href="#honest">Track record</a><a href="#faq">FAQ</a>{{GET_EXTENSION_NAV}}</nav>
   <a class="btn primary" href="/admin">Sign in</a>
 </div></header>
 
@@ -81,7 +81,7 @@
   <span class="pill">Built for Quotex traders · read-only · invite-only</span>
   <h1>Signals you can <em>check</em>, not just believe</h1>
   <p class="lead">Live alerts on your Quotex tab, a journal of your real trades, a guard against overtrading and a public record for every strategy - wins, losses and the ones that do not beat break-even.</p>
-  <div class="cta"><a class="btn primary big" href="/admin">Sign in</a>{{REQUEST_ACCESS}}</div>
+  <div class="cta"><a class="btn primary big" href="/admin">Sign in</a>{{GET_EXTENSION}}{{REQUEST_ACCESS}}</div>
   <p class="fine">Accounts are created by the team. No card needed to look around.</p>
 </div></div>
 
@@ -148,6 +148,7 @@
   <details><summary>Does Tradzen place trades for me?</summary><p>No. It is read-only: it observes your own Quotex tab to show alerts and keep your journal. You place every trade yourself.</p></details>
   <details><summary>Is it safe to install?</summary><p>The extension only runs on Quotex pages, sends prices (or just your own trades) to your Tradzen account over HTTPS, and never reads your Quotex login. You can revoke its access token any time on your account page.</p></details>
   <details><summary>How do I get access?</summary><p>Accounts are created by the team. {{HOW_TO_ACCESS}}</p></details>
+  <details><summary>How do I install the Chrome extension?</summary><p>Download it with the button at the top of this page, unzip the file, open <b>chrome://extensions</b> in Chrome, switch on <b>Developer mode</b>, click <b>Load unpacked</b> and choose the unzipped folder. Then click the Tradzen icon, open <b>Connection</b>, sign in with your account and reload your Quotex tab. It only reads your own Quotex tab and never trades or clicks.</p></details>
   <details><summary>Which browser do I need?</summary><p>Google Chrome (or a Chromium browser) on a computer, with your Quotex tab open while you trade.</p></details>
   <details><summary>Is it available in my country?</summary><p>Binary and digital options services are restricted or banned in some countries. Check the rules that apply to you before you use any trading tool.</p></details>
 </div></section>
@@ -155,7 +156,7 @@
 <div class="final"><div class="wrap">
   <h2>Trade with the numbers in front of you</h2>
   <p class="sub">Sign in to open your dashboard.</p>
-  <div class="cta"><a class="btn primary big" href="/admin">Sign in</a>{{REQUEST_ACCESS}}</div>
+  <div class="cta"><a class="btn primary big" href="/admin">Sign in</a>{{GET_EXTENSION}}{{REQUEST_ACCESS}}</div>
 </div></div>
 </main>
 

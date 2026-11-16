@@ -24,6 +24,21 @@ function GuardChip() {
   return <Link to="/guard" className={`chip ${cls} hover:brightness-125`} title={`${data.headline} - open the Trading guard`}>{label}</Link>;
 }
 
+/** Download of the Chrome extension for this server (the server packages it; hidden where it is not offered, e.g. a local server). */
+export function useExtension() {
+  return useQuery({ queryKey: ['extension-info'], queryFn: () => api<{ available: boolean; version: string | null }>('/download/extension.json'), staleTime: 600000 });
+}
+
+function GetExtension() {
+  const { data } = useExtension();
+  if (!data?.available) return null;
+  return (
+    <a href="/download/extension.zip" download className="chip border-acc/50 bg-acc/10 text-acc hover:brightness-125" title="Download the Chrome extension for this server (unzip it, then Load unpacked on chrome://extensions)">
+      ⬇ Get extension{data.version ? ` v${data.version}` : ''}
+    </a>
+  );
+}
+
 /** Slim bar on top of every page: the Quotex account balances in the account's own currency. */
 export default function AccountBar() {
   const { data } = useAccount();
@@ -49,9 +64,10 @@ export default function AccountBar() {
             {code && <span className="chip border-line bg-panel2 text-mut" title="Currency of the account">{code}</span>}
             <GuardChip />
             <span className="note ml-auto">seen {ago(at)}</span>
+            <GetExtension />
           </>
         ) : (
-          <><span className="note">Account balance not seen yet - reload the Quotex tab once (the extension has been updated) and it appears here.</span>{eye}<GuardChip /></>
+          <><span className="note">Account balance not seen yet - reload the Quotex tab once (the extension has been updated) and it appears here.</span>{eye}<GuardChip /><span className="ml-auto"><GetExtension /></span></>
         )}
       </div>
     </div>

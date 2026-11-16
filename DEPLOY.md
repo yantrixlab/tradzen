@@ -69,6 +69,9 @@ Open `https://signals.example.com` and sign in with the admin from `.env`. The f
 Prices come from the Quotex tab of the account that holds the *price feed* token. If that tab or browser stops, nobody gets signals. Use a computer that stays on. Only pairs open (streaming) in that tab produce live signals. Ordinary users' extensions only send their own trades and balance and receive alerts.
 
 ## 5. The extension for your users
+**The easy way: users download it from your site.** The server packages the extension for its own address and offers it as `https://signals.example.com/download/extension.zip`: a **Download the Chrome extension** button on the public landing page, a **Get extension** button in the top bar of the admin panel, and a card with the install steps on **My account**. It needs nothing from you except a redeploy (the Docker image contains the `extension/` folder). The address baked into the file is `QXS_PUBLIC_URL`, else `https://QXS_DOMAIN`, else the https address of the request itself; on a server without https the buttons are simply not shown. The download is public (it holds no secrets; signing in still needs an account).
+
+**By hand** (for a Chrome Web Store upload, or to send the file yourself):
 ```bash
 python3 deploy/package_extension.py https://signals.example.com
 ```
