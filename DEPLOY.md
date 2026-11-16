@@ -96,6 +96,15 @@ Only pairs open in the price-feed tab used to produce live signals. Now any sign
 - **Only the linked Quotex account** feeds; switch it off with `QXS_LIVE_FEED=off`, or per plan with the *Share live prices* feature.
 - **Limits that remain:** a pair is only as good as its holder. The spot-checks and limits catch jumps, wrong levels and disagreement, not a consistently wrong but smooth price. Keep your own price-feed tab running for the pairs that matter.
 
+## Live sessions
+The admin runs a **session** (Session console in the admin panel, `/admin/session`): start it, send signals by hand, end it. Everybody whose plan includes **Live sessions** gets its chart and alerts automatically (`/admin/sessions`, the extension's cards and sounds, and the extension's side panel for ordinary accounts).
+- **Three steps per signal:** a *heads-up* (the candle and the price area are marked on every viewer's chart, nothing to trade yet), the *signal* (take it on the entry candle) and the *result* (settled by that candle: its open against the close of its last candle, the same rule as the strategy signals; a candle that never arrives voids it). The admin can cancel a heads-up quietly, or a sent signal (everybody is told not to take it).
+- **On the chart:** an arrow on the candle the trade comes after, the entry candle shaded by state (heads-up blue, running purple, win green, loss red), and the area as a box that runs to the right edge until the trade has ended.
+- **The chart follows the admin's own Quotex tab**; picking a pair on the console holds it, "Follow my Quotex tab again" hands control back. One live session at a time; it survives a restart and ends by itself after 12 hours.
+- **Tracking:** every session keeps its signals, the win / loss / draw / void count, the accuracy with its 95 % range against break-even, and the net in units of the stake at the payout stored when the signal was sent (the session history, also for viewers).
+- **Free and premium:** a session is free or premium. A premium session's signals, alerts and results are shown only to plans with the feature **Premium sessions** (off by default: make a "Premium" plan on the Features page, or give one user the feature). This is enforced on the server; the shared candle chart itself stays visible. Each user can also switch session alerts off on the Live sessions page.
+- Alerts reach users while their extension is signed in and the Quotex tab is open; the Live sessions page also plays a tone and shows a banner. There is no phone or Telegram push yet.
+
 ## Updating
 ```bash
 git pull            # or copy the new files
@@ -116,7 +125,7 @@ To restore: `docker compose stop backend`, copy the files of one backup folder o
 - **Sign-in protection.** Five wrong passwords lock that address and username for 5 minutes; every admin action is in the audit log (Users page).
 - **Logs:** `docker compose logs backend` / `caddy` (rotated, 10 MB x 5).
 - **Backups** are on the System page (Backups card: the nightly schedule, the list, a *Back up now* button).
-- **Hosted side panel:** the extension's side panel is not part of the hosted build (the page forbids being framed); users open the site in a tab.
+- **Hosted side panel:** the extension's side panel shows the live board (admin accounts). It signs in by itself: the extension trades its access token for a one-time ticket (`POST /api/auth/panel-ticket`, valid a minute), the page inside the panel trades the ticket for a limited 12-hour session that can only use the live board's routes (`panel` scope, `PANEL_ALLOW` in `auth.py`), sent as a header, not a cookie. Only `/admin/...?panel=1` may be framed, and only by an extension page. If the session ends the panel reloads itself with a new ticket. What the panel shows: an admin gets the full Quotex Signal page; everybody else gets **Live chart** (`/admin/chart`), the chart of the pair open on *their own* Quotex tab. The extension reports that pair (`sel`) with every account's batches, the server keeps one pair per account (`/api/mychart`), and the chart switches by itself when they switch pairs on Quotex, until they pick a pair or timeframe by hand ("Follow my Quotex tab again" hands control back). Switch it off per plan with the *Live chart* feature.
 - **Not tested here:** the Docker files were written without a Docker engine on the development machine. Run steps 3 to 5 on a throwaway server first and report anything that does not start.
 
 ## Before you open it to the public

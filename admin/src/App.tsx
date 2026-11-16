@@ -22,6 +22,9 @@ import DataPage from './pages/DataPage';
 import Alerts from './pages/Alerts';
 import System from './pages/System';
 import EmbedChart from './pages/EmbedChart';
+import MyChart from './pages/MyChart';
+import Sessions from './pages/Sessions';
+import SessionConsole from './pages/SessionConsole';
 import MyTrades from './pages/MyTrades';
 import AccountBar from './components/AccountBar';
 import Guard from './pages/Guard';
@@ -38,7 +41,7 @@ type Role = Me['user']['role'];
 /** [path, label, icon, lowest role that may open it]. The server enforces the same rules on every API call (see backend/app/auth.py): hiding a menu is only a courtesy. */
 // [path, label, icon, lowest role, feature key]. The feature key is the switch on the Features page (backend/app/features.py).
 const NAV: [string, string, string, 'trader' | 'editor' | 'admin', string][] = [
-  ['/', 'Overview', '◈', 'editor', 'menu.overview'], ['/live', 'Quotex Signal', '⚡', 'admin', 'menu.live'], ['/generate', 'Trade generator', '✦', 'admin', 'menu.generate'],
+  ['/', 'Overview', '◈', 'editor', 'menu.overview'], ['/sessions', 'Live sessions', '◉', 'trader', 'menu.sessions'], ['/session', 'Session console', '▶', 'admin', 'menu.sessionconsole'], ['/chart', 'Live chart', '◔', 'trader', 'menu.chart'], ['/live', 'Quotex Signal', '⚡', 'admin', 'menu.live'], ['/generate', 'Trade generator', '✦', 'admin', 'menu.generate'],
   ['/trades', 'My trades', '$', 'trader', 'menu.trades'], ['/guard', 'Trading guard', '🛡', 'trader', 'menu.guard'], ['/style', 'My style', '✎', 'trader', 'menu.style'],
   ['/signals', 'Signal history', '≣', 'trader', 'menu.signals'], ['/library', 'Strategy library', '❖', 'trader', 'menu.library'], ['/strategies', 'Strategies', '⚙', 'trader', 'menu.strategies'],
   ['/backtests', 'Backtest lab', '↺', 'trader', 'menu.backtests'],
@@ -118,6 +121,9 @@ function Shell({ me }: { me: Me }) {
           <ErrorBoundary key={loc.pathname}>
           <Routes>
             <Route path="/" element={gate('editor', <Overview />)} />
+            <Route path="/sessions" element={gate('trader', <Sessions />)} />
+            <Route path="/session" element={gate('admin', <SessionConsole />)} />
+            <Route path="/chart" element={gate('trader', <MyChart />)} />
             <Route path="/live" element={gate('admin', <LiveSignal />)} />
             <Route path="/generate" element={gate('admin', <TradeGenerator />)} />
             <Route path="/trades" element={gate('trader', <MyTrades />)} />

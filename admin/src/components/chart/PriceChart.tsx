@@ -61,7 +61,7 @@ function linePath(values: (number | null)[], i0: number, i1: number, x: (i: numb
 interface View { start: number; count: number }
 
 export function PriceChart(props: PriceChartProps) {
-  const { candles, forming = null, lastPrice = null, overlays = [], panes = [], markers = [], bands = [], boxes = [], zones = [], swings = [], trades = [], payout = null, splitT = null, mtg = null,
+  const { candles, forming = null, lastPrice = null, overlays = [], panes = [], markers = [], bands = [], areas = [], boxes = [], zones = [], swings = [], trades = [], payout = null, splitT = null, mtg = null,
     height = 320, initialCount = 150, compact = false, resetKey = '', toolbarLeft, toolbarRight, tooltipExtra, footer, emptyText = 'No candles to show yet.' } = props;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const root = useRef<HTMLDivElement>(null);
@@ -423,6 +423,27 @@ export function PriceChart(props: PriceChartProps) {
                 })}
               </g>
 
+              {/* price areas of live-session signals (always drawn, whatever the zone switches say) */}
+              <g clipPath={`url(#${clipId}-main)`}>
+                {areas.map((ar, k) => {
+                  const a = firstAtOrAfter(ar.t0);
+                  if (a >= n) return null;
+                  const e = ar.open ? n - 1 : Math.min(n - 1, firstAtOrAfter(ar.t1 + 1) - 1);
+                  if (e < a || e < i0 - 1 || a > i1 + 1) return null;
+                  const x0 = x(a) - step / 2, x1 = ar.open ? w - PAD_R : x(e) + step / 2;
+                  let top = y(ar.hi), bot = y(ar.lo);
+                  if (bot - top < 7) { const mid = (top + bot) / 2; top = mid - 3.5; bot = mid + 3.5; }
+                  return (
+                    <g key={`ar${k}`}>
+                      <rect x={x0} y={top} width={Math.max(2, x1 - x0)} height={bot - top} fill={ar.color} opacity={0.16} />
+                      <line x1={x0} x2={x1} y1={top} y2={top} stroke={ar.color} strokeWidth={1.4} strokeDasharray={ar.dashed ? '6 4' : undefined} />
+                      <line x1={x0} x2={x1} y1={bot} y2={bot} stroke={ar.color} strokeWidth={1.4} strokeDasharray={ar.dashed ? '6 4' : undefined} />
+                      <line x1={x0} x2={x0} y1={top} y2={bot} stroke={ar.color} strokeWidth={1.4} />
+                      {ar.label && x1 - x0 > 50 && <text x={x0 + 5} y={top - 4} fontSize="10" fontWeight={700} fill={ar.color}>{ar.label}</text>}
+                    </g>);
+                })}
+              </g>
+
               {showResult && visibleTrades.map((i) => {
                 const t = tradeAt.get(i)!, r = RESULT[t.result] ?? RESULT.draw, c2 = all[i + 1];
                 if (!c2) return null;
@@ -485,9 +506,12 @@ export function PriceChart(props: PriceChartProps) {
 
               {visibleMarkers.map((m) => {
                 const i = idxOf.get(m.t)!, c = all[i], cx = x(i), s = Math.max(7, Math.min(14, step * 0.8));
+                const col = m.color ?? (m.dir > 0 ? UP : DOWN);
                 return m.dir > 0
-                  ? <path key={`s${m.t}`} d={`M${cx},${y(c.l) + 5} l${-s / 2},${s * 0.95} h${s} z`} fill={UP} stroke={BG} strokeWidth={0.9} />
-                  : <path key={`s${m.t}`} d={`M${cx},${y(c.h) - 5} l${-s / 2},${-s * 0.95} h${s} z`} fill={DOWN} stroke={BG} strokeWidth={0.9} />;
+                  ? <g key={`s${m.t}`}><path d={`M${cx},${y(c.l) + 5} l${-s / 2},${s * 0.95} h${s} z`} fill={col} stroke={BG} strokeWidth={0.9} />
+                    {m.label && <text x={cx} y={y(c.l) + 5 + s * 0.95 + 12} fontSize="10" fontWeight={800} textAnchor="middle" fill={col}>{m.label}</text>}</g>
+                  : <g key={`s${m.t}`}><path d={`M${cx},${y(c.h) - 5} l${-s / 2},${-s * 0.95} h${s} z`} fill={col} stroke={BG} strokeWidth={0.9} />
+                    {m.label && <text x={cx} y={y(c.h) - 5 - s * 0.95 - 5} fontSize="10" fontWeight={800} textAnchor="middle" fill={col}>{m.label}</text>}</g>;
               })}
 
               {visibleTrades.map((i) => {

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from .auth import BEARER_PATHS, COOKIE, CSRF_HEADER, CSRF_VALUE, SESSION_DAYS, Auth, AuthError, allowed, match, verify_password
+from .auth import BEARER_PATHS, PANEL_SESSION_SECONDS, panel_allows, COOKIE, CSRF_HEADER, CSRF_VALUE, SESSION_DAYS, Auth, AuthError, allowed, match, verify_password
 from .feature_flags import BY_KEY, REGISTRY, Features, FeatureError, feature_json
 
 LOCAL_HOSTS = ("127.0.0.1", "::1", "localhost", "testclient")
@@ -15,6 +15,10 @@ _DUMMY_HASH = "scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAA
 class LoginIn(BaseModel):
     username: str
     password: str
+
+
+class PanelIn(BaseModel):
+    ticket: str
 
 
 class ExtLoginIn(BaseModel):
@@ -76,6 +80,8 @@ def event_visible(user: dict | None, ev: dict, can=None, access=None) -> bool:
         return user is not None and ev["to"] == user.get("id")
     if user is None:
         return True
+    if ev.get("aud") == "session":                                  # a live session's alert: its own rule (live_session.Sessions.visible)
+        return can is None or access is None or access.engine.sessions.visible(user, ev, can)
     if user.get("role") != "admin" and can is not None and not can(user, "cap.signals.receive"):
         return False
     if access is not None:
@@ -104,6 +110,12 @@ def bind(auth: Auth, features: Features, on_user_deleted=None) -> tuple[APIRoute
         if header[:7].lower() == "bearer ":
             if path in BEARER_PATHS:
                 user = auth.user_from_token(header[7:].strip())
+        elif header[:8].lower() == "session ":                       # the side panel's own session (kept in the page, never a cookie: the panel is a frame of the extension)
+            user = auth.user_from_session(header[8:].strip())
+            if user and user.get("scope") != "panel":
+                user = None
+            if user and method not in ("GET", "HEAD", "OPTIONS") and request.headers.get(CSRF_HEADER) != CSRF_VALUE:
+                raise HTTPException(403, "missing request header")
         elif rule != "ingest" and (cookie := request.cookies.get(COOKIE)):
             user = auth.user_from_session(cookie)
             if user and method not in ("GET", "HEAD", "OPTIONS") and request.headers.get(CSRF_HEADER) != CSRF_VALUE:
@@ -112,6 +124,8 @@ def bind(auth: Auth, features: Features, on_user_deleted=None) -> tuple[APIRoute
             raise HTTPException(401, "sign in required")
         if rule == "ingest" and user["via"] != "token":
             raise HTTPException(401, "the extension must send its access token")
+        if user.get("scope") == "panel" and not panel_allows(method, path):
+            raise HTTPException(403, "the side panel can only use the live board; open the full admin panel in a tab for this")
         if user.get("must_change_pw") and not path.startswith(("/api/auth/", "/api/me")):
             raise HTTPException(403, "change your password first")
         if not allowed(user["role"], rule):
@@ -165,6 +179,20 @@ def bind(auth: Auth, features: Features, on_user_deleted=None) -> tuple[APIRoute
     async def user_quotex_unlink(uid: int, request: Request) -> dict:
         _call(auth.qx_unlink, request.state.user, uid)
         return {"ok": True}
+
+    @router.post("/auth/panel-ticket")
+    async def panel_ticket(request: Request) -> dict:
+        """The extension (with its access token) asks for a one-time ticket to open its side panel without asking for the password again."""
+        user = request.state.user
+        if user["via"] != "token":
+            raise HTTPException(403, "only the extension asks for this")
+        return {"ticket": _call(auth.panel_ticket, user)}
+
+    @router.post("/auth/panel-session")
+    async def panel_session(body: PanelIn, request: Request) -> dict:
+        ip = request.client.host if request.client else ""
+        token, u = _call(auth.panel_session, body.ticket, ip, request.headers.get("user-agent", ""))
+        return {"token": token, "expires_in": PANEL_SESSION_SECONDS}
 
     @router.post("/auth/logout")
     async def logout(request: Request, response: Response) -> dict:

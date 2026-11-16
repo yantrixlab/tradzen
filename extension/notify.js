@@ -136,6 +136,7 @@
   }
 
   function signalHtml(ev) {
+    const sess = ev.session_id != null;                       // a live session's signal: same card, with the session's own words
     const call = ev.direction === 'CALL';
     const acc = accuracy(ev);
     const also = (ev.also && ev.also.length)
@@ -144,12 +145,12 @@
     return `
       <div class="accent"></div>
       <div class="pad">
-        <div class="top"><span class="brand">⚡ TRADZEN</span><span class="tier ${esc(ev.tier)}">TIER ${esc(ev.tier)}</span>
+        <div class="top"><span class="brand">${sess ? '⚡ LIVE SESSION' : '⚡ TRADZEN'}</span><span class="tier ${esc(ev.tier)}">${sess ? (ev.session_tier === 'premium' ? 'PREMIUM' : 'SESSION') : 'TIER ' + esc(ev.tier)}</span>
           <span class="live"><i></i>LIVE</span><button class="x" title="Dismiss" aria-label="Dismiss">×</button></div>
         <div class="main">
           <div class="arrow">${call ? '▲' : '▼'}</div>
           <div class="dirwrap"><div class="dir">${call ? 'BUY / CALL' : 'SELL / PUT'}</div>
-            <div class="sub"><b>Enter now</b> · until ${hms(ev.expire_t)}</div></div>
+            <div class="sub">${sess ? `<b>Enter at ${hms(ev.entry_t || ev.target_t)}</b> · until ${hms(ev.expire_t)}` : `<b>Enter now</b> · until ${hms(ev.expire_t)}`}</div></div>
           <div class="ring"><svg viewBox="0 0 56 56"><circle class="bg" cx="28" cy="28" r="25" fill="none" stroke-width="4"/>
             <circle class="fg" cx="28" cy="28" r="25" fill="none" stroke-width="4" stroke-dasharray="${C}" stroke-dashoffset="0"/></svg><div class="cd">–</div></div>
         </div>
@@ -159,14 +160,18 @@
         <div class="meta">${ev.strategy ? `<span class="chip strat" title="Strategy">${esc(ev.strategy)}</span>` : ''}<span class="badge mini ${acc.cls}" title="Measured accuracy of this tier: open Details">${acc.badge}</span></div>
         <button class="more" aria-expanded="false"><span class="lbl">Details</span><span class="car">▾</span></button>
         <div class="details">
-        <div class="grid">
+        ${sess ? `<div class="grid">
+          <div class="m"><div class="l">AREA</div><div class="v">${ev.area ? price(ev.area.lo) + ' – ' + price(ev.area.hi) : '–'}</div>${ev.area && ev.area.label ? `<div class="note">${esc(ev.area.label)}</div>` : ''}</div>
+          <div class="m"><div class="l">CANDLES</div><div class="v">${ev.expiry_candles || 1}</div></div>
+          <div class="m"><div class="l">PRICE NOW</div><div class="v">${price(ev.price != null ? ev.price : ev.entry)}</div></div>
+        </div>${ev.note ? `<div class="also">${esc(ev.note)}</div>` : ''}` : `<div class="grid">
           <div class="m"><div class="l">STRENGTH</div><div class="v">${ev.strength}<span style="color:#7f88ac;font-weight:600">/100</span></div><div class="bar"><i style="width:${Math.min(100, ev.strength)}%"></i></div></div>
           <div class="m"><div class="l">CONFLUENCE</div><div class="v">${ev.agree} factors</div></div>
           <div class="m"><div class="l">ENTRY PRICE</div><div class="v">${price(ev.price != null ? ev.price : ev.entry)}</div></div>
-        </div>
-        <div class="acc"><div class="t"><div class="l">MEASURED ACCURACY · TIER ${esc(ev.tier)}</div><div class="v">${acc.value}</div><div class="v"><small>${esc(acc.sub)}</small></div></div></div>
+        </div>`}
+        <div class="acc"><div class="t"><div class="l">${sess ? 'THIS SESSION SO FAR' : 'MEASURED ACCURACY · TIER ' + esc(ev.tier)}</div><div class="v">${acc.value}</div><div class="v"><small>${esc(acc.sub)}</small></div></div></div>
         <div class="chips">${chips}</div>${also}
-        <div class="foot"><span>Strength is a heuristic, not a win probability.</span><span>Signal ${hms(ev.target_t)}</span></div>
+        <div class="foot"><span>${sess ? 'A signal from the live session. Not financial advice.' : 'Strength is a heuristic, not a win probability.'}</span><span>Signal ${hms(ev.target_t)}</span></div>
         </div>
       </div>
       <div class="life"></div>`;
@@ -246,13 +251,14 @@
     const key = 'g' + ev.id;
     if (cards.has(key)) return;
     const [icon, label, secs] = GL[ev.level] || GL.warn;
-    const chips = (ev.chips || []).slice(0, 4).map((x) => `<div class="m"><div class="l">${esc(String(x.l).toUpperCase())}</div><div class="v">${esc(x.v)}</div></div>`).join('');
+    const extra = ev.entry_t ? [{ l: 'Candle', v: hms(ev.entry_t) }] : [];
+    const chips = [...(ev.chips || []), ...extra].slice(0, 4).map((x) => `<div class="m"><div class="l">${esc(String(x.l).toUpperCase())}</div><div class="v">${esc(x.v)}</div></div>`).join('');
     const prog = ev.progress != null ? `<div class="bar"><i style="width:${Math.max(3, Math.min(100, ev.progress * 100))}%"></i></div>` : '';
     const el = document.createElement('div');
     el.className = 'card g-' + (GL[ev.level] ? ev.level : 'warn');
     el.setAttribute('role', 'alert');
     el.innerHTML = `<div class="accent"></div><div class="pad">
-      <div class="top"><span class="brand">🛡 TRADING GUARD</span><span class="lvl">${label}</span><span class="live"></span><button class="x" title="Dismiss" aria-label="Dismiss">×</button></div>
+      <div class="top"><span class="brand">${ev.kind === 'session' ? '⚡ LIVE SESSION' : '🛡 TRADING GUARD'}</span><span class="lvl">${esc(ev.kind === 'session' && ev.stage ? ({ started: 'LIVE', headsup: 'GET READY', cancelled: 'CANCELLED', ended: 'ENDED' }[ev.stage] || label) : label)}</span><span class="live"></span><button class="x" title="Dismiss" aria-label="Dismiss">×</button></div>
       <div class="gmain"><div class="gicon">${icon}</div><div><div class="gtitle">${esc(ev.title)}</div><div class="gmsg">${esc(ev.message)}</div></div></div>
       ${chips ? `<div class="gchips">${chips}</div>` : ''}${prog}</div><div class="life"></div>`;
     el.querySelector('.x').addEventListener('click', () => dismiss(key));
@@ -296,6 +302,6 @@
     if (msg.playHere && window.QXSound && settings.sound !== false) window.QXSound.play(msg.sound || 'call', settings.volume);
     if (settings.alerts === false) return;
     const ev = msg.__qxsNotify;
-    if (ev.kind === 'signal') addSignal(ev); else if (ev.kind === 'result') addResult(ev); else if (ev.kind === 'guard' && settings.guard !== false) addGuard(ev);
+    if (ev.kind === 'signal') addSignal(ev); else if (ev.kind === 'result') addResult(ev); else if (ev.kind === 'guard' && settings.guard !== false) addGuard(ev); else if (ev.kind === 'session' && settings.sessions !== false) addGuard(ev);
   });
 })();

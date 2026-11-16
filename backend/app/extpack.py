@@ -3,7 +3,7 @@
 
 The build for https://signals.example.com:
   * talks to that server by default and is allowed to reach only that server (no other host permission),
-  * has no side panel (the button "Open live board" opens the hosted live board in a browser tab instead) and no developer / test files.
+  * keeps the side panel (the button "Open live board"): it signs itself in from the extension's own token, see sidepanel.js, and has no developer / test files.
 """
 from __future__ import annotations
 
@@ -67,6 +67,7 @@ def build_files(src: Path, origin: str) -> dict[str, bytes]:
 
     put("background.js", _sub(text("background.js"), "const DEFAULT_BACKEND = 'http://127.0.0.1:8787';", f"const DEFAULT_BACKEND = '{origin}';", "DEFAULT_BACKEND"))
     put("popup.js", _sub(text("popup.js"), "const DEFAULT_URL = 'http://127.0.0.1:8787';", f"const DEFAULT_URL = '{origin}';", "DEFAULT_URL"))
+    put("sidepanel.js", _sub(text("sidepanel.js"), "const DEFAULT_URL = 'http://127.0.0.1:8787';", f"const DEFAULT_URL = '{origin}';", "side panel DEFAULT_URL"))
     t = text("popup.html")
     t = _sub(t, 'placeholder="http://127.0.0.1:8787"', f'placeholder="{origin}"', "server placeholder")
     t = _sub(t, 'id="panel">Open signal panel</button>', 'id="panel">Open live board</button>', "side panel button")        # the hosted build opens the live board in a tab (popup.js)
@@ -76,14 +77,9 @@ def build_files(src: Path, origin: str) -> dict[str, bytes]:
     mf = json.loads(text("manifest.json"))
     mf["host_permissions"] = [f"{origin}/*"]
     mf.pop("optional_host_permissions", None)
-    mf.pop("side_panel", None)
-    mf["permissions"] = [p for p in mf["permissions"] if p != "sidePanel"]
     mf["name"] = "Tradzen"
     mf["description"] = "Read-only helper for your own logged-in Quotex tab: shows your signals as on-page alerts with sound and keeps your trade history. Never trades, clicks or logs in."
     put("manifest.json", json.dumps(mf, indent=2) + "\n")
-
-    files.pop("sidepanel.html", None)
-    files.pop("sidepanel.js", None)
     return files
 
 

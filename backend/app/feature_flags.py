@@ -50,6 +50,9 @@ REGISTRY: list[F] = [
     F("menu.sweeps", "Sweeps", "Menus", "Try many parameter sets of a strategy.", min_role="editor"),
     F("menu.clinic", "Clinic", "Menus", "Find why a strategy loses and try fixes.", min_role="editor"),
     F("menu.data", "Data", "Menus", "Candle coverage and market data.", min_role="editor"),
+    F("menu.chart", "Live chart", "Menus", "The chart of the pair open on the user's own Quotex tab; it follows when they switch pairs (also in the extension's side panel)."),
+    F("menu.sessions", "Live sessions", "Menus", "Watch the admin's live session: the chart, the signals with the candle and area marked, and their results."),
+    F("menu.sessionconsole", "Session console", "Menus", "Start and end live sessions and send their signals.", min_role="admin", enforced=False),
     F("menu.live", "Quotex Signal", "Menus", "The live signal page and the master alert switch.", min_role="admin"),
     F("menu.generate", "Trade generator", "Menus", "One-off trade ideas from the stored market.", min_role="admin", enforced=False, trader_soon=True),
     F("menu.trades", "My trades", "Menus", "The user's own real Quotex trades, profit and balance (private to them).", min_role="trader"),
@@ -64,6 +67,7 @@ REGISTRY: list[F] = [
     F("menu.features", "Features", "Menus", "This section.", min_role="admin"),
     # ---- signals and alerts
     F("cap.signals.receive", "Receive the admin's signals", "Signals & alerts", "Signal and result cards and sounds in the Chrome extension.", trader_soon=False),
+    F("cap.sessions.premium", "Premium sessions", "Signals & alerts", "See the signals and alerts of sessions the admin marks premium (free sessions are open to everybody with the Live sessions menu).", default=False),
     F("cap.trades.track", "Record own trades", "Signals & alerts", "Store the user's orders and balance sent by their extension (needed for My trades, Guard and My style).", min_role="trader"),
     F("cap.extension.connect", "Connect the Chrome extension", "Signals & alerts", "Create access tokens to link a browser to the account."),
     F("cap.candles.contribute", "Share candles", "Signals & alerts", "The extension adds the chart history its Quotex page loads to the shared candle store (a candle the server already has is never changed)."),

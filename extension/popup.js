@@ -149,6 +149,9 @@ function renderSigned(all, conn) {
     $('o-srv').textContent = (conn.backendUrl || DEFAULT_URL) + (all.feeder ? ' · price feed' : '');
   }
   $('l-feed-row').hidden = local;
+  // On a hosted server nothing here works before signing in: the buttons wait for it (the local server needs no account).
+  const wait = !local && !on;
+  for (const id of ['tab', 'panel', 't-alert']) { $(id).disabled = wait; $(id).title = wait ? 'Sign in on the Connection tab first' : ''; }
 }
 
 // ------------------------------------------------------------------ diagnostics (what the page hook sees)
@@ -207,14 +210,18 @@ async function openBoardWindow(url) {
 }
 
 $('panel').onclick = async () => {
+  // Opens the side panel beside the Quotex tab (called first, while the click still counts as a user gesture). The panel page signs itself in from the extension's token.
+  try {
+    if (tabId === null) throw new Error('no tab');
+    await chrome.sidePanel.open({ tabId });
+    window.close();
+    return;
+  } catch (_) { /* fall through to a window / tab */ }
   const url = await serverUrl();
   let host = '';
   try { host = new URL(url).hostname; } catch (_) { /* ignore */ }
-  // A hosted server cannot be shown inside the side panel (its page forbids being framed, and the panel's own address is the local one): open the live board in its own narrow
-  // window on the right edge of the screen, beside the Quotex tab. One window only: pressing the button again brings it to the front.
-  if (!isLocalHost(host)) { await openBoardWindow(url + '/admin/live?embed=1'); window.close(); return; }
-  if (tabId === null) return;
-  try { await chrome.sidePanel.open({ tabId }); window.close(); } catch (e) { chrome.tabs.create({ url: url + '/' }); }
+  if (!isLocalHost(host)) { await openBoardWindow(url + '/admin/live?embed=1'); window.close(); return; }      // no side panel on this browser: a narrow window instead
+  chrome.tabs.create({ url: url + '/' });
 };
 $('tab').onclick = async () => chrome.tabs.create({ url: (await serverUrl()) + '/' });
 
@@ -304,7 +311,7 @@ chrome.storage.local.get('forward').then((c) => { $('fwd').checked = c.forward !
 $('fwd').onchange = (e) => chrome.storage.local.set({ forward: e.target.checked });
 
 // ------------------------------------------------------------------ alert settings (defaults mirror background.js)
-const DEF = { alerts: true, guard: true, sound: true, resultSound: true, desktop: true, tiers: 'AB', position: 'top-center', volume: 0.7 };
+const DEF = { alerts: true, guard: true, sessions: true, sound: true, resultSound: true, desktop: true, tiers: 'AB', position: 'top-center', volume: 0.7 };
 const bound = [];
 const bind = (id, key, kind) => {
   const el = $(id);
@@ -318,7 +325,7 @@ async function syncSettings() {
     if (kind === 'check') el.checked = v; else if (document.activeElement !== el) el.value = v;
   }
 }
-bind('s-alerts', 'alerts', 'check'); bind('q-alerts', 'alerts', 'check'); bind('s-guard', 'guard', 'check'); bind('s-sound', 'sound', 'check'); bind('q-sound', 'sound', 'check');
+bind('s-alerts', 'alerts', 'check'); bind('q-alerts', 'alerts', 'check'); bind('s-guard', 'guard', 'check'); bind('s-sessions', 'sessions', 'check'); bind('s-sound', 'sound', 'check'); bind('q-sound', 'sound', 'check');
 bind('s-rsound', 'resultSound', 'check'); bind('s-desktop', 'desktop', 'check'); bind('s-tiers', 'tiers'); bind('s-pos', 'position'); bind('s-vol', 'volume', 'num');
 chrome.storage.onChanged.addListener((_, area) => { if (area === 'local') syncSettings(); });
 syncSettings();

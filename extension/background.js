@@ -1,7 +1,7 @@
 // Background worker: keeps snapshots for the popup, forwards market data to the local backend, and routes the
 // backend's signal/result events to the on-page cards, the alert sounds (offscreen document) and desktop notifications.
 const DEFAULT_BACKEND = 'http://127.0.0.1:8787';
-const DEFAULTS = { forward: true, alerts: true, guard: true, sound: true, resultSound: true, volume: 0.7, tiers: 'AB', desktop: true, position: 'top-center' };
+const DEFAULTS = { forward: true, alerts: true, guard: true, sessions: true, sound: true, resultSound: true, volume: 0.7, tiers: 'AB', desktop: true, position: 'top-center' };
 const TFN = { 60: '1 min', 300: '5 min', 900: '15 min' };
 
 const getSettings = async () => ({ ...DEFAULTS, ...(await chrome.storage.local.get(null)) });
@@ -17,7 +17,7 @@ function forward(items, tabId) {
   if (isFeeder !== true) items = queueHistory(items, tabId);        // not (known to be) the price feed: its chart history is offered to the shared candle store instead
   if (isFeeder === false) {
     items = noteTicks(items);                                        // live prices: only the pairs the server asks for are kept (see "live prices")
-    items = items.filter((i) => i && (i.k === 'o' || i.k === 'b' || i.k === 'a' || (i.k === 'ev' && i.e === 'hook-start')));      // own orders / balance, and which Quotex account this is
+    items = items.filter((i) => i && (i.k === 'o' || i.k === 'b' || i.k === 'a' || i.k === 'sel' || (i.k === 'ev' && i.e === 'hook-start')));      // own orders / balance, which Quotex account this is, and which pair is open (the chart follows it)
     if (!items.length && !histReady(tabId) && !feedDue() && Date.now() - lastPoll < 1500) return;
   }
   lastPoll = Date.now();
@@ -250,6 +250,7 @@ async function doForward(items, tabId) {
 
 // ------------------------------------------------------------------ alerts
 function soundFor(ev) {
+  if (ev.kind === 'session') return ev.sound === false ? null : (ev.sound || 'ginfo');            // live session: started / get ready / cancelled / ended
   if (ev.kind === 'guard') return ev.sound === false ? null : ({ success: 'gwin', info: 'ginfo', warn: 'gwarn', danger: 'gstop' }[ev.level] || 'gwarn');
   if (ev.kind === 'signal') return (ev.direction === 'CALL' ? 'call' : 'put') + (ev.tier === 'B' ? 'B' : '');
   return ev.status === 'win' ? 'win' : ev.status === 'loss' ? 'loss' : null;
@@ -259,22 +260,23 @@ async function handleEvents(events, tabId, cfg) {
   const now = Date.now() / 1000;
   for (const ev of events) {
     if (ev.kind === 'guard' && cfg.guard === false) continue;
+    if ((ev.kind === 'session' || ev.session_id != null) && cfg.sessions === false) continue;      // live-session alerts switched off in the popup
     if (ev.tier === 'B' && cfg.tiers === 'A') continue;
     const age = now - ev.t;
-    if ((ev.kind === 'signal' && age > 20) || (ev.kind === 'result' && age > 90) || (ev.kind === 'guard' && age > 180)) continue;   // stale (worker was asleep)
+    if ((ev.kind === 'signal' && age > 20) || (ev.kind === 'result' && age > 90) || (ev.kind === 'guard' && age > 180) || (ev.kind === 'session' && age > 60)) continue;   // stale (worker was asleep)
     await deliver(ev, tabId, cfg);
   }
 }
 
 async function deliver(ev, tabId, cfg) {
   const sound = soundFor(ev);
-  const wantSound = sound && cfg.sound && (ev.kind === 'signal' || ev.kind === 'guard' || cfg.resultSound);
+  const wantSound = sound && cfg.sound && (ev.kind === 'signal' || ev.kind === 'guard' || ev.kind === 'session' || cfg.resultSound);
   const playedHere = wantSound ? await playSound(sound, cfg.volume) : true;
   if (tabId != null) {
     chrome.tabs.sendMessage(tabId, { __qxsNotify: ev, settings: cfg, sound, playHere: wantSound && !playedHere }, { frameId: 0 }).catch(() => {});
   }
   if (cfg.desktop && ev.kind === 'signal') desktopNotify(ev, tabId);
-  if (cfg.desktop && ev.kind === 'guard') guardNotify(ev, tabId);
+  if (cfg.desktop && (ev.kind === 'guard' || ev.kind === 'session')) guardNotify(ev, tabId);
 }
 
 let creating = null;
@@ -311,7 +313,9 @@ async function desktopNotify(ev, tabId) {
   chrome.notifications.create(id, {
     type: 'basic', iconUrl: 'icons/icon128.png', priority: 2,
     title: `${call ? '▲ BUY / CALL' : '▼ SELL / PUT'}  ·  ${ev.name}`,
-    message: `Tier ${ev.tier} · ${TFN[ev.tf] || ev.tf + 's'} · strength ${ev.strength}\nEnter now — expires ${new Date(ev.expire_t * 1000).toLocaleTimeString()}`,
+    message: ev.session_id != null
+      ? `Live session · ${TFN[ev.tf] || ev.tf + 's'}${ev.area ? ' · area ' + ev.area.lo + ' - ' + ev.area.hi : ''}\nEnter at ${new Date((ev.entry_t || ev.target_t) * 1000).toLocaleTimeString()}${ev.note ? ' · ' + ev.note : ''}`
+      : `Tier ${ev.tier} · ${TFN[ev.tf] || ev.tf + 's'} · strength ${ev.strength}\nEnter now — expires ${new Date(ev.expire_t * 1000).toLocaleTimeString()}`,
   });
 }
 // A trading-guard alert as a desktop notification (when the Quotex tab is not in front). Warnings and stops stay until dismissed.

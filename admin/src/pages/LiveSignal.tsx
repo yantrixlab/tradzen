@@ -8,7 +8,7 @@ import { Badge, Card, DirBadge, Empty, ErrorBox, ResultBadge, Spinner, StreamBub
 import { TrackRecord } from '../components/TrackRecord';
 import { FeedBanner } from '../components/FeedBanner';
 import { ReadinessBar, Readiness, useReadiness } from '../components/ReadinessBar';
-import { SmartChart } from '../components/chart/SmartChart';
+import { SmartChart, SmartChartProps } from '../components/chart/SmartChart';
 
 // ------------------------------------------------------------------ small building blocks
 type Mode = 'paused' | 'paper' | 'live';
@@ -200,13 +200,17 @@ function StrategyGrid({ strategies }: { strategies: Strategy[] }) {
 }
 
 // ------------------------------------------------------------------ pair picker + live view + signal board
-function PairPicker({ data, sym, onPick }: { data: LiveSelection; sym: string; onPick: (s: string) => void }) {
+export function PairPicker({ data, sym, onPick, following }: { data: LiveSelection; sym: string; onPick: (s: string) => void; following: boolean }) {
   const [market, setMarket] = usePersisted<'OTC' | 'LIVE'>('pair-market', 'OTC');
   const [q, setQ] = useState('');
   const [onlyStream, setOnlyStream] = usePersisted('pair-streaming-only', false);
   const list = data.symbols.filter((s) => s.market === market && (!onlyStream || s.streaming) && (s.name + s.symbol).toLowerCase().includes(q.toLowerCase()));
   return (
     <Card title="Pair">
+      <div className="mb-2 text-xs">
+        {following ? <span className="text-up">● Following the pair open on your Quotex tab</span>
+          : <button className="text-[#c4b5fd] underline" onClick={() => onPick('')}>Follow my Quotex tab again</button>}
+      </div>
       <div className="mb-2 flex gap-1.5">
         {(['OTC', 'LIVE'] as const).map((m) => {
           const n = streamingCount(data.symbols, m);
@@ -235,7 +239,7 @@ function PairPicker({ data, sym, onPick }: { data: LiveSelection; sym: string; o
   );
 }
 
-function LiveView({ sel, tf, setTf }: { sel: NonNullable<LiveSelection['selected']>; tf: number; setTf: (t: number) => void }) {
+export function LiveView({ sel, tf, setTf, overlay, readOnly = false, count = 90 }: { sel: NonNullable<LiveSelection['selected']>; tf: number; setTf: (t: number) => void; overlay?: SmartChartProps['overlay']; readOnly?: boolean; count?: number }) {
   const [, force] = useState(0);
   useEffect(() => { const t = setInterval(() => force((n) => n + 1), 250); return () => clearInterval(t); }, []);
   const rem = sel.forming ? Math.max(0, sel.forming.t + sel.tf - (Date.now() / 1000 + sel.offset)) : null;
@@ -254,12 +258,13 @@ function LiveView({ sel, tf, setTf }: { sel: NonNullable<LiveSelection['selected
         <div className="flex items-center gap-4">
           {sel.sentiment && <div className="w-36"><div className="note">Trader sentiment</div><div className="h-2 overflow-hidden rounded bg-line"><div className="h-full rounded bg-gradient-to-r from-down via-warn to-up" style={{ width: `${sel.sentiment.pct}%` }} /></div><div className="note text-right">{sel.sentiment.pct}%</div></div>}
           {rem !== null && <div className="text-right"><div className="note">Candle closes in</div><div className="text-2xl font-bold tabular-nums">{Math.floor(rem / 60)}:{String(Math.floor(rem % 60)).padStart(2, '0')}</div></div>}
-          <div className="inline-flex overflow-hidden rounded-lg border border-line text-sm font-semibold">
+          {!readOnly && <div className="inline-flex overflow-hidden rounded-lg border border-line text-sm font-semibold">
             {[60, 300, 900].map((t) => <button key={t} onClick={() => setTf(t)} className={`border-r border-line px-3 py-1.5 last:border-r-0 ${tf === t ? 'bg-acc text-white' : 'bg-panel2 text-mut hover:text-fg'}`}>{tfName(t)}</button>)}
-          </div>
+          </div>}
+          {readOnly && <span className="chip border-line bg-panel2 text-mut">{tfName(sel.tf)}</span>}
         </div>
       </div>
-      <SmartChart symbol={sel.symbol} tf={sel.tf} live={{ candles: sel.candles, forming: sel.forming, lastPrice: sel.last_price }} height={340} initialCount={90} limit={1500} />
+      <SmartChart symbol={sel.symbol} tf={sel.tf} overlay={overlay} live={{ candles: sel.candles, forming: sel.forming, lastPrice: sel.last_price }} height={340} initialCount={count} limit={1500} lockStrategy={readOnly} />
       {sel.gap && <div className="note mt-2 text-warn">Data gap: {sel.gap.missing} candle(s) missing before {dateTime(sel.gap.before)} - signals pause for a few candles after a gap.</div>}
     </Card>
   );
@@ -358,11 +363,10 @@ function RecentSignals({ sym, strategies }: { sym: string; strategies: Strategy[
 // ------------------------------------------------------------------ page
 export default function LiveSignal() {
   const strategies = useStrategies();
-  const [pick, setPick] = useState('');
+  const [pick, setPick] = useState('');                      // a pair chosen by hand; empty = follow the pair open on the Quotex tab
   const [tf, setTf] = useState(60);
   const q = useQuery({ queryKey: ['live-sel', pick, tf], queryFn: () => api<LiveSelection>(`/api/state${qs({ symbol: pick, tf })}`), refetchInterval: 1500, placeholderData: keepPreviousData });   // keep the picker mounted while a new pair loads
   const sym = pick || q.data?.selected?.symbol || '';
-  useEffect(() => { if (!pick && q.data?.selected?.symbol) setPick(q.data.selected.symbol); }, [pick, q.data]);
 
   if (!strategies.data) return <Spinner />;
   return (
@@ -376,7 +380,7 @@ export default function LiveSignal() {
       <StrategyGrid strategies={strategies.data} />
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[320px_1fr]">
-        <div>{q.data ? <PairPicker data={q.data} sym={sym} onPick={setPick} /> : <Card><Spinner /></Card>}</div>
+        <div>{q.data ? <PairPicker data={q.data} sym={sym} onPick={setPick} following={!pick} /> : <Card><Spinner /></Card>}</div>
         <div className="min-w-0 space-y-4">
           {q.isError ? <ErrorBox error={q.error} /> : !q.data ? <Card><Spinner /></Card> : q.data.selected
             ? <LiveView sel={q.data.selected} tf={tf} setTf={setTf} />

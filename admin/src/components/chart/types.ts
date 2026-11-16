@@ -29,7 +29,10 @@ export interface SeriesGroup {
 }
 
 /** A strategy signal: arrow under (CALL, dir 1) or over (PUT, dir -1) the candle that opens at `t`. */
-export interface ChartMarker { t: number; dir: 1 | -1; tip?: string }
+export interface ChartMarker { t: number; dir: 1 | -1; tip?: string; label?: string; color?: string }
+
+/** A price area (lo..hi) from candle time t0 to t1, drawn as a labelled box: the area a live-session signal is taken from. `open` = it runs on to the right edge (the trade has not ended yet). */
+export interface ChartArea { t0: number; t1: number; lo: number; hi: number; color: string; label?: string; open?: boolean; dashed?: boolean }
 
 /** Shaded columns through every pane from candle time t0 to t1 (a condition that is true, a signal candle ...). */
 export interface ChartBand { t0: number; t1: number; color: string; opacity?: number; label?: string }
@@ -60,6 +63,7 @@ export interface PriceChartProps {
   panes?: SeriesGroup[];
   markers?: ChartMarker[];
   bands?: ChartBand[];
+  areas?: ChartArea[];
   boxes?: ChartBox[];
   zones?: ChartZone[];
   swings?: ChartSwing[];

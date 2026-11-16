@@ -30,8 +30,23 @@ CSRF_VALUE = "qxs"
 MIN_PASSWORD = 8
 LOCK_AFTER, LOCK_SECONDS = 5, 300           # wrong passwords per (ip, username) before a pause
 WEAK_ADMIN_PASSWORDS = {"admin", "password", "changeme", "change-me", "12345678", "admin123", "password123"}
-BEARER_PATHS = ("/ingest", "/api/events", "/api/me")          # an extension token works here only; everything else needs a browser session
+BEARER_PATHS = ("/ingest", "/api/events", "/api/me", "/api/auth/panel-ticket")          # an extension token works here only; everything else needs a browser session
 _SCRYPT = (2 ** 14, 8, 1)
+PANEL_TICKET_SECONDS = 60                  # the one-time ticket the extension asks for to open its side panel
+PANEL_SESSION_SECONDS = 12 * 3600          # the side panel's own, shorter session (the extension asks for a fresh ticket when it ends)
+# What a side-panel session may do: the live board and its controls, nothing else (no users, tokens, system, exports, password...). The panel's sign-in comes from an
+# extension token, which is a weaker credential than a password, so it is not given the whole admin panel.
+PANEL_ALLOW = [(re.compile(p), m) for p, m in [
+    (r"^/api/(me|state|mychart|sessions(/live|/\d+)?|account|analyze/all|readiness|settings|presets|strategies|spec/catalog|signals|stats|equity|research(/status)?|data/(coverage|gaps|plan|sentiment(/study)?))$", {"GET"}),
+    (r"^/api/(strategies|signals)/\d+$", {"GET"}),
+    (r"^/api/(strategies/(bulk|pause-all|resume-all|chart)|backtests/chart|settings|presets|presets/apply)$", {"POST"}),
+    (r"^/api/presets/[^/]+$", {"DELETE"}),
+    (r"^/api/sessions/alerts$", {"PUT"}),
+]]
+
+
+def panel_allows(method: str, path: str) -> bool:
+    return any(rx.match(path) and method.upper() in m for rx, m in PANEL_ALLOW)
 
 
 class AuthError(Exception):
@@ -81,6 +96,7 @@ def generate_password(n: int = 14) -> str:
 _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile(p), m, r, f) for p, m, r, f in [
     (r"^/healthz$", None, "public", None),
     (r"^/api/auth/login$", {"POST"}, "public", None),
+    (r"^/api/auth/panel-session$", {"POST"}, "public", None),             # the side panel trades its one-time ticket for a limited session (the ticket is the credential)
     (r"^/api/auth/extension-login$", {"POST"}, "public", None),          # the extension popup signs in with username + password and gets its own revocable token
     (r"^/ingest$", {"POST"}, "ingest", None),
     (r"^/api/auth/", None, "any", None),
@@ -96,6 +112,9 @@ _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile
     (r"^/api/style(/|$)", None, "any", "menu.style"),
     # Strategies, signals and backtests are open to every role: each handler only shows and changes what the caller owns or receives (strategy_access.py).
     (r"^/api/(signal-pairs|signals(/\d+)?|stats|equity)$", {"GET"}, "any", "menu.signals"),
+    (r"^/api/sessions(/live|/\d+)?$", {"GET"}, "any", "menu.sessions"),          # watching a live session; starting, ending and sending signals is admin-only (not listed)
+    (r"^/api/sessions/alerts$", {"PUT"}, "any", "menu.sessions"),
+    (r"^/api/mychart$", {"GET"}, "any", "menu.chart"),                   # the chart of the caller's own Quotex pair
     (r"^/api/state$", {"GET"}, "staff", None),
     (r"^/api/strategies/(bulk|pause-all|resume-all)$", None, "staff", "menu.strategies"),            # these act on the shared strategies
     (r"^/api/strategies/\d+/audience$", None, "staff", "cap.strategies.publish"),
@@ -142,6 +161,7 @@ class Auth:
             raise RuntimeError("QXS_SECRET_KEY must be set (at least 16 random characters) when sign-in is enabled")
         self._key = (secret or "dev-not-used").encode()
         self._fails: dict[tuple[str, str], list[float]] = {}
+        self._tickets: dict[str, tuple[int, float]] = {}    # one-time side-panel tickets (hash -> user id, expiry); in memory: a restart just makes the panel ask again
 
     # ---- helpers
     def _h(self, token: str) -> str:
@@ -231,7 +251,7 @@ class Auth:
         return token
 
     def user_from_session(self, token: str) -> dict | None:
-        r = self.db.execute("SELECT user_id, expires, last_seen FROM sessions WHERE token_hash=?", (self._h(token),)).fetchone()
+        r = self.db.execute("SELECT user_id, expires, last_seen, scope FROM sessions WHERE token_hash=?", (self._h(token),)).fetchone()
         if not r or r[1] < time.time():
             return None
         u = self.get_user(r[0])
@@ -240,7 +260,32 @@ class Auth:
         if time.time() - (r[2] or 0) > 300:
             self.db.execute("UPDATE sessions SET last_seen=? WHERE token_hash=?", (time.time(), self._h(token)))
             self.db.commit()
-        return {**u, "via": "session", "feeder": False}
+        return {**u, "via": "session", "feeder": False, "scope": r[3]}
+
+    def panel_ticket(self, user: dict) -> str:
+        """A one-time ticket (valid a minute) that the extension, holding a token, hands to its side panel page."""
+        now = time.time()
+        self._tickets = {k: v for k, v in self._tickets.items() if v[1] > now}
+        if len(self._tickets) > 500:
+            raise AuthError(429, "too many panels opened at once, try again in a minute")
+        ticket = secrets.token_urlsafe(24)
+        self._tickets[self._h(ticket)] = (user["id"], now + PANEL_TICKET_SECONDS)
+        return ticket
+
+    def panel_session(self, ticket: str, ip: str, ua: str) -> tuple[str, dict]:
+        """Trade a ticket (once) for a limited session token that only the panel's own page holds."""
+        got = self._tickets.pop(self._h(ticket), None)
+        if not got or got[1] < time.time():
+            raise AuthError(401, "the panel ticket is missing, used or too old")
+        u = self.get_user(got[0])
+        if not u or not u["active"]:
+            raise AuthError(401, "the account is not active")
+        token, now = secrets.token_urlsafe(32), time.time()
+        self.db.execute("INSERT INTO sessions (token_hash, user_id, created, expires, last_seen, ip, ua, scope) VALUES (?,?,?,?,?,?,?,'panel')",
+                        (self._h(token), u["id"], now, now + PANEL_SESSION_SECONDS, now, ip, ua[:200]))
+        self.db.execute("DELETE FROM sessions WHERE expires<?", (now,))
+        self.db.commit()
+        return token, u
 
     def logout(self, token: str) -> None:
         self.db.execute("DELETE FROM sessions WHERE token_hash=?", (self._h(token),))

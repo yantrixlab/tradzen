@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import backup, expr, extpack, seed as seedmod, indreg, routes_auth, routes_control
+from . import backup, expr, extpack, seed as seedmod, indreg, routes_auth, routes_control, routes_sessions
 from .auth import COOKIE as COOKIE_NAME, from_env
 from .strategy_access import Access, is_staff
 from .feature_flags import Features
@@ -56,6 +56,10 @@ async def _research_scheduler() -> None:
         try:
             engine.research.tick()
         except Exception:             # noqa: BLE001 - the scheduler must never die
+            pass
+        try:
+            engine.sessions.sweep()
+        except Exception:             # noqa: BLE001
             pass
         try:
             engine.ai.nightly()       # AI advisor: retrain every night on everything stored (incl. what was collected live) ...
@@ -123,6 +127,9 @@ if auth.production:
                                      b"connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"),
     ]
 
+    PANEL_HEADERS = [(k, v) for k, v in SECURITY_HEADERS if k not in (b"x-frame-options", b"content-security-policy")] + [
+        (b"content-security-policy", dict(SECURITY_HEADERS)[b"content-security-policy"].replace(b"frame-ancestors 'none'", b"frame-ancestors chrome-extension:"))]       # /admin/...?panel=1: framed by the extension's side panel only
+
     class SecurityHeaders:
         """Adds the browser-hardening headers to every response (the reverse proxy adds HSTS)."""
 
@@ -136,7 +143,8 @@ if auth.production:
             async def send_with_headers(message):
                 if message["type"] == "http.response.start":
                     have = {k.lower() for k, _ in message.get("headers", [])}
-                    message["headers"] = [*message.get("headers", []), *[(k, v) for k, v in SECURITY_HEADERS if k not in have]]
+                    wanted = PANEL_HEADERS if scope["path"].startswith("/admin") and b"panel=1" in scope.get("query_string", b"") else SECURITY_HEADERS
+                    message["headers"] = [*message.get("headers", []), *[(k, v) for k, v in wanted if k not in have]]
                 await send(message)
 
             await self.inner(scope, receive, send_with_headers)
@@ -146,6 +154,7 @@ if auth.production:
 app.include_router(auth_router)
 
 
+app.include_router(routes_sessions.bind(engine, auth, features))   # live sessions (live_session.py)
 app.include_router(routes_control.bind(engine))      # settings, bulk strategy control, presets, signal board
 
 
@@ -814,6 +823,12 @@ async def events(request: Request, after: int | None = None) -> dict:
     user = request.state.user
     lr = engine.ingest_stats["last_recv"]
     return {"seq": engine.seq, "events": [e for e in engine.events_since(after, user["id"]) if routes_auth.event_visible(user, e, features.can, access)], "feed_age": (time.time() - lr) if lr else None}
+
+
+@app.get("/api/mychart")
+async def mychart(request: Request, symbol: str | None = None, tf: int | None = None) -> dict:
+    """The chart of the pair open on the caller's own Quotex tab (or of the pair asked for): every account sees its own."""
+    return engine.mychart(request.state.user["id"], symbol, tf)
 
 
 @app.get("/api/state")

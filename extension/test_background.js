@@ -19,11 +19,12 @@ function boot(serverAnswer) {
   const sent = [];
   const local = makeStore(), session = makeStore();
   let onMessage = null;
+  const delivered = [];
   const noop = () => {};
   const chrome = {
     storage: { local, session },
     runtime: { onMessage: { addListener: (f) => { onMessage = f; } }, getContexts: async () => [], sendMessage: async () => {} },
-    tabs: { onRemoved: { addListener: noop }, sendMessage: async () => {}, get: async () => ({}) },
+    tabs: { onRemoved: { addListener: noop }, sendMessage: async (id, msg) => { delivered.push(msg); }, get: async () => ({}) },
     notifications: { onClicked: { addListener: noop }, create: noop, clear: noop },
     action: { setBadgeBackgroundColor: noop, setBadgeText: noop },
     windows: { get: async () => ({}) },
@@ -33,7 +34,7 @@ function boot(serverAnswer) {
   vm.runInContext(fs.readFileSync(__dirname + '/background.js', 'utf8'), ctx);
   const send = (items, tabId = 7) => onMessage({ __qxs: 2, items }, { tab: { id: tabId }, frameId: 0 });
   const until = async (n) => { for (let i = 0; i < 200 && sent.length < n; i++) await new Promise((r) => setTimeout(r, 5)); assert(sent.length >= n, `expected ${n} requests, saw ${sent.length}`); };
-  return { sent, send, until, session };
+  return { sent, send, until, session, delivered, local };
 }
 
 const order = (id) => ({ k: 'o', n: 's_orders/close', dir: 'in', d: { deals: [{ id }] }, ts: 1 });
@@ -194,6 +195,11 @@ const kinds = (req) => req.body.items.map((i) => i.k);
   h.send([tickOf('EURUSD', 3)]);
   await sleep(60);
   assert.strictEqual(h.sent.length, n0, 'an old server gets no more presence or ticks');
+  // which pair is open on the account's own Quotex tab goes to the server (its chart follows it); it is not held back like orders
+  h = boot((n) => ({ ok: true, seq: n, events: [], feeder: false, qx: { state: 'ok', hint: '234' } }));
+  h.send([{ k: 'a', u: '4711234' }, { k: 'sel', asset: 'EURUSD_otc', period: 60 }]);
+  await h.until(1);
+  assert(h.sent[0].body.items.some((i) => i.k === 'sel' && i.asset === 'EURUSD_otc' && i.period === 60), 'the open pair is sent by an ordinary account');
   // the price feed itself is untouched: every tick goes out, no presence item
   h = boot((n) => ({ ok: true, seq: n, events: [], feeder: true }));
   h.send([tickOf('EURUSD', 1)]);
@@ -203,5 +209,26 @@ const kinds = (req) => req.body.items.map((i) => i.k);
   await h.until(2);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(kinds(h.sent[1]))), ['t']);
   assert.strictEqual(ticksOf(h.sent[1])[0].d.length, 2);
+  // ---- live sessions: heads-up / signal / result cards and sounds reach the tab, can be switched off, and an old one is not shown late
+  const nowS = Date.now() / 1000;
+  const sessEvents = [
+    { seq: 1, kind: 'session', aud: 'session', session_id: 3, stage: 'headsup', level: 'warn', title: 'Get ready', message: 'CALL', sound: 'shead', id: 'ss1', t: nowS },
+    { seq: 2, kind: 'signal', aud: 'session', session_id: 3, id: 's9', direction: 'CALL', tier: 'A', tf: 60, name: 'EUR/USD', strength: 100, expire_t: nowS + 120, target_t: nowS + 60, t: nowS },
+    { seq: 3, kind: 'result', aud: 'session', session_id: 3, id: 's9', status: 'win', direction: 'CALL', t: nowS },
+    { seq: 4, kind: 'session', aud: 'session', session_id: 3, stage: 'ended', title: 'Live session ended', message: 'x', sound: 'send', id: 'ss4', t: nowS - 600 },
+  ];
+  let given = false;
+  h = boot((n) => { const evs = given ? [] : sessEvents; given = true; return { ok: true, seq: 9, events: evs, feeder: false, qx: { state: 'ok', hint: '234' } }; });
+  h.send([{ k: 'a', u: '4711234' }]);
+  await h.until(1);
+  await new Promise((r) => setTimeout(r, 60));
+  const got = h.delivered.map((m) => m.__qxsNotify.kind + ':' + (m.sound || ''));
+  assert.deepStrictEqual(got, ['session:shead', 'signal:call', 'result:win'], 'the session alerts reach the tab with their sounds; the ten-minute-old one is dropped as stale');
+  h = boot(() => ({ ok: true, seq: 9, events: sessEvents.slice(0, 3).map((e) => ({ ...e, t: Date.now() / 1000 })), feeder: false, qx: { state: 'ok', hint: '234' } }));
+  await h.local.set({ sessions: false });
+  h.send([{ k: 'a', u: '4711234' }]);
+  await h.until(1);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.strictEqual(h.delivered.length, 0, 'with live session alerts switched off nothing is shown');
   console.log('all background tests passed');
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -3,7 +3,7 @@
 Writes dist/tradzen-extension-<domain>.zip, ready to send to users (Chrome: chrome://extensions -> Developer mode -> Load unpacked, after unzipping)
 or to upload as an unlisted Chrome Web Store item. The build:
   * talks to your server by default and is allowed to reach only that server (no other host permission),
-  * has no side panel (the hosted panel is opened in a browser tab instead) and no developer / test files.
+  * keeps the side panel (it signs itself in from the extension's token) and has no developer / test files.
 Users sign in once in the extension popup with their Tradzen username and password (an access token from "My account" still works too).
 
 The server offers the same file itself (a download button on the landing page and in the admin panel: /download/extension.zip); this script is for making it by hand.

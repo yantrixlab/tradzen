@@ -7,13 +7,45 @@ export class ApiError extends Error {
   }
 }
 
+// ---- the extension's side panel: this page is a frame of the extension, where the site's cookie is not sent. The extension passes a one-time ticket in the address
+// (#ticket=..., never sent to the server); the page trades it for a limited session token, keeps it for this frame only and sends it as a header.
+const PANEL_KEY = 'qxs-panel';
+export const isPanel = (): boolean => new URLSearchParams(location.search).has('panel');
+let panelToken: string | null = null;
+try { panelToken = sessionStorage.getItem(PANEL_KEY); } catch { /* storage blocked: the ticket still works for this load */ }
+let panelBoot: Promise<void> | null = null;
+function bootPanel(): Promise<void> {
+  if (!panelBoot) {
+    panelBoot = (async () => {
+      const m = /ticket=([^&]+)/.exec(location.hash);
+      if (!m) return;
+      history.replaceState(null, '', location.pathname + location.search);
+      try {
+        const r = await fetch('/api/auth/panel-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket: decodeURIComponent(m[1]) }) });
+        if (r.ok) {
+          panelToken = (await r.json()).token as string;
+          try { sessionStorage.setItem(PANEL_KEY, panelToken); } catch { /* ignore */ }
+        }
+      } catch { /* the first call below fails with 401 and the panel asks the extension for a new ticket */ }
+    })();
+  }
+  return panelBoot;
+}
+
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+  const panel = isPanel();
+  if (panel) await bootPanel();
   const res = await fetch(path, {
     method: opts.method ?? (opts.body !== undefined ? 'POST' : 'GET'),
-    headers: { 'X-Requested-With': 'qxs', ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}) },   // the header is the server's CSRF check for signed-in changes
-    credentials: 'same-origin',
+    headers: { 'X-Requested-With': 'qxs', ...(opts.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(panel && panelToken ? { Authorization: 'Session ' + panelToken } : {}) },   // the header is the server's CSRF check for signed-in changes
+    credentials: panel ? 'omit' : 'same-origin',
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
+  if (res.status === 401 && panel) {                       // the panel's session ended: the extension (the parent page) reloads it with a fresh ticket
+    panelToken = null;
+    try { sessionStorage.removeItem(PANEL_KEY); } catch { /* ignore */ }
+    try { window.parent.postMessage({ qxs: 'panel-expired' }, '*'); } catch { /* ignore */ }
+  }
   if (res.status === 401 && path !== '/api/auth/login' && path !== '/api/me') window.dispatchEvent(new Event('qxs-unauth'));         // the session ended: the app shows the sign-in page
   if (!res.ok) {
     let msg = await res.text();

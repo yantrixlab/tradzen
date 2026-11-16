@@ -5,7 +5,7 @@ import { useStrategies } from '../../hooks';
 import { ChartData, indicatorGroup } from '../StrategyChart';
 import { ErrorBox } from '../ui';
 import { PriceChart } from './PriceChart';
-import type { BtTrade, ChartCandle, MtgSummary, SeriesGroup } from './types';
+import type { BtTrade, ChartArea, ChartBand, ChartCandle, ChartMarker, MtgSummary, SeriesGroup } from './types';
 
 /** What /api/backtests/chart returns: a pair's candles, and (with a strategy) the trades it would have taken, their results, the validation split and the MTG summary. */
 export interface BtChart {
@@ -29,6 +29,7 @@ export interface SmartChartProps {
   lockStrategy?: boolean;                // the page chooses the strategy: hide the picker
   mtgSteps?: number; mtgMult?: number;   // martingale controlled by the page; omit to get the chart's own MTG buttons
   live?: { candles: Candle[]; forming: Candle | null; lastPrice: number | null };   // the live feed: newest candles, the forming one, the last price
+  overlay?: { markers?: ChartMarker[]; bands?: ChartBand[]; areas?: ChartArea[] };     // extra marks drawn over the candles (the signals of a live session)
   height?: number; compact?: boolean; limit?: number; initialCount?: number; enabled?: boolean;
 }
 
@@ -38,7 +39,7 @@ const toCandle = (c: Candle): ChartCandle => ({ t: c.t, o: c.o, h: c.h, l: c.l, 
  * The chart to use whenever a screen just has a pair and a timeframe: loads the history, lets the user apply ANY strategy (its signals, trades with win / loss,
  * validation period, martingale, and indicators incl. supply/demand zones), keeps up with the live candle, and has every navigation feature of PriceChart.
  */
-export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockStrategy = false, mtgSteps, mtgMult, live, height = 320, compact = false, limit = 4000, initialCount = 150, enabled = true }: SmartChartProps) {
+export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockStrategy = false, mtgSteps, mtgMult, live, overlay, height = 320, compact = false, limit = 4000, initialCount = 150, enabled = true }: SmartChartProps) {
   const strategies = useStrategies();
   const [sid, setSid] = useState<number | null>(strategyId);
   const [showInd, setShowInd] = useState(true);
@@ -107,7 +108,7 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
   return (
     <PriceChart
       candles={candles} forming={forming} lastPrice={live?.lastPrice ?? null} tf={tf}
-      overlays={overlays} panes={panes} zones={ind.data?.zones} swings={ind.data?.swings} trades={q.data?.trades ?? []} payout={q.data?.payout ?? null} splitT={q.data?.split_t ?? null} mtg={q.data?.mtg ?? null}
+      overlays={overlays} panes={panes} zones={ind.data?.zones} swings={ind.data?.swings} markers={overlay?.markers} bands={overlay?.bands} areas={overlay?.areas} trades={q.data?.trades ?? []} payout={q.data?.payout ?? null} splitT={q.data?.split_t ?? null} mtg={q.data?.mtg ?? null}
       height={height} initialCount={initialCount} compact={compact} resetKey={`${symbol}-${tf}`} toolbarLeft={toolbarLeft}
       emptyText="Not enough stored candles for this pair and timeframe yet."
       footer={<>

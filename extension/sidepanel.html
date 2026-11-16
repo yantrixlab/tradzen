@@ -8,10 +8,13 @@
   iframe { border:0; width:100%; height:calc(100% - 26px); display:block; }
   .bar { height:26px; display:flex; align-items:center; justify-content:space-between; padding:0 8px; }
   a { color:#c4b5fd; }
+  #msg { padding:24px 16px; text-align:center; line-height:1.5; }
+  #msg button { margin-top:10px; background:#7c5cff; color:#fff; border:0; border-radius:8px; padding:7px 14px; font:inherit; font-weight:600; cursor:pointer; }
 </style>
 </head>
 <body>
-<div class="bar"><span>Blank? Start the backend (see README) —</span><a href="http://127.0.0.1:8787/" target="_blank">open in a tab</a></div>
+<div class="bar"><span id="hint">Blank? Check the connection in the Tradzen popup —</span><a id="tab" href="#" target="_blank" rel="noreferrer">open in a tab</a></div>
+<div id="msg" hidden></div>
 <iframe id="dash" title="Tradzen dashboard"></iframe>
 <script src="sidepanel.js"></script>
 </body>

@@ -271,9 +271,32 @@ def m017_live_feed(conn: sqlite3.Connection) -> None:
     """)
 
 
+def m018_panel_session(conn: sqlite3.Connection) -> None:
+    """Sessions can be limited to a scope ('panel' = the extension's side panel: the live board only)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(sessions)")}
+    if "scope" not in cols:
+        conn.execute("ALTER TABLE sessions ADD COLUMN scope TEXT")
+
+
+def m019_live_sessions(conn: sqlite3.Connection) -> None:
+    """Live sessions: the admin runs a session, sends signals by hand (heads-up -> signal -> result) and users watch it. Shared by everybody, so main database."""
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS live_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, tier TEXT NOT NULL DEFAULT 'free', status TEXT NOT NULL DEFAULT 'live',
+        symbol TEXT, tf INTEGER NOT NULL DEFAULT 60, follow_admin INTEGER NOT NULL DEFAULT 1, started REAL, ended REAL, started_by INTEGER, note TEXT);
+    CREATE TABLE IF NOT EXISTS session_signals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL, created REAL, sent_at REAL, symbol TEXT NOT NULL, tf INTEGER NOT NULL,
+        direction TEXT NOT NULL, entry_t INTEGER NOT NULL, expiry_candles INTEGER NOT NULL DEFAULT 1, area_lo REAL, area_hi REAL, area_label TEXT, note TEXT,
+        tier TEXT NOT NULL DEFAULT 'free', payout REAL, status TEXT NOT NULL DEFAULT 'headsup', entry REAL, exit REAL, settled_at REAL);
+    CREATE INDEX IF NOT EXISTS ix_session_signals_session ON session_signals(session_id);
+    CREATE INDEX IF NOT EXISTS ix_session_signals_status ON session_signals(status);
+    CREATE TABLE IF NOT EXISTS session_mutes (user_id INTEGER PRIMARY KEY);
+    """)
+
+
 MIGRATIONS = [(1, m001_foundation), (2, m002_backtests), (3, m003_settings), (4, m004_manual_trades), (5, m005_sweeps), (6, m006_research),
               (7, m007_broker_trades), (8, m008_broker_trades_hidden), (9, m009_guard_alerts), (10, m010_style), (11, m011_style_step), (12, m012_accounts), (13, m013_features), (14, m014_strategy_owner),
-              (15, m015_quotex_link), (16, m016_contrib), (17, m017_live_feed)]
+              (15, m015_quotex_link), (16, m016_contrib), (17, m017_live_feed), (18, m018_panel_session), (19, m019_live_sessions)]
 
 
 def schema_version(conn: sqlite3.Connection) -> int:

@@ -31,6 +31,7 @@ from .risk import RiskBook
 from .edgelab import EdgeLab
 from .contrib import Contributions
 from .leases import Leases
+from .live_session import Sessions
 from .research import ResearchRunner
 from .sweep import SweepRunner
 from .spec import validate_spec
@@ -73,6 +74,8 @@ class Engine:
         self.sentiment: dict[str, dict] = {}
         self.last_tick: dict[str, dict] = {}
         self.selected: dict = {"symbol": None, "period": 60}
+        self.user_sel: dict[int, dict] = {}          # account id -> the pair and timeframe open on that account's own Quotex tab ({symbol, period, at}); drives "My chart"
+        self._pairs_cache: tuple[float, list[dict]] = (0.0, [])
         self.signals: list[dict] = []
         self.pending: dict[tuple[int, str, int, int], dict] = {}      # (strategy id, symbol, tf, target_t)
         self.ingest_stats = {"batches": 0, "ticks": 0, "last_recv": None}
@@ -130,6 +133,7 @@ class Engine:
         self._load_candles()
         self._load_events()
         self._load()
+        self.sessions = Sessions(self)               # live sessions: the admin sends signals by hand, users watch (live_session.py); settled by the candles below
 
     # ------------------------------------------------------------------ users: private data per user
     def set_primary(self, uid: int) -> None:
@@ -175,6 +179,8 @@ class Engine:
     def drop_user(self, uid: int) -> None:
         """Forget a deleted user: close and delete their private database."""
         self.leases.drop(int(uid))
+        self.user_sel.pop(int(uid), None)
+        self.sessions.mute(int(uid), True)                      # forget its "session alerts off" row
         ctx = self.users.pop(int(uid), None)
         if ctx is not None:
             try:
@@ -448,7 +454,7 @@ class Engine:
         got_order = False
         for item in payload.get("items", []):
             k = item.get("k")
-            if not feeder and k not in ("o", "b"):
+            if not feeder and k not in ("o", "b", "sel"):
                 continue
             if k == "t":
                 now_f = time.time()
@@ -469,7 +475,13 @@ class Engine:
                         self._sbuf.append((sym, int(now), pct))
             elif k == "sel":
                 if item.get("asset"):
-                    self.selected = {"symbol": item["asset"], "period": int(item.get("period") or 60)}
+                    try:
+                        per = int(item.get("period") or 60)
+                    except (TypeError, ValueError):
+                        per = 60
+                    self.user_sel[uid] = {"symbol": str(item["asset"])[:40], "period": per if per in TFS else 60, "at": time.time()}
+                    if feeder:
+                        self.selected = {"symbol": item["asset"], "period": int(item.get("period") or 60)}
             elif k == "ev":
                 self._log(item.get("e", "?"), item.get("d"), item.get("ts"))
             elif k == "o":
@@ -556,6 +568,7 @@ class Engine:
         self._series(sym, tf).put(row)
         self._queue_candle(sym, tf, row, src)
         self._settle(sym, tf, row)
+        self.sessions.on_close(sym, tf, row)
         self._run_strategies(sym, tf, row)
         if tf == 60:
             for st in self._active_styles():
@@ -1374,6 +1387,40 @@ class Engine:
         order = {"bad": 0, "warn": 1, "info": 2}
         reasons.sort(key=lambda r: order[r["level"]])
         return {"paused": any(r["level"] in ("bad", "warn") for r in reasons), "reasons": reasons}
+
+    def pair_list(self) -> list[dict]:
+        """The pairs a chart can show (symbol, name, market, payout, streaming), kept for a few seconds: every open panel asks for it."""
+        now = time.time()
+        if now - self._pairs_cache[0] < 4.0:
+            return self._pairs_cache[1]
+        out = []
+        for sym in sorted(set(self.instruments) | set(self.last_tick)):
+            inst = self.instruments.get(sym, {"symbol": sym, "name": sym, "category": "", "payout": None, "open": True, "market": "OTC" if sym.endswith("_otc") else "LIVE"})
+            lt = self.last_tick.get(sym)
+            out.append({"symbol": sym, "name": inst.get("name", sym), "market": inst.get("market"), "payout": inst.get("payout"), "category": inst.get("category", ""),
+                        "streaming": bool(lt and now - lt["recv"] < STREAM_TIMEOUT), "last_price": lt["price"] if lt else None})
+        self._pairs_cache = (now, out)
+        return out
+
+    def chart_of(self, sym: str | None, tfv: int) -> dict | None:
+        """What a chart needs for one pair and timeframe: the last candles, the forming one, the last price (the shape of `selected` in mychart / state)."""
+        if not (sym and (sym in self.instruments or sym in self.last_tick or sym in {k[0] for k in self.open})):
+            return None
+        lt = self.last_tick.get(sym)
+        forming = self.open.get((sym, tfv))
+        series = self._series(sym, tfv)
+        return {"symbol": sym, "tf": tfv, "candles": series.tail(80), "offset": (lt["ts"] - lt["recv"]) if lt else 0.0, "last_price": lt["price"] if lt else None,
+                "gap": series.last_gap(tfv), "forming": {k: forming[k] for k in ("t", "o", "h", "l", "c", "n")} if forming else None, "sentiment": self.sentiment.get(sym)}
+
+    def mychart(self, uid: int, symbol: str | None = None, tf: int | None = None) -> dict:
+        """The chart of one account: the pair open on ITS Quotex tab and its timeframe (it follows them when you switch), unless a pair is asked for by hand."""
+        now = time.time()
+        mine = self.user_sel.get(int(uid))
+        sym = symbol or (mine["symbol"] if mine else None)
+        tfv = tf if tf in TFS else (mine["period"] if mine and mine["period"] in TFS else 60)
+        sel = self.chart_of(sym, tfv)
+        return {"now": now, "selected": sel, "symbols": self.pair_list(), "following": not symbol,
+                "mine": {"symbol": mine["symbol"], "tf": mine["period"], "age": now - mine["at"]} if mine else None}
 
     def state(self, symbol: str | None = None, tf: int | None = None) -> dict:
         now = time.time()
