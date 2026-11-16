@@ -28,6 +28,7 @@ from .guard import Guard
 from .style import NAME as STYLE_NAME, Style
 from .risk import RiskBook
 from .edgelab import EdgeLab
+from .contrib import Contributions
 from .research import ResearchRunner
 from .sweep import SweepRunner
 from .spec import validate_spec
@@ -103,6 +104,7 @@ class Engine:
         self._sty: list = []
         self._sty_at = 0.0
         self.edgelab = EdgeLab(self)
+        self.contrib = Contributions(self, (*TFS, *STORE_ONLY_TFS), enabled=os.getenv("QXS_CONTRIB", "on").lower() not in ("off", "0", "false", "no"))   # shared candles: history contributed by every extension
         self._mtg: dict[int, dict] = {}              # strategy id -> one-step martingale summary of its real settled signals (refreshed in the background)
         self._mtg_at, self._mtg_ready, self._mtg_busy = 0.0, False, False
         self._sigmtg_cache: dict = {}                # (signal filter) -> (time, martingale outcomes of the matching settled signals): the Signal history page
@@ -289,7 +291,7 @@ class Engine:
             self.db.executemany(
                 "INSERT INTO candles (symbol, tf, ts, o, h, l, c, ticks, source) VALUES (?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(symbol, tf, ts) DO UPDATE SET o=excluded.o, h=excluded.h, l=excluded.l, c=excluded.c, "
-                "ticks=excluded.ticks, source=excluded.source WHERE excluded.ticks >= COALESCE(candles.ticks, 0)", self._cbuf)
+                "ticks=excluded.ticks, source=excluded.source WHERE excluded.ticks >= COALESCE(candles.ticks, 0) OR candles.source LIKE 'contrib:%'", self._cbuf)   # the price feed's own candle replaces a contributed one
             self._cbuf.clear()
         if self._ebuf:
             self.db.executemany("INSERT INTO events (ts, kind, detail) VALUES (?,?,?)", self._ebuf)
@@ -544,6 +546,28 @@ class Engine:
                 st.on_close(sym, row)
 
     # ------------------------------------------------------------------ history seeding
+    def _derive_higher(self, sym: str, tf: int, t_from: int, t_to: int, ref: float, source: str = "derived", only_missing: bool = False) -> int:
+        """Build the higher timeframes (5m, 15m) around the closed `tf` candles stored between t_from and t_to. They are built from what the DATABASE holds there, not from
+        the in-memory tail: a scroll-back batch is months older than the tail, and its edge buckets need the neighbours already stored. only_missing: leave a higher candle
+        that already exists untouched (a contribution never replaces anything). Returns how many were added."""
+        higher = [dst for dst in TFS if dst > tf and dst % tf == 0]
+        if not higher:
+            return 0
+        self._flush(force=True)
+        lo, hi = t_from - max(higher), t_to + max(higher)
+        base = [{"t": t, "o": o_, "h": h, "l": l, "c": c, "n": n or 0} for t, o_, h, l, c, n in self.db.execute(
+            "SELECT ts, o, h, l, c, ticks FROM candles WHERE symbol=? AND tf=? AND ts BETWEEN ? AND ? ORDER BY ts", (sym, tf, lo, hi))]
+        added = 0
+        for dst in higher:
+            have = {r[0] for r in self.db.execute("SELECT ts FROM candles WHERE symbol=? AND tf=? AND ts BETWEEN ? AND ?", (sym, dst, lo, hi))} if only_missing else set()
+            for a in aggregate(base, tf, dst, ref):
+                if a["t"] in have:
+                    continue
+                self._series(sym, dst).put(a)
+                self._queue_candle(sym, dst, a, source)
+                added += 1
+        return added
+
     def seed_history(self, sym: str | None, rows: list[dict]) -> None:
         note = {"asset": sym, "rows": len(rows), "at": time.time(), "result": ""}
         log = self.ingest_stats.setdefault("hist", [])
@@ -578,18 +602,8 @@ class Engine:
             row = {k: r[k] for k in ("t", "o", "h", "l", "c", "n")}
             self._series(sym, tf).put(row)
             self._queue_candle(sym, tf, row, "history")
-        higher = [dst for dst in TFS if dst > tf and dst % tf == 0]
-        if closed and higher:
-            # Build the higher timeframes from what the DATABASE holds around this batch, not from the in-memory tail:
-            # a scroll-back batch is months older than the tail, and its edge buckets need the neighbours already stored.
-            self._flush(force=True)
-            lo, hi = closed[0]["t"] - max(higher), closed[-1]["t"] + max(higher)
-            base = [{"t": t, "o": o_, "h": h, "l": l, "c": c, "n": n or 0} for t, o_, h, l, c, n in self.db.execute(
-                "SELECT ts, o, h, l, c, ticks FROM candles WHERE symbol=? AND tf=? AND ts BETWEEN ? AND ? ORDER BY ts", (sym, tf, lo, hi))]
-            for dst in higher:
-                for a in aggregate(base, tf, dst, ref):
-                    self._series(sym, dst).put(a)
-                    self._queue_candle(sym, dst, a, "derived")
+        if closed:
+            self._derive_higher(sym, tf, closed[0]["t"], closed[-1]["t"], ref)
         for r in forming:                                  # continue the forming candle with live ticks
             cur = self.open.get((sym, tf))
             seen = r.get("last") or float(r["t"])

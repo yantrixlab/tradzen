@@ -66,6 +66,7 @@ REGISTRY: list[F] = [
     F("cap.signals.receive", "Receive the admin's signals", "Signals & alerts", "Signal and result cards and sounds in the Chrome extension.", trader_soon=False),
     F("cap.trades.track", "Record own trades", "Signals & alerts", "Store the user's orders and balance sent by their extension (needed for My trades, Guard and My style).", min_role="trader"),
     F("cap.extension.connect", "Connect the Chrome extension", "Signals & alerts", "Create access tokens to link a browser to the account."),
+    F("cap.candles.contribute", "Share candles", "Signals & alerts", "The extension adds the chart history its Quotex page loads to the shared candle store (a candle the server already has is never changed)."),
     # ---- strategies
     F("cap.strategies.use_published", "Use published strategies", "Strategies", "Add the strategies the team published to the account and receive their signals."),
     F("cap.strategies.publish", "Publish strategies", "Strategies", "Decide who gets a shared strategy's signals (testing, library, everybody).", min_role="editor"),

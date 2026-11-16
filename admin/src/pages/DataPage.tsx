@@ -1,7 +1,8 @@
 import { Fragment, useState } from 'react';
 import { ago, dateTime, pct, prettyPair, tfName } from '../format';
-import { useCoverage, useGaps, useLiveState, usePersisted, usePlan } from '../hooks';
+import { useCoverage, useGaps, useLiveState, useMe, usePersisted, usePlan } from '../hooks';
 import { Badge, Card, Empty, Field, PageTitle, Spinner, Stat, Tabs } from '../components/ui';
+import { ContribPanel } from '../components/ContribPanel';
 import { SentimentPanel } from '../components/SentimentPanel';
 
 function PlanTab({ now }: { now: number }) {
@@ -62,6 +63,7 @@ function PlanTab({ now }: { now: number }) {
 export default function DataPage() {
   const live = useLiveState();
   const cov = useCoverage();
+  const isAdmin = useMe().data?.user.role === 'admin';            // the shared-candle controls are the admin's
   const [tab, setTab] = useState('plan');
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<{ symbol: string; tf: number } | null>(null);
@@ -77,9 +79,11 @@ export default function DataPage() {
     <>
       <PageTitle title="Data" sub={`${totalCandles.toLocaleString()} candles stored across ${new Set((cov.data ?? []).map((c) => c.symbol)).size} pairs. Backtests and the clinic can only be as good as this history - scroll a Quotex chart back to load older candles.`}
         right={<div className="flex items-center gap-2"><input className="input !w-56" placeholder="Filter pairs…" value={q} onChange={(e) => setQ(e.target.value)} /><a className="btn btn-sm" href="/api/data/export?fmt=csv" download title="Every stored candle of every pair, as one CSV">Export all CSV</a></div>} />
-      <Tabs tabs={[{ key: 'plan', label: 'Collection plan' }, { key: 'sentiment', label: 'Sentiment' }, { key: 'coverage', label: 'Candle coverage' }, { key: 'instruments', label: `Instruments (${live.data.symbols.length})` }, { key: 'history', label: 'History imports' }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ key: 'plan', label: 'Collection plan' }, { key: 'sentiment', label: 'Sentiment' }, { key: 'coverage', label: 'Candle coverage' }, { key: 'instruments', label: `Instruments (${live.data.symbols.length})` }, { key: 'history', label: 'History imports' },
+        ...(isAdmin ? [{ key: 'shared', label: 'Shared candles' }] : [])]} value={tab} onChange={setTab} />
 
       {tab === 'plan' && <PlanTab now={now} />}
+      {tab === 'shared' && isAdmin && <ContribPanel now={now} />}
       {tab === 'sentiment' && <SentimentPanel now={now} />}
 
       {tab === 'coverage' && (

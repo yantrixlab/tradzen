@@ -694,7 +694,71 @@ async def ingest(request: Request) -> dict:
     if link != "off":
         res["qx"] = {"state": link, "hint": (auth.get_user(user["id"]) or {}).get("qx_hint")}
     res["as"] = {"username": user.get("username"), "role": user.get("role")}
+    if not user.get("feeder") and auth.enabled and user.get("via") == "token":
+        res["contrib"] = _contribute(user, link, [i for i in items if i.get("k") == "h"])        # shared candles: the history this tab's page loaded (see app/contrib.py)
     return res
+
+
+def _contribute(user: dict, link: str, hist: list[dict]) -> dict:
+    """What an ordinary extension may add to the shared candle store, and the answer it gets: state on | wait | paused | busy | off, the result per history item
+    (so it does not send the same range again) and the ranges the server would like to have."""
+    c = engine.contrib
+    if not c.enabled or not features.can(user, "cap.candles.contribute"):
+        return {"state": "off"}
+    if link in ("unknown", "mismatch", "taken"):
+        return {"state": "wait"}                                          # candles are accepted only from a tab whose Quotex account is the linked one
+    out = c.intake(user["id"], hist) if hist else {"state": "paused" if c.blocked(user["id"]) else "on", "results": []}
+    if out["state"] == "on":
+        out["want"] = c.wants()[:5]
+    return out
+
+
+class PauseIn(BaseModel):
+    reason: str = Field("paused by the admin", max_length=200)
+
+
+@app.get("/api/contrib/mine")
+async def contrib_mine(request: Request) -> dict:
+    """The caller's own contributions to the shared candle store."""
+    return engine.contrib.mine(request.state.user["id"])
+
+
+@app.get("/api/contrib")
+async def contrib_overview() -> dict:
+    """Admin: who contributed what (7 days), candles that disagreed with stored ones, paused accounts, and the ranges the server wants."""
+    return engine.contrib.overview()
+
+
+def _contrib_target(uid: int) -> str:
+    row = engine.db.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()
+    if not row:
+        raise HTTPException(404, "no such user")
+    return row[0]
+
+
+@app.post("/api/contrib/{uid}/pause")
+async def contrib_pause(uid: int, request: Request, body: PauseIn) -> dict:
+    name = _contrib_target(uid)
+    engine.contrib.pause(uid, body.reason)
+    auth.audit(request.state.user["username"], "contrib-pause", name, {"reason": body.reason})
+    return {"ok": True}
+
+
+@app.post("/api/contrib/{uid}/resume")
+async def contrib_resume(uid: int, request: Request) -> dict:
+    name = _contrib_target(uid)
+    done = engine.contrib.resume(uid)
+    auth.audit(request.state.user["username"], "contrib-resume", name)
+    return {"ok": True, "was_paused": done}
+
+
+@app.delete("/api/contrib/{uid}")
+async def contrib_revoke(uid: int, request: Request) -> dict:
+    """Remove every candle this account contributed (the feed's own and other accounts' candles are not touched)."""
+    name = _contrib_target(uid)
+    removed = engine.contrib.revoke(uid)
+    auth.audit(request.state.user["username"], "contrib-revoke", name, {"candles": removed})
+    return {"ok": True, "removed": removed}
 
 
 @app.get("/api/events")

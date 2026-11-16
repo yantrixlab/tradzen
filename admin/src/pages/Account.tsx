@@ -105,6 +105,28 @@ function QuotexLink({ linked, hint, at, enforced }: { linked: boolean; hint: str
   );
 }
 
+/** The candles this account's extension added to the shared candle store (everybody's backtests and signals use them). */
+function SharedCandles() {
+  const q = useQuery({ queryKey: ['contrib-mine'], queryFn: () => api<{ enabled: boolean; paused: { reason: string } | null; today: { new: number; dup: number; rejected: number }; week: { received: number; new: number; dup: number; conflict: number; rejected: number }; stored: number }>('/api/contrib/mine'), refetchInterval: 60000 });
+  const d = q.data;
+  const n = (x: number) => x.toLocaleString();
+  return (
+    <Card title="Shared candles">
+      {!d ? <p className="note">…</p> : !d.enabled ? <p className="note">This server does not collect candles from extensions.</p> : (
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center gap-2">{d.paused ? <Badge tone="down">PAUSED</Badge> : <Badge tone="up">SHARING</Badge>}<span className="note">{d.paused ? 'Your admin paused your candle contributions. Trades and alerts are not affected.' : 'Your extension adds the chart history your Quotex page loads to the one candle store everybody uses.'}</span></div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded border border-line p-2"><div className="text-lg font-semibold tabular-nums">{n(d.today.new)}</div><div className="note">new today</div></div>
+            <div className="rounded border border-line p-2"><div className="text-lg font-semibold tabular-nums">{n(d.week.new)}</div><div className="note">new in 7 days</div></div>
+            <div className="rounded border border-line p-2"><div className="text-lg font-semibold tabular-nums">{n(d.stored)}</div><div className="note">stored from you</div></div>
+          </div>
+          <p className="note">Candles the server already has are never changed, so sending the same history again is harmless. Only candles from the Quotex account linked to this account are taken.</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function Account() {
   const me = useMe().data;
   if (!me) return null;
@@ -116,6 +138,7 @@ export default function Account() {
         {me.auth_enabled ? <Card title="Password"><PasswordForm /></Card> : <Card title="Password"><p className="note">Sign-in is switched off on this local server, so there is no password to change.</p></Card>}
         {me.auth_enabled ? <Tokens isAdmin={u.role === 'admin'} /> : <Card title="Chrome extension"><p className="note">On this local server the extension needs no token.</p></Card>}
         {me.auth_enabled && <QuotexLink linked={!!u.qx_linked} hint={u.qx_hint} at={u.qx_at} enforced={me.quotex_link !== false} />}
+        {me.auth_enabled && <SharedCandles />}
       </div>
     </div>
   );

@@ -70,6 +70,7 @@ function renderOverview(all, conn, snap) {
   if (all.feeder) setStat('role', 'ok', 'Price feed', 'This browser streams Quotex prices for everyone. Keep this tab open.');
   else setStat('role', '', signedIn || !local ? 'Alerts and my trades' : 'Local mode', 'Gets the signals for your account and keeps your own trade history.');
 
+  renderContrib(all, local || !signedIn, banners);
   $('banner').innerHTML = banners.map(([k, h]) => `<div class="banner ${k}">${h}</div>`).join('');
 
   // ---- the pill
@@ -77,6 +78,27 @@ function renderOverview(all, conn, snap) {
   else if (b && !b.ok) pill('off', 'offline');
   else if (st === 'mismatch' || st === 'taken') pill('off', 'blocked');
   else { const age = (Date.now() - snap.now) / 1000; if (age < 6) pill('live', 'live'); else pill('off', 'stale ' + age.toFixed(0) + 's'); }
+}
+
+// ---- shared candles: what this browser added to the server's candle store, and the ranges the server would like to have
+const fmtT = (t) => new Date(t * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+function renderContrib(all, hide, banners) {
+  const c = all.contrib, t = (c && c.totals) || {}, n = (x) => Number(x || 0).toLocaleString();
+  $('r-cd').hidden = hide || !!all.feeder;                      // the price feed has its own path; a local server has no shared store
+  $('c-want').hidden = true;
+  if ($('r-cd').hidden) return;
+  const added = t.new ? `${n(t.new)} new candles added this session` : 'Nothing new to add yet';
+  if (!c || !c.state) setStat('cd', '', 'Shared candles', 'Waiting for your Quotex page to load a chart…');
+  else if (c.state === 'wait') setStat('cd', 'warn', 'Waiting for your Quotex account', 'Candles are taken once your Quotex account is known and linked.');
+  else if (c.state === 'busy' || Date.now() < (c.retryAt || 0)) setStat('cd', 'warn', 'Slowing down', 'The server is busy; your history is kept and sent a little later.');
+  else if (c.state === 'paused') {
+    setStat('cd', 'bad', 'Paused by the admin', 'Your candle contributions are switched off. Your trades and alerts are not affected.');
+    banners.push(['warn', '<b>Candle sharing is paused for your account.</b> Ask your admin if you want it back.']);
+  } else if (c.state === 'off') setStat('cd', '', 'Not shared', 'Switched off on this server or for your plan.');
+  else setStat('cd', 'ok', 'Sharing candles', `${added}${t.dup ? ` · ${n(t.dup)} the server already had` : ''}${c.queued ? ` · ${c.queued} waiting` : ''}.`);
+  const want = c.state === 'on' && Array.isArray(c.want) ? c.want.slice(0, 5) : [];
+  $('c-want').hidden = !want.length;
+  $('want-list').innerHTML = want.map((w) => `<div class="row"><label>${esc(w.name || w.asset)}<small>${w.kind === 'gap' ? 'A hole' : 'Older history'} · ${esc(fmtT(w.from))} – ${esc(fmtT(w.to))}${w.missing ? ` · about ${n(w.missing)} candles` : ''}</small></label></div>`).join('');
 }
 
 async function load() {
@@ -203,7 +225,7 @@ $('l-go').onclick = async () => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : 'HTTP ' + r.status);
     await chrome.storage.local.set({ backendUrl: s.u.origin, token: j.token, who: { username: j.user.username, role: j.user.role, feeder: !!j.feeder } });
-    await chrome.storage.session.remove(['seq', 'qx', 'who', 'backend']);
+    await chrome.storage.session.remove(['seq', 'qx', 'who', 'backend', 'contrib', 'sentH', 'feeder']);
     $('l-pass').value = '';
     setMsg(msg, 'ok', `Signed in as ${j.user.username}. Reload the Quotex tab once.`);
     load();
@@ -215,7 +237,7 @@ $('l-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('l-go'
 
 $('l-out').onclick = async () => {
   await chrome.storage.local.remove(['token', 'who']);
-  await chrome.storage.session.remove(['seq', 'qx', 'who', 'backend']);
+  await chrome.storage.session.remove(['seq', 'qx', 'who', 'backend', 'contrib', 'sentH', 'feeder']);
   $('c-token').value = '';
   setMsg($('o-msg'), 'mut', 'Signed out in this browser. To disconnect it for good, also revoke it under My account on the website.');
   load();
@@ -235,7 +257,7 @@ $('c-save').onclick = async () => {
   }
   await chrome.storage.local.set({ backendUrl: s.u.origin, token });
   await chrome.storage.local.remove('who');
-  await chrome.storage.session.remove(['seq', 'qx', 'who']);
+  await chrome.storage.session.remove(['seq', 'qx', 'who', 'contrib', 'sentH', 'feeder']);
   msg.className = 'ok'; msg.textContent = ' saved - reload the Quotex tab once';
 };
 

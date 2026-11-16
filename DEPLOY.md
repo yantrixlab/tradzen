@@ -74,6 +74,15 @@ python3 deploy/package_extension.py https://signals.example.com
 ```
 makes `dist/tradzen-extension-signals.example.com.zip`. Users unzip it, open `chrome://extensions`, switch on Developer mode, **Load unpacked**, then click the extension, open **Connection**, sign in with their Tradzen username and password (an access token from *My account* still works too), and reload their Quotex tab. The first Quotex account the extension sees is tied to that Tradzen account (`QXS_QUOTEX_LINK`); an admin can unlink it on the Users page. (To avoid developer mode you can publish the zip as an unlisted item on the Chrome Web Store; review rules apply.)
 
+## Shared candles
+Only the price-feed tab builds candles from live ticks, but every signed-in extension also sees the chart history its own Quotex page loads (when a pair is opened or its chart is scrolled back). Those candles are offered to the server, which keeps **one candle store for everybody**:
+- **First write wins.** A candle the server already has is never changed by a contribution; if the stored one disagrees it is only counted (Data → Shared candles → Disagreements). The price feed's own live candle may still replace a contributed one.
+- **Checked before storing:** a known pair, a stored timeframe, a finished candle, sane open/high/low/close, no jumps between neighbours, a price level close to what is stored. A candle that fails is counted, not stored.
+- **Load control:** each account gets a small allowance (12 history items a minute, about 21,000 candles an hour) and the whole server a write budget; beyond them the answer is "busy, retry in N seconds" and nothing is queued. The extension remembers which ranges the server answered for and does not send them again.
+- **Trust:** an account whose candles are mostly refused or in conflict is paused automatically; the admin can pause, resume or remove (all candles that account contributed, tagged `contrib:<id>`) at any time. Only the Quotex account linked to the Tradzen account contributes.
+- **Gaps:** the extension shows the ranges the server wants (recent holes of streaming pairs first), so a user can open the pair and scroll back. Candles that close a hole the feed left are used by the engine at once.
+- Switch it off with `QXS_CONTRIB=off`, or per plan with the *Share candles* feature. Contributions do not add live prices: only the price feed streams ticks.
+
 ## Updating
 ```bash
 git pull            # or copy the new files

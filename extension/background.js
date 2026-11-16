@@ -12,16 +12,83 @@ let lastSeq = null, seqLoaded = false;
 let queued = 0;
 // On a hosted server only the admin's price-feed token sends prices; any other account sends just its own orders and balance (the server says which one this is).
 // It still asks for alerts about every 1.5 s, because alerts ride on the answer.
-let isFeeder = true, lastPoll = 0;
+let isFeeder = null, lastPoll = 0;               // null = the server has not said yet
 function forward(items, tabId) {
-  if (!isFeeder) {
+  if (isFeeder !== true) items = queueHistory(items, tabId);        // not (known to be) the price feed: its chart history is offered to the shared candle store instead
+  if (isFeeder === false) {
     items = items.filter((i) => i && (i.k === 'o' || i.k === 'b' || i.k === 'a' || (i.k === 'ev' && i.e === 'hook-start')));      // own orders / balance, and which Quotex account this is
-    if (!items.length && Date.now() - lastPoll < 1500) return;
+    if (!items.length && !histReady(tabId) && Date.now() - lastPoll < 1500) return;
   }
   lastPoll = Date.now();
   if (queued > 40) return;                                    // backend is down: drop instead of building an ever-growing backlog
   queued++;
   chain = chain.then(() => doForward(items, tabId)).catch(() => {}).finally(() => { queued--; });
+}
+
+// ------------------------------------------------------------------ shared candles
+// An ordinary (non price-feed) extension offers the chart history its Quotex page loads anyway to the server's shared candle store. The server only ever ADDS candles it does not
+// have (it never changes a stored one), answers per item what was new, and says when to slow down. History waits per tab until the Quotex account of that tab is known
+// (the server takes it only from the linked account), goes out a few items per request, and is not sent again once the server has it.
+const HIST_MAX = 40, HIST_MS = 10 * 60 * 1000, HIST_PER_REQUEST = 3, SENT_MS = 60 * 60 * 1000, SENT_MAX = 200;
+const histByTab = new Map();                       // tabId -> [{ item, key, at }]
+const sentH = new Map();                           // key -> when the server answered for it
+let contribState = null, contribRetryAt = 0, contribWant = [];
+const contribTotals = { items: 0, rows: 0, new: 0, dup: 0, conflict: 0, rejected: 0 };
+const contribOff = () => contribState === 'off' || contribState === 'paused';
+const histKey = (i) => { const r = i.rows; return `${i.asset}|${r[0] && r[0][0]}|${r[r.length - 1] && r[r.length - 1][0]}|${r.length}`; };
+
+function queueHistory(items, tabId) {
+  const rest = [];
+  for (const i of items) {
+    if (!i || i.k !== 'h') {
+      if (i && i.k === 'ev' && i.e === 'hook-start') histByTab.delete(tabId);          // a new page load: what was waiting belongs to the old one
+      rest.push(i);
+      continue;
+    }
+    if (contribOff() || typeof i.asset !== 'string' || !Array.isArray(i.rows) || i.rows.length < 2) continue;
+    const key = histKey(i);
+    if (Date.now() - (sentH.get(key) || 0) < SENT_MS) continue;                        // the server has this range already
+    const q = histByTab.get(tabId) || [];
+    if (!q.some((x) => x.key === key)) { q.push({ item: { k: 'h', asset: i.asset, rows: i.rows }, key, at: Date.now() }); histByTab.set(tabId, q.slice(-HIST_MAX)); }
+  }
+  return rest;
+}
+const histReady = (tabId) => { const q = histByTab.get(tabId); return !!(q && q.length) && !contribOff() && Date.now() >= contribRetryAt && (needsLink === false || acctByTab.has(tabId)); };
+function takeHistory(tabId, all) {
+  const q = (histByTab.get(tabId) || []).filter((x) => Date.now() - x.at < HIST_MS);
+  const take = all ? q : q.slice(0, HIST_PER_REQUEST), left = all ? [] : q.slice(HIST_PER_REQUEST);
+  if (left.length) histByTab.set(tabId, left); else histByTab.delete(tabId);
+  return take;
+}
+function requeueHistory(tabId, e) { const q = histByTab.get(tabId) || []; q.unshift(e); histByTab.set(tabId, q.slice(0, HIST_MAX)); }
+function markSent(e) {
+  sentH.set(e.key, Date.now());
+  if (sentH.size > SENT_MAX) for (const k of [...sentH.keys()].slice(0, sentH.size - SENT_MAX)) sentH.delete(k);
+}
+function saveContrib() {
+  const queued = [...histByTab.values()].reduce((a, q) => a + q.length, 0);
+  chrome.storage.session.set({ contrib: { state: contribState, retryAt: contribRetryAt, want: contribWant, totals: contribTotals, queued, at: Date.now() }, sentH: Object.fromEntries(sentH) });
+}
+/** What the server said about the history that went out with this request (`sending`, in the order it was sent). */
+function afterContrib(j, sending, tabId) {
+  const c = j.contrib;
+  if (j.feeder === true) sending.forEach(markSent);                                    // the price feed's own history path took them
+  else if (!c) { if (sending.length) { contribState = 'off'; histByTab.clear(); } }     // an older server ignores history from ordinary accounts
+  else {
+    contribState = c.state;
+    if (c.state === 'busy') contribRetryAt = Date.now() + Math.max(5, Math.min(c.retry_after || 30, 600)) * 1000;
+    if (Array.isArray(c.want)) contribWant = c.want;
+    const res = c.results || [];
+    sending.forEach((e, n) => {
+      if (res[n]) {
+        markSent(e);
+        contribTotals.items++; contribTotals.rows += res[n].received || 0; contribTotals.new += res[n].new || 0;
+        contribTotals.dup += res[n].dup || 0; contribTotals.conflict += res[n].conflict || 0; contribTotals.rejected += res[n].rejected || 0;
+      } else if (c.state === 'on' || c.state === 'busy' || c.state === 'wait') requeueHistory(tabId, e);
+    });
+    if (contribOff()) histByTab.clear();
+  }
+  saveContrib();
 }
 
 // ------------------------------------------------------------------ which Quotex account this tab is logged into
@@ -37,9 +104,12 @@ const HOLD_MAX = 300, HOLD_MS = 10 * 60 * 1000;
 async function loadAcct() {
   if (acctLoaded) return;
   acctLoaded = true;
-  const s = await chrome.storage.session.get(['acctByTab', 'needsLink']);
+  const s = await chrome.storage.session.get(['acctByTab', 'needsLink', 'feeder', 'contrib', 'sentH']);
   for (const [k, v] of Object.entries(s.acctByTab || {})) acctByTab.set(Number(k), v);
   if (typeof s.needsLink === 'boolean') needsLink = s.needsLink;
+  if (isFeeder === null && typeof s.feeder === 'boolean') isFeeder = s.feeder;        // the worker was restarted: what the server said last time still holds
+  if (s.contrib) { contribState = s.contrib.state || null; contribRetryAt = s.contrib.retryAt || 0; contribWant = s.contrib.want || []; Object.assign(contribTotals, s.contrib.totals || {}); }
+  for (const [k, v] of Object.entries(s.sentH || {})) sentH.set(k, v);
 }
 function saveAcct() { chrome.storage.session.set({ acctByTab: Object.fromEntries(acctByTab) }); }
 
@@ -81,6 +151,9 @@ async function doForward(items, tabId) {
   items = await applyAcct(items, tabId);
   const acct = acctByTab.get(tabId) || null;
   items = sortPrivate(items, tabId, !!acct);
+  let sending = [];                                            // chart history that goes out with this request (see "shared candles")
+  if (isFeeder === true) items = [...takeHistory(tabId, true).map((x) => x.item), ...items];      // the server said this is the price feed: what was held goes out as it is
+  else if (histReady(tabId)) { sending = takeHistory(tabId); items = [...items, ...sending.map((x) => x.item)]; }
   if (!seqLoaded) { const s = await chrome.storage.session.get('seq'); lastSeq = s.seq ?? null; seqLoaded = true; }
   const conn = await chrome.storage.local.get(['backendUrl', 'token']);
   const url = (conn.backendUrl || DEFAULT_BACKEND).replace(/\/$/, '');
@@ -96,9 +169,10 @@ async function doForward(items, tabId) {
   } catch (e) { err = ctl.signal.aborted ? 'timeout after 8 s' : String((e && e.message) || e); }
   finally { clearTimeout(timer); }
   chrome.storage.session.set({ backend: { ok, err, url, at: Date.now() } });
-  if (!j) return;
+  if (!j) { sending.forEach((e) => requeueHistory(tabId, e)); return; }       // the server could not be reached: try again with the next request
   if (typeof j.seq === 'number') { lastSeq = j.seq; chrome.storage.session.set({ seq: j.seq }); }
   if (typeof j.feeder === 'boolean') isFeeder = j.feeder;
+  if (isFeeder === false || sending.length) afterContrib(j, sending, tabId);
   needsLink = !!j.qx;                                                    // only a server that ties accounts answers with the state
   chrome.storage.session.set({ needsLink, qx: j.qx ? { ...j.qx, at: Date.now() } : null, who: j.as || null, feeder: !!j.feeder });
   if (j.qx && (j.qx.state === 'mismatch' || j.qx.state === 'taken')) held.delete(tabId);
@@ -221,6 +295,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  histByTab.delete(tabId);
   const all = await chrome.storage.session.get(null);
   const dead = Object.keys(all).filter((k) => k.startsWith(`snap:${tabId}:`));
   if (dead.length) chrome.storage.session.remove(dead);
