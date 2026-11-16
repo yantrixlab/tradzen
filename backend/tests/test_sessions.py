@@ -234,6 +234,78 @@ def test_the_side_panel_can_watch_but_not_control():
     assert ext.post("/api/sessions", json={"title": "x"}, headers=sess).status_code == 403 and ext.post(f"/api/sessions/{live['session']['id']}/end", headers=sess).status_code == 403
 
 
+def test_running_candle_defined_time_and_defined_price():
+    main, eng, adm = _setup()
+    s = adm.post("/api/sessions", json={"title": "Modes", "symbol": SYM, "tf": 60}, headers=H).json()
+    sid, url = s["id"], f"/api/sessions/{s['id']}/signals"
+    now = time.time()
+    # a running-candle trade is taken at once, at the live price: nothing to get ready for, and no price means no trade
+    assert adm.post(url, json={"direction": "CALL", "entry": "current"}, headers=H).status_code == 400, "no heads-up for the running candle"
+    assert adm.post(url, json={"direction": "CALL", "entry": "current", "send": True}, headers=H).status_code == 409, "no live price yet"
+    eng.on_tick(SYM, now, 1.0800)
+    cur = adm.post(url, json={"direction": "CALL", "entry": "current", "send": True, "note": "momentum"}, headers=H).json()
+    assert cur["status"] == "pending" and cur["entry_mode"] == "current" and cur["entry_t"] == bucket(now, 60) and cur["entry"] == 1.08 and cur["entry_px"] == 1.08
+    ev = [e for e in eng.notify_log if e["kind"] == "signal"][-1]
+    assert ev["entry_mode"] == "current" and ev["basis_t"] == cur["entry_t"] and "NOW" in ev["factors"][0]["note"] and "momentum" in ev["factors"][0]["note"]
+    # it is settled by that candle's close against the price it was taken at (not against the candle's open)
+    cur = _shift(eng, cur, 1)
+    _candle(eng, cur["entry_t"], 1.0850, 1.0830)                    # the candle opened above the entry and closes below its open, yet above the entry price: a win for a CALL at 1.0800
+    assert [x for x in adm.get(f"/api/sessions/{sid}").json()["signals"] if x["id"] == cur["id"]][0]["status"] == "win"
+    assert [x for x in adm.get(f"/api/sessions/{sid}").json()["signals"] if x["id"] == cur["id"]][0]["entry"] == 1.08
+    # too late in the candle (under 10 s left): refused, send it for the next one
+    import app.live_session as ls
+    real = ls.time.time
+    ls.time.time = lambda: bucket(real(), 60) + 55
+    try:
+        assert adm.post(url, json={"direction": "PUT", "entry": "current", "send": True}, headers=H).status_code == 409
+    finally:
+        ls.time.time = real
+    # a defined time: the candle that opens at that time (any moment inside it), only in the future and at most 2 h ahead
+    at = bucket(now, 60) + 5 * 60 + 17
+    tm = adm.post(url, json={"direction": "PUT", "entry": "time", "at": at}, headers=H).json()
+    assert tm["entry_mode"] == "time" and tm["entry_t"] == bucket(at, 60) and tm["status"] == "headsup"
+    for bad in ({"entry": "time"}, {"entry": "time", "at": now - 300}, {"entry": "time", "at": bucket(now, 60)}, {"entry": "time", "at": now + 3 * 3600}):
+        assert adm.post(url, json={"direction": "CALL", **bad}, headers=H).status_code == 400, bad
+    # a defined price: the trade is entered at it, not at the candle's open
+    px = adm.post(url, json={"direction": "CALL", "send": True, "entry_px": 1.0825}, headers=H).json()
+    assert px["entry"] == 1.0825 and px["entry_px"] == 1.0825 and px["entry_mode"] == "next"
+    px = _shift(eng, px, 2)
+    _candle(eng, px["entry_t"], 1.0800, 1.0820)                     # closes above the candle's open (a win by the open) but below the entry price 1.0825: a loss
+    got = [x for x in adm.get(f"/api/sessions/{sid}").json()["signals"] if x["id"] == px["id"]][0]
+    assert got["status"] == "loss" and got["entry"] == 1.0825
+    assert adm.post(url, json={"direction": "CALL", "entry_px": -2}, headers=H).status_code == 400
+
+
+def test_status_dialogs_and_the_panel_sender_are_for_the_right_people():
+    main, eng, adm = _setup()
+    anna = _user(main, adm, "anna")
+    ids = {u["username"]: u["id"] for u in adm.get("/api/users").json()}
+    assert adm.get("/api/sessions/status").json()["live"] is False and _client(main).get("/api/sessions/status").status_code == 401
+    s = adm.post("/api/sessions", json={"title": "Dialogs", "symbol": SYM}, headers=H).json()
+    mine, hers = adm.get("/api/sessions/status").json(), anna.get("/api/sessions/status").json()
+    assert mine["live"] and mine["mine"] is True and mine["session"]["title"] == "Dialogs" and hers["live"] and hers["mine"] is False
+    assert adm.get("/api/sessions/live").json()["mine"] is True and anna.get("/api/sessions/live").json().get("mine") is False
+    # the start dialog goes to everybody but the admin who pressed the button; the end dialog too, with the result
+    feats, acc = main.features, main.access
+    from app.routes_auth import event_visible
+    started = [e for e in eng.notify_log if e["kind"] == "session" and e["stage"] == "started"][-1]
+    assert started["by"] == ids[ADMIN] and event_visible(main.auth.get_user(ids[ADMIN]) | {"via": "session"}, started, feats.can, acc) is False
+    assert event_visible(main.auth.get_user(ids["anna"]) | {"via": "session"}, started, feats.can, acc) is True
+    # the side panel's limited session of the starting admin can send signals (and cancel them) but not start / end sessions; a trader's cannot send
+    eng.on_tick(SYM, time.time(), 1.08)
+    ext = _client(main)
+    sess = lambda name, pw: {"Authorization": "Session " + ext.post("/api/auth/panel-session", json={"ticket": ext.post("/api/auth/panel-ticket", headers={"Authorization": "Bearer " + ext.post(          # noqa: E731
+        "/api/auth/extension-login", json={"username": name, "password": pw, "device": "d", "feeder": False}).json()["token"]}).json()["ticket"]}).json()["token"], **H}
+    a, t = sess(ADMIN, ADMIN_PW), sess("anna", "anna-pass-12345")
+    sg = ext.post(f"/api/sessions/{s['id']}/signals", json={"direction": "CALL", "entry": "current", "send": True}, headers=a)
+    assert sg.status_code == 200 and sg.json()["status"] == "pending"
+    assert ext.post(f"/api/sessions/{s['id']}/signals", json={"direction": "CALL", "entry": "next"}, headers=t).status_code == 403
+    assert ext.post(f"/api/sessions/{s['id']}/end", headers=a).status_code == 403 and ext.get("/api/sessions/status", headers=t).json()["mine"] is False
+    adm.post(f"/api/sessions/{s['id']}/end", headers=H)
+    ended = [e for e in eng.notify_log if e["kind"] == "session" and e["stage"] == "ended"][-1]
+    assert ended["by"] == ids[ADMIN] and ended["result"]["total"] == 1 and event_visible(main.auth.get_user(ids["anna"]) | {"via": "session"}, ended, feats.can, acc) is True
+
+
 if __name__ == "__main__":
     try:
         for name, fn in list(globals().items()):

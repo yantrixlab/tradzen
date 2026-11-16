@@ -3,6 +3,8 @@ import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { clearPrefs } from './prefs';
+import { SessionDialogs } from './components/SessionDialogs';
+import { useSessionStatus } from './sessions';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Me, useLiveState, useMe } from './hooks';
 import Overview from './pages/Overview';
@@ -78,6 +80,8 @@ function Shell({ me }: { me: Me }) {
   const role = me.user.role;
   const staff = may(role, 'editor');
   const nav = NAV.filter(([, , , min, key]) => may(role, min) && on(me, key));
+  const sessionsOn = on(me, 'menu.sessions');
+  const live = useSessionStatus(sessionsOn).data;                  // a session is live: the menu row glows and blinks, a dialog announces the start and the end (SessionDialogs)
   const home = staff ? '/' : nav.find(([to]) => to !== '/account')?.[0] ?? '/account';      // a trader lands on their own trades
   async function signOut() {
     try { await api('/api/auth/logout', { method: 'POST', body: {} }); } catch { /* the session is gone either way */ }
@@ -92,18 +96,23 @@ function Shell({ me }: { me: Me }) {
   if (!may(role, minFor(loc.pathname)) || hidden(navFor(loc.pathname)?.[4])) return loc.pathname === home ? <NoAccess /> : <Navigate to={home} replace />;
   return (
     <div className="flex h-full">
+      <SessionDialogs enabled={sessionsOn} />
       {!compact && <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-panel2">
         <div className="flex items-center gap-2 px-4 py-4">
           <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-acc to-acc2 text-lg">⚡</div>
           <div><div className="font-bold leading-tight">Tradzen</div><div className="text-[10px] font-semibold uppercase tracking-widest text-mut">{role}</div></div>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
-          {nav.map(([to, label, icon]) => (
-            <NavLink key={to} to={to} end={to === '/'}
-              className={({ isActive }) => `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${isActive ? 'bg-acc/15 text-[#c4b5fd]' : 'text-mut hover:bg-panel hover:text-fg'}`}>
-              <span className="w-4 text-center">{icon}</span>{label}
-            </NavLink>
-          ))}
+          {nav.map(([to, label, icon]) => {
+            const isLive = to === '/sessions' && !!live?.live;
+            return (
+              <NavLink key={to} to={to} end={to === '/'}
+                className={({ isActive }) => `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition ${isLive ? `live-nav border border-rose-500/50 bg-rose-500/10 font-semibold ${isActive ? 'text-rose-100' : 'text-rose-200 hover:text-white'}` : isActive ? 'bg-acc/15 text-[#c4b5fd]' : 'text-mut hover:bg-panel hover:text-fg'}`}>
+                {isLive ? <span className="grid w-4 place-items-center"><span className="live-dot h-2.5 w-2.5 rounded-full bg-rose-500" /></span> : <span className="w-4 text-center">{icon}</span>}
+                <span className="flex-1">{label}</span>
+                {isLive && <span className="live-blink rounded bg-rose-500 px-1.5 py-px text-[9px] font-extrabold tracking-widest text-white">LIVE</span>}
+              </NavLink>);
+          })}
         </nav>
         <div className="space-y-2 border-t border-line p-3">
           {staff && <FeedPill />}

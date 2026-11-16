@@ -90,11 +90,47 @@
   .gtitle { font-size: 15px; font-weight: 800; line-height: 1.25; color: #fff; } .gmsg { margin-top: 3px; font-size: 12px; line-height: 1.45; color: #b9c0dc; }
   .gchips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; } .gchips .m { padding: 5px 9px; } .gchips .m .v { font-size: 13px; }
   .life { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--c); opacity: .8; transform-origin: left; }
+  /* live session started / ended: a dialog in the middle of the page, over a dimmed backdrop */
+  .dback { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; padding: 16px; background: rgba(4,7,18,.64); backdrop-filter: blur(5px);
+           font: 13px/1.45 "Inter", "Segoe UI", system-ui, -apple-system, sans-serif; color: #e9ecf8; animation: fade .25s ease-out both; }
+  .dlg { --dc: #f43f5e; width: 410px; max-width: 100%; text-align: center; overflow: hidden; border-radius: 22px; position: relative;
+         background: linear-gradient(180deg, #1a2140, #0b0f20); border: 1px solid color-mix(in srgb, var(--dc) 55%, transparent);
+         box-shadow: 0 30px 90px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.5), 0 0 64px color-mix(in srgb, var(--dc) 32%, transparent); animation: dlgin .4s cubic-bezier(.18,.9,.28,1.15) both; }
+  .dlg.end { --dc: #8b5cf6; }
+  .dlg .top3 { height: 3px; background: linear-gradient(90deg, transparent, var(--dc), transparent); }
+  .dlg .body { padding: 22px 26px 22px; }
+  .dlg .ic { position: relative; width: 66px; height: 66px; margin: 0 auto 14px; display: grid; place-items: center; }
+  .dlg .ic b { position: relative; width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; color: #fff;
+               background: linear-gradient(145deg, var(--dc), color-mix(in srgb, var(--dc) 50%, #000)); box-shadow: 0 8px 28px color-mix(in srgb, var(--dc) 50%, transparent), inset 0 1px 0 rgba(255,255,255,.3); }
+  .dlg .ic i { position: absolute; inset: 0; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--dc) 65%, transparent); animation: ringout 1.9s ease-out infinite; }
+  .dlg .ic i + i { animation-delay: .95s; }
+  .dlg.end .ic i { display: none; }
+  .dlg .livetag { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 800; letter-spacing: .14em; color: #fda4af; padding: 3px 10px; border-radius: 999px;
+                  background: rgba(244,63,94,.14); border: 1px solid rgba(244,63,94,.5); margin-bottom: 8px; }
+  .dlg .livetag u { width: 7px; height: 7px; border-radius: 50%; background: #f43f5e; animation: livepulse 1.5s ease-out infinite; }
+  .dlg h2 { margin: 0; font-size: 20px; font-weight: 900; letter-spacing: -.01em; color: #fff; }
+  .dlg .who { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 7px; color: #c5cbe6; font-weight: 700; }
+  .dlg .who span { font-size: 10px; font-weight: 800; letter-spacing: .08em; padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(255,255,255,.18); color: #9aa3c4; }
+  .dlg .who span.prem { color: #fbbf24; border-color: rgba(245,158,11,.55); background: rgba(245,158,11,.1); }
+  .dlg p { margin: 12px auto 0; max-width: 300px; font-size: 12.5px; color: #aab2d0; }
+  .dlg .res { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
+  .dlg .res .m { min-width: 70px; text-align: center; }
+  .dlg .btns { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 20px; }
+  .dlg button { all: unset; box-sizing: border-box; cursor: pointer; text-align: center; padding: 11px 12px; border-radius: 12px; font-weight: 800; font-size: 13px; color: #cbd2ee;
+                border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); }
+  .dlg button:hover { background: rgba(255,255,255,.1); color: #fff; } .dlg button:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
+  .dlg button.go { color: #fff; border-color: #8b5cf6; background: linear-gradient(145deg, #8b5cf6, #6d4ae0); box-shadow: 0 0 22px rgba(139,92,246,.5); }
+  .dlg button.go:hover { filter: brightness(1.1); }
+  .dlg .auto { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--dc); opacity: .75; transform-origin: left; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes dlgin { from { opacity: 0; transform: translateY(22px) scale(.95); } to { opacity: 1; transform: none; } }
+  @keyframes ringout { 0% { transform: scale(.82); opacity: .75; } 100% { transform: scale(1.95); opacity: 0; } }
+  @keyframes livepulse { 0% { box-shadow: 0 0 0 0 rgba(244,63,94,.7); } 70% { box-shadow: 0 0 0 8px rgba(244,63,94,0); } 100% { box-shadow: 0 0 0 0 rgba(244,63,94,0); } }
   @keyframes shake { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
   @keyframes in { from { opacity: 0; transform: translateY(-18px) scale(.94); } to { opacity: 1; transform: none; } }
   @keyframes out { to { opacity: 0; transform: translateY(-12px) scale(.96); } }
   @keyframes pulse { 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
-  @media (prefers-reduced-motion: reduce) { .card, .live i { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .card, .live i, .dback, .dlg, .dlg .ic i, .dlg .livetag u { animation: none; } }
   `;
 
   const SHORT = { 'Bollinger Band Bounce': 'Bollinger', 'RSI Divergence': 'RSI divergence', 'Stochastic %K/%D Cross': 'Stochastic',
@@ -150,7 +186,7 @@
         <div class="main">
           <div class="arrow">${call ? '▲' : '▼'}</div>
           <div class="dirwrap"><div class="dir">${call ? 'BUY / CALL' : 'SELL / PUT'}</div>
-            <div class="sub">${sess ? `<b>Enter at ${hms(ev.entry_t || ev.target_t)}</b> · until ${hms(ev.expire_t)}` : `<b>Enter now</b> · until ${hms(ev.expire_t)}`}</div></div>
+            <div class="sub">${sess && ev.entry_mode !== 'current' ? `<b>Enter at ${hms(ev.entry_t || ev.target_t)}</b> · until ${hms(ev.expire_t)}` : `<b>Enter now</b> · until ${hms(ev.expire_t)}`}</div></div>
           <div class="ring"><svg viewBox="0 0 56 56"><circle class="bg" cx="28" cy="28" r="25" fill="none" stroke-width="4"/>
             <circle class="fg" cx="28" cy="28" r="25" fill="none" stroke-width="4" stroke-dasharray="${C}" stroke-dashoffset="0"/></svg><div class="cd">–</div></div>
         </div>
@@ -270,6 +306,41 @@
     tick();
   }
 
+  // ---- a live session has started / ended: a dialog in the middle of the page (the other stages stay small cards). One at a time; Esc, the backdrop or the buttons close it.
+  let dlgEl = null, dlgTimer = null;
+  function closeDialog() { clearTimeout(dlgTimer); if (dlgEl) { dlgEl.remove(); dlgEl = null; } document.removeEventListener('keydown', onDlgKey, true); }
+  function onDlgKey(e) { if (e.key === 'Escape') { closeDialog(); e.stopPropagation(); } }
+  function addSessionDialog(ev) {
+    mount();
+    closeDialog();
+    const start = ev.stage === 'started', r = ev.result || {};
+    const premium = ev.session_tier === 'premium';
+    const net = typeof r.net === 'number' ? (r.net >= 0 ? '+' : '') + r.net.toFixed(2) : null;
+    const res = !start && r.total
+      ? `<div class="res"><div class="m"><div class="l">WINS</div><div class="v" style="color:#86efac">${r.wins || 0}</div></div><div class="m"><div class="l">LOSSES</div><div class="v" style="color:#fca5a5">${r.losses || 0}</div></div>${net ? `<div class="m"><div class="l">NET</div><div class="v">${esc(net)}</div></div>` : ''}</div>` : '';
+    const back = document.createElement('div');
+    back.className = 'dback';
+    back.innerHTML = `<div class="dlg ${start ? 'start' : 'end'}" role="alertdialog" aria-modal="true" aria-label="${start ? 'Live session started' : 'Live session ended'}"><div class="top3"></div><div class="body">
+      <div class="ic"><i></i><i></i><b>${start ? '◉' : '■'}</b></div>
+      ${start ? '<div class="livetag"><u></u>LIVE NOW</div>' : ''}
+      <h2>${start ? 'A live session has started' : 'The live session has ended'}</h2>
+      <div class="who">${esc(ev.session_title || 'Live session')}<span class="${premium ? 'prem' : ''}">${premium ? 'PREMIUM' : 'FREE'}</span></div>
+      <p>${start ? 'Signals come with the candle and the area marked on the chart. Open the session to follow along, and watch for the heads-up before each signal.'
+        : (r.total ? 'Here is how it went. Every signal was counted, wins and losses.' : 'The host has wrapped up. The record is in the session history.')}</p>
+      ${res}
+      <div class="btns"><button class="no">${start ? 'Not now' : 'Close'}</button><button class="go">${start ? 'Join the session' : 'See the results'}</button></div></div><div class="auto"></div></div>`;
+    back.addEventListener('mousedown', (e) => { if (e.target === back) closeDialog(); });
+    back.querySelector('.no').addEventListener('click', closeDialog);
+    back.querySelector('.go').addEventListener('click', () => { try { chrome.runtime.sendMessage({ __qxsOpenPanel: true }); } catch (_) { /* extension reloaded: the toolbar button still works */ } closeDialog(); });
+    root.appendChild(back);
+    dlgEl = back;
+    document.addEventListener('keydown', onDlgKey, true);
+    const secs = start ? 60 : 40, bar = back.querySelector('.auto');
+    bar.style.transition = `transform ${secs}s linear`; requestAnimationFrame(() => { bar.style.transform = 'scaleX(0)'; });
+    dlgTimer = setTimeout(closeDialog, secs * 1000);
+    const go = back.querySelector('.go'); if (go && go.focus) go.focus({ preventScroll: true });
+  }
+
   function tick() {
     const now = Date.now() / 1000;
     for (const [id, c] of cards) {
@@ -302,6 +373,6 @@
     if (msg.playHere && window.QXSound && settings.sound !== false) window.QXSound.play(msg.sound || 'call', settings.volume);
     if (settings.alerts === false) return;
     const ev = msg.__qxsNotify;
-    if (ev.kind === 'signal') addSignal(ev); else if (ev.kind === 'result') addResult(ev); else if (ev.kind === 'guard' && settings.guard !== false) addGuard(ev); else if (ev.kind === 'session' && settings.sessions !== false) addGuard(ev);
+    if (ev.kind === 'signal') addSignal(ev); else if (ev.kind === 'result') addResult(ev); else if (ev.kind === 'guard' && settings.guard !== false) addGuard(ev); else if (ev.kind === 'session' && settings.sessions !== false) { if (ev.stage === 'started' || ev.stage === 'ended') addSessionDialog(ev); else addGuard(ev); }
   });
 })();

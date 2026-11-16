@@ -22,7 +22,9 @@ class PairIn(BaseModel):
 
 class SignalIn(BaseModel):
     direction: str
-    entry: str = "next"                # next | after: the candle that opens next, or the one after it
+    entry: str = "next"                # current (the running candle, taken now) | next | after | time (the candle that opens at `at`)
+    at: float | None = None            # entry = time: unix seconds, any moment inside the candle it is for
+    entry_px: float | None = None      # the price the trade is entered at (default: the live price for a running candle, the candle's open otherwise)
     expiry: int = 1                    # candles the trade runs
     area_lo: float | None = None
     area_hi: float | None = None
@@ -56,9 +58,15 @@ def bind(engine, auth, features) -> APIRouter:
     @router.get("/live")
     async def live(request: Request) -> dict:
         user, admin, premium = who(request)
-        out = ss.view(premium, admin)
+        out = ss.view(premium, admin, user["id"])
         out["alerts_on"] = user["id"] not in ss.muted
         return out
+
+    @router.get("/status")
+    async def status(request: Request) -> dict:
+        """Light: is a session live (the sidebar glow and the start / end dialogs poll this), and did this admin start it."""
+        user, admin, _ = who(request)
+        return ss.status(user["id"], admin)
 
     @router.get("")
     async def history(request: Request, limit: int = 50) -> list[dict]:
@@ -96,8 +104,8 @@ def bind(engine, auth, features) -> APIRouter:
 
     @router.post("/{sid}/signals")
     async def new_signal(sid: int, body: SignalIn, request: Request) -> dict:
-        sig = call(ss.create_signal, sid, body.direction, body.entry, body.expiry, body.area_lo, body.area_hi, body.area_label, body.note, body.send)
-        audit(request, "session-signal" if sig["status"] == "pending" else "session-headsup", str(sid), {"signal": sig["id"], "direction": sig["direction"], "symbol": sig["symbol"]})
+        sig = call(ss.create_signal, sid, body.direction, body.entry, body.expiry, body.area_lo, body.area_hi, body.area_label, body.note, body.send, body.at, body.entry_px)
+        audit(request, "session-signal" if sig["status"] == "pending" else "session-headsup", str(sid), {"signal": sig["id"], "direction": sig["direction"], "symbol": sig["symbol"], "entry": sig["entry_mode"]})
         return sig
 
     @router.post("/{sid}/signals/{sig_id}/send")

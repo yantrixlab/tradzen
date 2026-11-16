@@ -22,8 +22,13 @@ STALE_GRACE = 120.0                  # seconds, plus four candles: after that a 
 AUTO_END = 12 * 3600                 # a session nobody ended
 ENTRY_GRACE = 3.0                    # a signal may still be sent this long after its candle opened (clock differences)
 MAX_TITLE, MAX_NOTE, MAX_EXPIRY = 80, 300, 3
+ENTRY_MODES = ("current", "next", "after", "time")      # the candle running now (taken at once), the next one, the one after it, or the candle that opens at a time the admin picked
+MAX_AHEAD = 2 * 3600                                    # a time-defined signal may be for at most this far ahead
+MIN_LEFT = 10.0                                         # a running-candle trade needs at least this many seconds left in its candle
+PRICE_FRESH = 30.0                                      # the live price used as the entry of a running-candle trade must be this fresh
 
-SIG_COLS = "id, session_id, created, sent_at, symbol, tf, direction, entry_t, expiry_candles, area_lo, area_hi, area_label, note, tier, payout, status, entry, exit, settled_at"
+SIG_COLS = ("id, session_id, created, sent_at, symbol, tf, direction, entry_t, expiry_candles, area_lo, area_hi, area_label, note, tier, payout, status, entry, exit, settled_at, "
+            "entry_mode, entry_px")
 SES_COLS = "id, title, tier, status, symbol, tf, follow_admin, started, ended, started_by, note"
 
 
@@ -117,7 +122,7 @@ class Sessions:
         self.db.commit()
         s = self.get(cur.lastrowid)
         self.e._log("session-start", f"{title} ({tier})")
-        self._session_event(s, "started", "Live session started", f"{title}" + (" · premium" if tier == "premium" else ""), level="info", sound="sstart")
+        self._session_event(s, "started", "Live session started", f"{title}" + (" · premium" if tier == "premium" else ""), level="info", sound="sstart", by=uid)
         return s
 
     def end(self, sid: int) -> dict:
@@ -134,7 +139,8 @@ class Sessions:
         st = stats_of(self.rows(sid))
         msg = f"{s['title']}: {st['wins']} win · {st['losses']} loss" + (f" · {st['draws']} draw" if st["draws"] else "") + (f" · {st['pending']} still running" if st["pending"] else "")
         self.e._log("session-end", s["title"])
-        self._session_event(s, "ended", "Live session ended", msg, level="info", sound="send")
+        self._session_event(s, "ended", "Live session ended", msg, level="info", sound="send", by=s["started_by"],
+                            result={"wins": st["wins"], "losses": st["losses"], "draws": st["draws"], "pending": st["pending"], "net": st["net"], "total": st["total"]})
         return s
 
     def set_pair(self, sid: int, symbol: str | None, tf: int | None = None) -> dict:
@@ -151,7 +157,7 @@ class Sessions:
         return self.get(sid)
 
     def create_signal(self, sid: int, direction: str, entry: str = "next", expiry: int = 1, area_lo: float | None = None, area_hi: float | None = None,
-                      area_label: str = "", note: str = "", send: bool = False) -> dict:
+                      area_label: str = "", note: str = "", send: bool = False, at: float | None = None, entry_px: float | None = None) -> dict:
         s = self.current()
         if not s or s["id"] != sid:
             raise SessionError(404, "this session is not live")
@@ -161,8 +167,14 @@ class Sessions:
         sym, tf = self.pair(s)
         if not sym or not self.known(sym):
             raise SessionError(409, "no pair yet: open a chart on Quotex or pick a pair for the session")
-        if entry not in ("next", "after"):
-            raise SessionError(400, "entry must be next or after")
+        if entry not in ENTRY_MODES:
+            raise SessionError(400, "entry must be current, next, after or time")
+        if entry == "current" and not send:
+            raise SessionError(400, "a running-candle trade is taken at once: send it, there is nothing to get ready for")
+        if entry_px is not None:
+            entry_px = float(entry_px)
+            if not (math.isfinite(entry_px) and entry_px > 0):
+                raise SessionError(400, "the entry price must be a positive price")
         expiry = int(expiry or 1)
         if not 1 <= expiry <= MAX_EXPIRY:
             raise SessionError(400, f"expiry must be 1 to {MAX_EXPIRY} candles")
@@ -174,10 +186,22 @@ class Sessions:
                 raise SessionError(400, "the area must be positive prices")
             area_lo, area_hi = min(area_lo, area_hi), max(area_lo, area_hi)
         now = time.time()
-        entry_t = bucket(now, tf) + tf * (1 if entry == "next" else 2)
-        cur = self.db.execute("INSERT INTO session_signals (session_id, created, symbol, tf, direction, entry_t, expiry_candles, area_lo, area_hi, area_label, note, tier, status) "
-                              "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'headsup')",
-                              (sid, now, sym, tf, direction, entry_t, expiry, area_lo, area_hi, (area_label or "")[:60], (note or "")[:MAX_NOTE], s["tier"]))
+        here = bucket(now, tf)
+        if entry == "current":
+            entry_t = here
+        elif entry == "time":
+            if at is None:
+                raise SessionError(400, "give the time of the candle")
+            entry_t = bucket(float(at), tf)
+            if entry_t <= here:
+                raise SessionError(400, "that candle has already started: use the running candle or a later time")
+            if entry_t > here + MAX_AHEAD:
+                raise SessionError(400, "that time is too far ahead (at most 2 hours)")
+        else:
+            entry_t = here + tf * (1 if entry == "next" else 2)
+        cur = self.db.execute("INSERT INTO session_signals (session_id, created, symbol, tf, direction, entry_t, expiry_candles, area_lo, area_hi, area_label, note, tier, status, entry_mode, entry_px) "
+                              "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'headsup',?,?)",
+                              (sid, now, sym, tf, direction, entry_t, expiry, area_lo, area_hi, (area_label or "")[:60], (note or "")[:MAX_NOTE], s["tier"], entry, entry_px))
         self.db.commit()
         if send:
             return self.send(sid, cur.lastrowid)
@@ -193,11 +217,25 @@ class Sessions:
         if sig["status"] != "headsup":
             raise SessionError(409, "this signal was already sent or cancelled")
         now = time.time()
-        if now >= sig["entry_t"] + ENTRY_GRACE:
-            raise SessionError(409, "its candle has already started: make a new signal")
         inst = self.e.instruments.get(sig["symbol"], {})
         lt = self.e.last_tick.get(sig["symbol"])
-        self._set(sig_id, status="pending", sent_at=now, payout=inst.get("payout"), entry=lt["price"] if lt else None)
+        extra: dict = {}
+        if sig["entry_mode"] == "current":
+            # taken now, on the candle that is running: the entry is the price at this moment (or the price the admin defined), the exit the close of that candle
+            if sig["entry_t"] + sig["tf"] - now < MIN_LEFT:
+                raise SessionError(409, f"too late in this candle (under {int(MIN_LEFT)} s left): send it for the next candle")
+            if now < sig["entry_t"] - ENTRY_GRACE or now >= sig["entry_t"] + sig["tf"]:
+                raise SessionError(409, "that candle is over: make a new signal")
+            px = sig["entry_px"] if sig["entry_px"] is not None else (lt["price"] if lt and now - lt["recv"] <= PRICE_FRESH else None)
+            if px is None:
+                raise SessionError(409, "no live price for this pair right now: cannot take a running-candle trade")
+            extra["entry_px"] = px
+            entry_price = px
+        else:
+            if now >= sig["entry_t"] + ENTRY_GRACE:
+                raise SessionError(409, "its candle has already started: make a new signal")
+            entry_price = sig["entry_px"] if sig["entry_px"] is not None else (lt["price"] if lt else None)
+        self._set(sig_id, status="pending", sent_at=now, payout=inst.get("payout"), entry=entry_price, **extra)
         sig = self._signal(sid, sig_id)
         self._pend[sig_id] = sig
         self._signal_event("signal", s, sig)
@@ -257,7 +295,7 @@ class Sessions:
             if sig["symbol"] != sym or sig["tf"] != tf:
                 continue
             last = self._last_t(sig)
-            if row["t"] == sig["entry_t"]:
+            if row["t"] == sig["entry_t"] and sig.get("entry_px") is None:      # a defined entry price (or a running-candle trade's price at the moment it was sent) is kept
                 sig["entry"] = row["o"]
                 self.db.execute("UPDATE session_signals SET entry=? WHERE id=?", (row["o"], sig["id"]))
                 self.db.commit()
@@ -270,8 +308,9 @@ class Sessions:
         """Settle from the stored candles (after a restart, or when the live close was missed). True when it could be decided."""
         last = self._last_t(sig)
         got = {t: (o, c) for t, o, c in self.db.execute("SELECT ts, o, c FROM candles WHERE symbol=? AND tf=? AND ts IN (?,?)", (sig["symbol"], sig["tf"], sig["entry_t"], last))}
-        if sig["entry_t"] in got and last in got:
-            sig["entry"] = got[sig["entry_t"]][0]
+        fixed = sig.get("entry_px") is not None
+        if last in got and (fixed or sig["entry_t"] in got):
+            sig["entry"] = sig["entry_px"] if fixed else got[sig["entry_t"]][0]
             self._finish(sig, got[last][1], emit=False)
             return True
         return False
@@ -330,9 +369,13 @@ class Sessions:
         sign = 1.0 if sig["direction"] == "CALL" else -1.0
         payout = sig.get("payout")
         area = {"lo": sig["area_lo"], "hi": sig["area_hi"], "label": sig["area_label"]} if sig.get("area_lo") is not None else None
-        note = " · ".join(x for x in (self._area_text(sig), sig.get("note") or "") if x)
+        mode = sig.get("entry_mode") or "next"
+        fmt = (lambda v: f"{v:.2f}") if sig.get("entry_px") and sig["entry_px"] >= 100 else (lambda v: f"{v:.5f}")
+        entry_text = ("NOW" if mode == "current" else "") + (f" at {fmt(sig['entry_px'])}" if sig.get("entry_px") else "")
+        note = " · ".join(x for x in (entry_text.strip(), self._area_text(sig), sig.get("note") or "") if x)
         return self._push(kind, s, id=f"s{sig['id']}", symbol=sym, name=inst.get("name", sym), market=inst.get("market", ""), tf=tf, direction=sig["direction"], tier="A",
-                          strength=100, score=sign * 100, agree=1, status=sig["status"], entry=sig.get("entry"), exit=sig.get("exit"), basis_t=sig["entry_t"] - tf, target_t=sig["entry_t"],
+                          strength=100, score=sign * 100, agree=1, status=sig["status"], entry=sig.get("entry"), exit=sig.get("exit"), entry_mode=mode, entry_px=sig.get("entry_px"),
+                          basis_t=sig["entry_t"] if mode == "current" else sig["entry_t"] - tf, target_t=sig["entry_t"],
                           entry_t=sig["entry_t"], expire_t=sig["entry_t"] + sig["expiry_candles"] * tf, expiry_candles=sig["expiry_candles"], payout=payout,
                           breakeven=1 / (1 + payout / 100) if payout else None, price=lt["price"] if lt else None, now=lt["ts"] if lt else None, sentiment=None,
                           factors=[{"name": "Live session", "vote": sign, "note": note}] if note else [{"name": "Live session", "vote": sign, "note": s["title"]}],
@@ -365,6 +408,8 @@ class Sessions:
 
     def visible(self, user: dict, ev: dict, can) -> bool:
         """Who gets a session alert: staff always; others need the Sessions menu, the premium feature for a premium session, and must not have muted session alerts."""
+        if ev.get("stage") in ("started", "ended") and ev.get("by") == user["id"]:
+            return False                                      # the admin who pressed the button does not need a dialog about it
         if user.get("role") in ("admin", "editor"):
             return True
         if user["id"] in self.muted or not can(user, "menu.sessions"):
@@ -377,7 +422,14 @@ class Sessions:
             out["follow_admin"] = bool(s["follow_admin"])
         return out
 
-    def view(self, entitled: bool, admin: bool = False) -> dict:
+    def status(self, uid: int, admin: bool) -> dict:
+        """The light answer the sidebar and the start / end dialogs poll: is a session live, which one, and did THIS admin start it (only they get the signal sender)."""
+        s = self.current()
+        if not s:
+            return {"now": time.time(), "live": False, "session": None, "mine": False}
+        return {"now": time.time(), "live": True, "session": self._public(s, admin), "mine": bool(admin and s["started_by"] == uid)}
+
+    def view(self, entitled: bool, admin: bool = False, uid: int | None = None) -> dict:
         """What the live page polls: the session, the chart of its pair, its signals and its record. A premium session shows a non-entitled user only that it exists."""
         now = time.time()
         s = self.current()
@@ -387,7 +439,7 @@ class Sessions:
         locked = s["tier"] == "premium" and not (entitled or admin)
         rows = [] if locked else self.rows(s["id"])
         out = {"now": now, "session": self._public(s, admin), "locked": locked, "pair": {"symbol": sym, "tf": tf}, "selected": self.e.chart_of(sym, tf) if sym else None,
-               "signals": rows, "stats": None if locked else stats_of(rows)}
+               "signals": rows, "stats": None if locked else stats_of(rows), "mine": bool(admin and uid is not None and s["started_by"] == uid)}
         if admin:
             out["symbols"] = self.e.pair_list()
         return out

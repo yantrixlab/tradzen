@@ -37,11 +37,12 @@ PANEL_SESSION_SECONDS = 12 * 3600          # the side panel's own, shorter sessi
 # What a side-panel session may do: the live board and its controls, nothing else (no users, tokens, system, exports, password...). The panel's sign-in comes from an
 # extension token, which is a weaker credential than a password, so it is not given the whole admin panel.
 PANEL_ALLOW = [(re.compile(p), m) for p, m in [
-    (r"^/api/(me|state|mychart|sessions(/live|/\d+)?|account|analyze/all|readiness|settings|presets|strategies|spec/catalog|signals|stats|equity|research(/status)?|data/(coverage|gaps|plan|sentiment(/study)?))$", {"GET"}),
+    (r"^/api/(me|state|mychart|sessions(/live|/status|/\d+)?|account|analyze/all|readiness|settings|presets|strategies|spec/catalog|signals|stats|equity|research(/status)?|data/(coverage|gaps|plan|sentiment(/study)?))$", {"GET"}),
     (r"^/api/(strategies|signals)/\d+$", {"GET"}),
     (r"^/api/(strategies/(bulk|pause-all|resume-all|chart)|backtests/chart|settings|presets|presets/apply)$", {"POST"}),
     (r"^/api/presets/[^/]+$", {"DELETE"}),
     (r"^/api/sessions/alerts$", {"PUT"}),
+    (r"^/api/sessions/\d+/signals(/\d+/(send|cancel))?$", {"POST"}),       # the admin's signal sender below the panel's chart (still admin-only: the role rule below applies as usual)
     (r"^/api/prefs$", {"GET", "PUT"}),
 ]]
 
@@ -114,7 +115,7 @@ _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile
     (r"^/api/style(/|$)", None, "any", "menu.style"),
     # Strategies, signals and backtests are open to every role: each handler only shows and changes what the caller owns or receives (strategy_access.py).
     (r"^/api/(signal-pairs|signals(/\d+)?|stats|equity)$", {"GET"}, "any", "menu.signals"),
-    (r"^/api/sessions(/live|/\d+)?$", {"GET"}, "any", "menu.sessions"),          # watching a live session; starting, ending and sending signals is admin-only (not listed)
+    (r"^/api/sessions(/live|/status|/\d+)?$", {"GET"}, "any", "menu.sessions"),          # watching a live session; starting, ending and sending signals is admin-only (not listed)
     (r"^/api/sessions/alerts$", {"PUT"}, "any", "menu.sessions"),
     (r"^/api/mychart$", {"GET"}, "any", "menu.chart"),                   # the chart of the caller's own Quotex pair
     (r"^/api/state$", {"GET"}, "staff", None),

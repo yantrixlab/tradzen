@@ -22,6 +22,24 @@ body { font-family: Inter, 'Segoe UI', system-ui, -apple-system, sans-serif; fon
   .chip { @apply inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold; }
 }
 
+/* a live session: a pulsing dot, a glowing menu row, and the dialogs that announce its start and end */
+@keyframes live-pulse { 0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.65); } 70% { box-shadow: 0 0 0 9px rgba(244, 63, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); } }
+@keyframes live-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(244, 63, 94, 0.28), 0 0 9px rgba(244, 63, 94, 0.18), inset 0 0 14px rgba(244, 63, 94, 0.06); }
+  50% { box-shadow: 0 0 0 1px rgba(244, 63, 94, 0.6), 0 0 20px rgba(244, 63, 94, 0.42), inset 0 0 18px rgba(244, 63, 94, 0.14); }
+}
+@keyframes live-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes dlg-in { from { opacity: 0; transform: translateY(18px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes dlg-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ring-out { 0% { transform: scale(0.8); opacity: 0.7; } 100% { transform: scale(1.9); opacity: 0; } }
+.live-dot { animation: live-pulse 1.5s ease-out infinite; }
+.live-nav { animation: live-glow 2.2s ease-in-out infinite; }
+.live-blink { animation: live-blink 1.4s ease-in-out infinite; }
+.dlg-card { animation: dlg-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
+.dlg-back { animation: dlg-fade 0.2s ease-out both; }
+.ring-out { animation: ring-out 1.8s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .live-dot, .live-nav, .live-blink, .dlg-card, .dlg-back, .ring-out { animation: none; } }
+
 @keyframes toast-in { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
 .toast-in { animation: toast-in 0.22s ease-out both; }
 @media (prefers-reduced-motion: reduce) { .toast-in { animation: none; } }

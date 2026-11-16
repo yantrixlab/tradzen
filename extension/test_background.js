@@ -20,6 +20,7 @@ function boot(serverAnswer) {
   const local = makeStore(), session = makeStore();
   let onMessage = null;
   const delivered = [];
+  const opened = [];
   const noop = () => {};
   const chrome = {
     storage: { local, session },
@@ -28,13 +29,14 @@ function boot(serverAnswer) {
     notifications: { onClicked: { addListener: noop }, create: noop, clear: noop },
     action: { setBadgeBackgroundColor: noop, setBadgeText: noop },
     windows: { get: async () => ({}) },
+    sidePanel: { open: async (o) => { opened.push(o); } },
   };
   const fetch = async (url, init) => { const body = JSON.parse(init.body); sent.push({ url, body }); return { ok: true, status: 200, json: async () => serverAnswer(sent.length, body) }; };
   const ctx = vm.createContext({ chrome, fetch, crypto: crypto.webcrypto, TextEncoder, Uint8Array, AbortController, setTimeout, clearTimeout, Date, Promise, Object, JSON, Array, Math, Number, Map, String, console });
   vm.runInContext(fs.readFileSync(__dirname + '/background.js', 'utf8'), ctx);
   const send = (items, tabId = 7) => onMessage({ __qxs: 2, items }, { tab: { id: tabId }, frameId: 0 });
   const until = async (n) => { for (let i = 0; i < 200 && sent.length < n; i++) await new Promise((r) => setTimeout(r, 5)); assert(sent.length >= n, `expected ${n} requests, saw ${sent.length}`); };
-  return { sent, send, until, session, delivered, local };
+  return { sent, send, until, session, delivered, local, opened, message: (m, tabId = 7) => onMessage(m, { tab: { id: tabId }, frameId: 0 }) };
 }
 
 const order = (id) => ({ k: 'o', n: 's_orders/close', dir: 'in', d: { deals: [{ id }] }, ts: 1 });
@@ -230,5 +232,21 @@ const kinds = (req) => req.body.items.map((i) => i.k);
   await h.until(1);
   await new Promise((r) => setTimeout(r, 60));
   assert.strictEqual(h.delivered.length, 0, 'with live session alerts switched off nothing is shown');
+  // ---- the "Join the session" button of the on-page dialog opens the side panel of that tab (only for a message that comes from a tab)
+  h = boot(() => ({ ok: true, seq: 1, events: [], feeder: false }));
+  h.message({ __qxsOpenPanel: true }, 12);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(h.opened)), [{ tabId: 12 }], 'the panel opens beside the tab that asked');
+  // a started / ended session event is delivered to the tab like any other (the page turns it into a dialog), a running-candle signal too
+  const sdone = Date.now() / 1000;
+  h = boot(() => ({ ok: true, seq: 9, events: [
+    { seq: 1, kind: 'session', aud: 'session', session_id: 4, stage: 'started', level: 'info', title: 'Live session started', message: 'Evening', sound: 'sstart', id: 'ss1', t: sdone, by: 1, session_title: 'Evening' },
+    { seq: 2, kind: 'signal', aud: 'session', session_id: 4, id: 's5', direction: 'PUT', entry_mode: 'current', tier: 'A', tf: 60, name: 'EUR/USD', strength: 100, expire_t: sdone + 50, target_t: sdone - 5, t: sdone },
+    { seq: 3, kind: 'session', aud: 'session', session_id: 4, stage: 'ended', level: 'info', title: 'Live session ended', message: 'x', sound: 'send', id: 'ss3', t: sdone, result: { wins: 2, losses: 1, total: 3, net: 0.6 } }], feeder: false, qx: { state: 'ok', hint: '234' } }));
+  h.send([{ k: 'a', u: '4711234' }]);
+  await h.until(1);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.deepStrictEqual(h.delivered.map((m) => m.__qxsNotify.kind + ':' + (m.__qxsNotify.stage || m.__qxsNotify.entry_mode)), ['session:started', 'signal:current', 'session:ended']);
+  assert.deepStrictEqual(h.delivered.map((m) => m.sound), ['sstart', 'put', 'send']);
   console.log('all background tests passed');
 })().catch((e) => { console.error(e); process.exit(1); });

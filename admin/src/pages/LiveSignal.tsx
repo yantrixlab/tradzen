@@ -9,6 +9,8 @@ import { TrackRecord } from '../components/TrackRecord';
 import { FeedBanner } from '../components/FeedBanner';
 import { ReadinessBar, Readiness, useReadiness } from '../components/ReadinessBar';
 import { SmartChart, SmartChartProps } from '../components/chart/SmartChart';
+import { SignalSender } from '../components/SignalSender';
+import { sessionOverlay, useLiveSession } from '../sessions';
 
 // ------------------------------------------------------------------ small building blocks
 type Mode = 'paused' | 'paper' | 'live';
@@ -367,6 +369,7 @@ export default function LiveSignal() {
   const [tf, setTf] = useState(60);
   const q = useQuery({ queryKey: ['live-sel', pick, tf], queryFn: () => api<LiveSelection>(`/api/state${qs({ symbol: pick, tf })}`), refetchInterval: 1500, placeholderData: keepPreviousData });   // keep the picker mounted while a new pair loads
   const sym = pick || q.data?.selected?.symbol || '';
+  const sess = useLiveSession();                              // the admin who runs the live session sees its signals marked on this chart too (and gets the sender below it)
 
   if (!strategies.data) return <Spinner />;
   return (
@@ -383,8 +386,9 @@ export default function LiveSignal() {
         <div>{q.data ? <PairPicker data={q.data} sym={sym} onPick={setPick} following={!pick} /> : <Card><Spinner /></Card>}</div>
         <div className="min-w-0 space-y-4">
           {q.isError ? <ErrorBox error={q.error} /> : !q.data ? <Card><Spinner /></Card> : q.data.selected
-            ? <LiveView sel={q.data.selected} tf={tf} setTf={setTf} />
+            ? <LiveView sel={q.data.selected} tf={tf} setTf={setTf} overlay={sess.data?.mine ? sessionOverlay(sess.data.signals, q.data.selected.symbol, q.data.selected.tf) : undefined} />
             : <Card><Empty>No pair is streaming. Open a chart on Quotex with the extension enabled, or pick a pair on the left to see its stored candles.</Empty></Card>}
+          <SignalSender />
           <SignalBoard sym={sym} tf={tf} />
         </div>
       </div>

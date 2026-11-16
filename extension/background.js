@@ -314,7 +314,7 @@ async function desktopNotify(ev, tabId) {
     type: 'basic', iconUrl: 'icons/icon128.png', priority: 2,
     title: `${call ? '▲ BUY / CALL' : '▼ SELL / PUT'}  ·  ${ev.name}`,
     message: ev.session_id != null
-      ? `Live session · ${TFN[ev.tf] || ev.tf + 's'}${ev.area ? ' · area ' + ev.area.lo + ' - ' + ev.area.hi : ''}\nEnter at ${new Date((ev.entry_t || ev.target_t) * 1000).toLocaleTimeString()}${ev.note ? ' · ' + ev.note : ''}`
+      ? `Live session · ${TFN[ev.tf] || ev.tf + 's'}${ev.area ? ' · area ' + ev.area.lo + ' - ' + ev.area.hi : ''}\n${ev.entry_mode === 'current' ? 'Take it NOW (running candle)' : 'Enter at ' + new Date((ev.entry_t || ev.target_t) * 1000).toLocaleTimeString()}${ev.note ? ' · ' + ev.note : ''}`
       : `Tier ${ev.tier} · ${TFN[ev.tf] || ev.tf + 's'} · strength ${ev.strength}\nEnter now — expires ${new Date(ev.expire_t * 1000).toLocaleTimeString()}`,
   });
 }
@@ -358,6 +358,10 @@ async function sendTest(tabId) {
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg && msg.__qxsTest) { sendTest(msg.tabId); return; }
   if (!msg || !sender.tab) return;
+  if (msg.__qxsOpenPanel) {                         // "Join the session" in the on-page dialog: open the side panel beside this tab (the click is the user gesture)
+    Promise.resolve().then(() => chrome.sidePanel.open({ tabId: sender.tab.id })).catch(() => { /* no side panel on this browser: the toolbar button opens the board */ });
+    return;
+  }
   if (msg.__qxs === 2) { forward(msg.items, sender.tab.id); return; }
   if (msg.__qxs !== 1) return;
   const key = `snap:${sender.tab.id}:${sender.frameId}`;

@@ -11,17 +11,24 @@ export interface SessionSignal {
   id: number; session_id: number; created: number; sent_at: number | null; symbol: string; tf: number; direction: 'CALL' | 'PUT'; entry_t: number; expiry_candles: number;
   area_lo: number | null; area_hi: number | null; area_label: string | null; note: string | null; tier: 'free' | 'premium'; payout: number | null; status: SignalStatus;
   entry: number | null; exit: number | null; settled_at: number | null;
+  entry_mode: EntryMode; entry_px: number | null;
 }
+/** current = the candle running now (taken at once, at the live price), next / after = the candle that opens next / the one after, time = the candle that opens at a time picked */
+export type EntryMode = 'current' | 'next' | 'after' | 'time';
 export interface SessionStats extends Stats { voids: number; net: number }
 export interface SessionInfo { id: number; title: string; tier: 'free' | 'premium'; status: 'live' | 'ended'; started: number; ended: number | null; follow_admin?: boolean }
 export interface LiveSession {
   now: number; session: SessionInfo | null; locked?: boolean; pair?: { symbol: string | null; tf: number }; selected?: LiveSelection['selected'];
   signals?: SessionSignal[]; stats?: SessionStats | null; symbols?: LiveSelection['symbols']; alerts_on?: boolean;
+  mine?: boolean;                                   // the signed-in admin started this session: only they get the signal sender
 }
+export interface SessionStatus { now: number; live: boolean; session: SessionInfo | null; mine: boolean }
 export interface SessionSummary extends SessionInfo { locked: boolean; signals: number; stats: SessionStats | null }
 
 /** The live session, polled the way the live chart is (the chart candles ride in the same answer). */
 export const useLiveSession = () => useQuery({ queryKey: ['live-session'], queryFn: () => api<LiveSession>('/api/sessions/live'), refetchInterval: 1500, placeholderData: keepPreviousData });
+/** The light answer behind the sidebar glow and the start / end dialogs (no chart in it, so it can be polled from every page). */
+export const useSessionStatus = (enabled = true) => useQuery({ queryKey: ['session-status'], enabled, queryFn: () => api<SessionStatus>('/api/sessions/status'), refetchInterval: 4000, retry: false });
 export const useSessionHistory = () => useQuery({ queryKey: ['session-history'], queryFn: () => api<SessionSummary[]>('/api/sessions'), refetchInterval: 15000 });
 
 // ------------------------------------------------------------------ colours and words
@@ -47,15 +54,19 @@ export function sessionOverlay(signals: SessionSignal[] | undefined, symbol: str
     if (s.status === 'cancelled' || s.symbol !== symbol || s.tf !== tf) continue;
     const dir: 1 | -1 = s.direction === 'CALL' ? 1 : -1;
     const col = STATUS_COLOR[s.status];
-    const basis = s.entry_t - s.tf, last = s.entry_t + (s.expiry_candles - 1) * s.tf;
+    const now = s.entry_mode === 'current';                          // a running-candle trade: the arrow sits on that very candle
+    const basis = now ? s.entry_t : s.entry_t - s.tf, last = s.entry_t + (s.expiry_candles - 1) * s.tf;
     const live = s.status === 'headsup' || s.status === 'pending';
-    const word = live ? (s.status === 'headsup' ? `${s.direction} soon` : `${s.direction} next`) : STATUS_WORD[s.status];
+    const word = live ? (s.status === 'headsup' ? `${s.direction} soon` : now ? `${s.direction} now` : `${s.direction} next`) : STATUS_WORD[s.status];
     out.markers.push({ t: basis, dir, color: col, label: word, tip: `${s.direction} ${prettyPair(s.symbol)} · candle ${clock(s.entry_t)}${s.area_lo != null ? ` · area ${areaText(s)}` : ''}${s.note ? ` · ${s.note}` : ''}` });
-    if (live) out.bands.push({ t0: basis, t1: basis, color: col, opacity: 0.1 });
+    if (live && !now) out.bands.push({ t0: basis, t1: basis, color: col, opacity: 0.1 });
     out.bands.push({ t0: s.entry_t, t1: last, color: col, opacity: live ? 0.18 : 0.24, label: live ? `${s.direction} ${clock(s.entry_t)}` : `${s.direction} ${STATUS_WORD[s.status]}` });
     if (s.area_lo != null && s.area_hi != null) {
       out.areas.push({ t0: basis - 6 * s.tf, t1: last + s.tf - 1, lo: s.area_lo, hi: s.area_hi, color: dir > 0 ? '#22c55e' : '#ef4444', open: live,
         dashed: !live, label: `${s.direction} area${s.area_label ? ` · ${s.area_label}` : ''}` });
+    }
+    if (s.entry_px != null) {                                          // the price the trade was entered at: a thin line from the entry candle to the end of the trade
+      out.areas.push({ t0: s.entry_t, t1: last + s.tf - 1, lo: s.entry_px, hi: s.entry_px, color: col, open: live, dashed: true, label: `entry ${priceText(s.entry_px)}` });
     }
   }
   return out;
@@ -75,7 +86,7 @@ export function SignalList({ signals, actions }: { signals: SessionSignal[]; act
       <thead><tr>{['Candle', 'Pair', 'Signal', 'Area', 'Note', 'State', ...(actions ? [''] : [])].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
       <tbody>{[...signals].reverse().map((s) => (
         <tr key={s.id} className={s.status === 'cancelled' ? 'opacity-50' : ''}>
-          <td className="td tabular-nums">{clock(s.entry_t)} <span className="note">{tfName(s.tf)}{s.expiry_candles > 1 ? ` ×${s.expiry_candles}` : ''}</span></td>
+          <td className="td tabular-nums">{s.entry_mode === 'current' && <span className="mr-1 rounded bg-acc/20 px-1 text-[10px] font-bold text-[#c4b5fd]">NOW</span>}{clock(s.entry_t)} <span className="note">{tfName(s.tf)}{s.expiry_candles > 1 ? ` ×${s.expiry_candles}` : ''}</span></td>
           <td className="td">{prettyPair(s.symbol)}</td>
           <td className={`td font-bold ${s.direction === 'CALL' ? 'text-up' : 'text-down'}`}>{s.direction === 'CALL' ? '▲ CALL' : '▼ PUT'}</td>
           <td className="td tabular-nums text-xs">{areaText(s) || '–'}</td>
