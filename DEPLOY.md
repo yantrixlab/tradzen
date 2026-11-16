@@ -83,6 +83,16 @@ Only the price-feed tab builds candles from live ticks, but every signed-in exte
 - **Gaps:** the extension shows the ranges the server wants (recent holes of streaming pairs first), so a user can open the pair and scroll back. Candles that close a hole the feed left are used by the engine at once.
 - Switch it off with `QXS_CONTRIB=off`, or per plan with the *Share candles* feature. Contributions do not add live prices: only the price feed streams ticks.
 
+## Live prices from ordinary accounts
+Only pairs open in the price-feed tab used to produce live signals. Now any signed-in extension can also stream the live prices of the pairs open in **its** Quotex tab, under these rules (Data -> Live feed shows it all):
+- **One source per pair (a lease).** Exactly one account holds a pair at a time; everybody else's prices for it are only compared with the held ones, never applied. The extension only says which pairs it sees; the server answers which ones to send (held ones, free ones, and a 15-second spot-check every couple of minutes on a held pair), so bandwidth goes only where it is needed.
+- **The admin's price feed always has priority.** While it streams a pair (a tick within 8 s) no lease exists on it, and a holder steps aside the moment it returns. A holder silent for 5 s loses the pair and the next account that offers ticks takes it. The engine already discards a candle that has a hole in its ticks, so a hand-over can lose one candle but cannot make a wrong one.
+- **Every price is checked:** finite and positive, not older than 30 s, not in the future, newer than the last applied one (a replay or a second tab is "late", not an offence), within 2 % of the previous price (or, after a pause, within 10 % of the last stored candle). Five refused prices in a row cost the lease.
+- **Load control:** 40 prices a second per account, a server-wide budget, at most 8 pairs per account, at most 300 prices looked at per request; beyond that the extra is dropped and the answer says "busy".
+- **Trust:** an account that is mostly refused (more than 30 % after 200 prices), or whose spot-check prices mostly disagree with the applied ones (more than 50 % after 60), is paused automatically. The admin can pause, resume or **remove** one account's data: candles built from an account's prices are tagged `tick:<id>`, so they can be deleted as a whole (candles built across a hand-over, or by the feed, are not touched).
+- **Only the linked Quotex account** feeds; switch it off with `QXS_LIVE_FEED=off`, or per plan with the *Share live prices* feature.
+- **Limits that remain:** a pair is only as good as its holder. The spot-checks and limits catch jumps, wrong levels and disagreement, not a consistently wrong but smooth price. Keep your own price-feed tab running for the pairs that matter.
+
 ## Updating
 ```bash
 git pull            # or copy the new files

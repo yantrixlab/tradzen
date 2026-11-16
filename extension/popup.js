@@ -71,6 +71,7 @@ function renderOverview(all, conn, snap) {
   else setStat('role', '', signedIn || !local ? 'Alerts and my trades' : 'Local mode', 'Gets the signals for your account and keeps your own trade history.');
 
   renderContrib(all, local || !signedIn, banners);
+  renderFeed(all, local || !signedIn, banners);
   $('banner').innerHTML = banners.map(([k, h]) => `<div class="banner ${k}">${h}</div>`).join('');
 
   // ---- the pill
@@ -99,6 +100,23 @@ function renderContrib(all, hide, banners) {
   const want = c.state === 'on' && Array.isArray(c.want) ? c.want.slice(0, 5) : [];
   $('c-want').hidden = !want.length;
   $('want-list').innerHTML = want.map((w) => `<div class="row"><label>${esc(w.name || w.asset)}<small>${w.kind === 'gap' ? 'A hole' : 'Older history'} · ${esc(fmtT(w.from))} – ${esc(fmtT(w.to))}${w.missing ? ` · about ${n(w.missing)} candles` : ''}</small></label></div>`).join('');
+}
+
+// ---- live prices: the pairs this browser streams for everybody (the server holds one account per pair)
+function renderFeed(all, hide, banners) {
+  const f = all.feed, n = (x) => Number(x || 0).toLocaleString();
+  $('r-lf').hidden = hide || !!all.feeder;                      // the price feed streams everything itself; a local server has no leases
+  if ($('r-lf').hidden) return;
+  const hold = (f && f.hold) || [];
+  if (!f || !f.state) setStat('lf', '', 'Live prices', 'Waiting for prices from your Quotex page…');
+  else if (f.state === 'wait') setStat('lf', 'warn', 'Waiting for your Quotex account', 'Prices are taken once your Quotex account is known and linked.');
+  else if (f.state === 'paused') {
+    setStat('lf', 'bad', 'Paused by the admin', 'Your live prices are switched off. Your trades and alerts are not affected.');
+    banners.push(['warn', '<b>Sharing live prices is paused for your account.</b> Ask your admin if you want it back.']);
+  } else if (f.state === 'off') setStat('lf', '', 'Not shared', 'Switched off on this server or for your plan.');
+  else if (f.state === 'busy' || Date.now() < (f.retryAt || 0)) setStat('lf', 'warn', 'Slowing down', 'The server is busy; prices go out again in a moment.');
+  else if (hold.length) setStat('lf', 'ok', `Streaming ${hold.length} ${hold.length === 1 ? 'pair' : 'pairs'}`, `${hold.map(esc).join(', ')} · ${n((f.totals || {}).applied)} prices used this session. Keep this tab open.`);
+  else setStat('lf', 'ok', 'Ready to stream', 'Nobody else streams the pair you have open: it is used when you open one the feed does not have, and then nobody has to ask you.');
 }
 
 async function load() {
@@ -225,7 +243,7 @@ $('l-go').onclick = async () => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(typeof j.detail === 'string' ? j.detail : 'HTTP ' + r.status);
     await chrome.storage.local.set({ backendUrl: s.u.origin, token: j.token, who: { username: j.user.username, role: j.user.role, feeder: !!j.feeder } });
-    await chrome.storage.session.remove(['seq', 'qx', 'who', 'backend', 'contrib', 'sentH', 'feeder']);
+    await chrome.storage.session.remove(['seq', 'qx', 'who', 'backend', 'contrib', 'sentH', 'feeder', 'feed']);
     $('l-pass').value = '';
     setMsg(msg, 'ok', `Signed in as ${j.user.username}. Reload the Quotex tab once.`);
     load();
@@ -237,7 +255,7 @@ $('l-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('l-go'
 
 $('l-out').onclick = async () => {
   await chrome.storage.local.remove(['token', 'who']);
-  await chrome.storage.session.remove(['seq', 'qx', 'who', 'backend', 'contrib', 'sentH', 'feeder']);
+  await chrome.storage.session.remove(['seq', 'qx', 'who', 'backend', 'contrib', 'sentH', 'feeder', 'feed']);
   $('c-token').value = '';
   setMsg($('o-msg'), 'mut', 'Signed out in this browser. To disconnect it for good, also revoke it under My account on the website.');
   load();
@@ -257,7 +275,7 @@ $('c-save').onclick = async () => {
   }
   await chrome.storage.local.set({ backendUrl: s.u.origin, token });
   await chrome.storage.local.remove('who');
-  await chrome.storage.session.remove(['seq', 'qx', 'who', 'contrib', 'sentH', 'feeder']);
+  await chrome.storage.session.remove(['seq', 'qx', 'who', 'contrib', 'sentH', 'feeder', 'feed']);
   msg.className = 'ok'; msg.textContent = ' saved - reload the Quotex tab once';
 };
 

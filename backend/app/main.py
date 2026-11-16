@@ -696,7 +696,18 @@ async def ingest(request: Request) -> dict:
     res["as"] = {"username": user.get("username"), "role": user.get("role")}
     if not user.get("feeder") and auth.enabled and user.get("via") == "token":
         res["contrib"] = _contribute(user, link, [i for i in items if i.get("k") == "h"])        # shared candles: the history this tab's page loaded (see app/contrib.py)
+        res["feed"] = _live_feed(user, link, [i for i in items if i.get("k") in ("t", "tp")])    # live prices: one account holds each pair (see app/leases.py)
     return res
+
+
+def _live_feed(user: dict, link: str, ticks: list[dict]) -> dict:
+    """Live prices from an ordinary account: state off | wait | paused | busy | on, the pairs to send ticks for now, and the pairs this account holds."""
+    lz = engine.leases
+    if not lz.enabled or not features.can(user, "cap.ticks.feed"):
+        return {"state": "off"}
+    if link in ("unknown", "mismatch", "taken"):
+        return {"state": "wait"}                                          # prices are accepted only from a tab whose Quotex account is the linked one
+    return lz.answer(user["id"], ticks)
 
 
 def _contribute(user: dict, link: str, hist: list[dict]) -> dict:
@@ -758,6 +769,43 @@ async def contrib_revoke(uid: int, request: Request) -> dict:
     name = _contrib_target(uid)
     removed = engine.contrib.revoke(uid)
     auth.audit(request.state.user["username"], "contrib-revoke", name, {"candles": removed})
+    return {"ok": True, "removed": removed}
+
+
+@app.get("/api/livefeed/mine")
+async def livefeed_mine(request: Request) -> dict:
+    """The pairs the caller streams live prices for, and their counters."""
+    return engine.leases.mine(request.state.user["id"])
+
+
+@app.get("/api/livefeed")
+async def livefeed_overview() -> dict:
+    """Admin: who streams which pair, which pairs the price feed has, and each account's counters (7 days)."""
+    return engine.leases.overview()
+
+
+@app.post("/api/livefeed/{uid}/pause")
+async def livefeed_pause(uid: int, request: Request, body: PauseIn) -> dict:
+    name = _contrib_target(uid)
+    engine.leases.pause(uid, body.reason)
+    auth.audit(request.state.user["username"], "livefeed-pause", name, {"reason": body.reason})
+    return {"ok": True}
+
+
+@app.post("/api/livefeed/{uid}/resume")
+async def livefeed_resume(uid: int, request: Request) -> dict:
+    name = _contrib_target(uid)
+    done = engine.leases.resume(uid)
+    auth.audit(request.state.user["username"], "livefeed-resume", name)
+    return {"ok": True, "was_paused": done}
+
+
+@app.delete("/api/livefeed/{uid}")
+async def livefeed_revoke(uid: int, request: Request) -> dict:
+    """Stop this account's leases and remove the candles built from its ticks (the feed's own candles are not touched)."""
+    name = _contrib_target(uid)
+    removed = engine.leases.revoke(uid)
+    auth.audit(request.state.user["username"], "livefeed-revoke", name, {"candles": removed})
     return {"ok": True, "removed": removed}
 
 

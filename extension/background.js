@@ -16,8 +16,9 @@ let isFeeder = null, lastPoll = 0;               // null = the server has not sa
 function forward(items, tabId) {
   if (isFeeder !== true) items = queueHistory(items, tabId);        // not (known to be) the price feed: its chart history is offered to the shared candle store instead
   if (isFeeder === false) {
+    items = noteTicks(items);                                        // live prices: only the pairs the server asks for are kept (see "live prices")
     items = items.filter((i) => i && (i.k === 'o' || i.k === 'b' || i.k === 'a' || (i.k === 'ev' && i.e === 'hook-start')));      // own orders / balance, and which Quotex account this is
-    if (!items.length && !histReady(tabId) && Date.now() - lastPoll < 1500) return;
+    if (!items.length && !histReady(tabId) && !feedDue() && Date.now() - lastPoll < 1500) return;
   }
   lastPoll = Date.now();
   if (queued > 40) return;                                    // backend is down: drop instead of building an ever-growing backlog
@@ -91,6 +92,70 @@ function afterContrib(j, sending, tabId) {
   saveContrib();
 }
 
+// ------------------------------------------------------------------ live prices
+// Only the admin's price-feed tab streams every tick. An ordinary account can also stream the live prices of the pairs open in its tab, but the SERVER decides which: it holds one
+// account per pair (a lease), so this browser only tells it which pairs it sees ("presence") and sends the ticks of the pairs the answer lists (`send`: pairs it holds, free
+// pairs, and a short spot-check now and then). A pair the admin's feed streams is never asked for. Ticks are batched about once a second and are never queued: an old tick is useless.
+const SEEN_MS = 15000, PRESENCE_MS = 5000, SEND_MS = 20000, TICKS_MAX = 600, TICK_EVERY = 1000;
+const seenSyms = new Map();                        // pair -> when a tick for it was last seen (any tab)
+let tickBuf = [], lastPresence = 0, lastTicks = 0;
+let feedState = null, feedRetryAt = 0, feedSend = new Set(), feedSendAt = 0, feedHold = [], fedNow = false;
+const feedTotals = { applied: 0 };
+const feedOff = () => feedState === 'off' || feedState === 'paused' || feedState === 'wait';
+const feedWanted = (sym) => feedSend.has(sym) && Date.now() - feedSendAt < SEND_MS && !feedOff() && Date.now() >= feedRetryAt;
+
+/** Take the ticks out of a batch: remember which pairs are seen, keep the ticks of the pairs the server asked for. */
+function noteTicks(items) {
+  const rest = [], now = Date.now();
+  for (const i of items) {
+    if (!i || i.k !== 't' || !Array.isArray(i.d)) { rest.push(i); continue; }
+    for (const r of i.d) {
+      if (!Array.isArray(r) || typeof r[0] !== 'string') continue;
+      seenSyms.set(r[0], now);
+      if (feedWanted(r[0])) tickBuf.push(r);
+    }
+  }
+  if (tickBuf.length > TICKS_MAX) tickBuf = tickBuf.slice(-TICKS_MAX);
+  if (seenSyms.size > 60) for (const [s, t] of seenSyms) if (now - t > SEEN_MS) seenSyms.delete(s);
+  return rest;
+}
+/** Is there something to say about live prices right now (a presence update, or ticks that have waited a second)? */
+function feedDue() {
+  if (feedState === 'off' || feedState === 'paused') return false;
+  const now = Date.now();
+  if (now < feedRetryAt) return false;
+  const seen = [...seenSyms.values()].some((t) => now - t < SEEN_MS);
+  return (seen && now - lastPresence >= PRESENCE_MS) || (tickBuf.length > 0 && now - lastTicks >= TICK_EVERY);
+}
+/** The presence item and the buffered ticks that go with the next request. */
+function takeFeed() {
+  fedNow = false;
+  const now = Date.now(), out = [];
+  if (feedState === 'off' || feedState === 'paused') { tickBuf = []; return out; }
+  if (now < feedRetryAt) { tickBuf = []; return out; }
+  const syms = [...seenSyms].filter(([, t]) => now - t < SEEN_MS).map(([s]) => s).slice(0, 24);
+  if (syms.length && (now - lastPresence >= PRESENCE_MS || feedState === null)) { out.push({ k: 'tp', syms }); lastPresence = now; }
+  if (tickBuf.length && now - lastTicks >= TICK_EVERY && feedState === 'on') { out.push({ k: 't', d: tickBuf }); tickBuf = []; lastTicks = now; }
+  fedNow = out.length > 0;
+  return out;
+}
+function saveFeed() {
+  chrome.storage.session.set({ feed: { state: feedState, retryAt: feedRetryAt, hold: feedHold, send: [...feedSend], totals: feedTotals, at: Date.now() } });
+}
+/** What the server said about live prices (`j.feed`). An older server does not answer: the extension stops offering. */
+function afterFeed(j) {
+  const f = j.feed;
+  if (!f) { if (fedNow) { feedState = 'off'; feedSend = new Set(); tickBuf = []; saveFeed(); } return; }
+  feedState = f.state;
+  feedSend = new Set(Array.isArray(f.send) ? f.send : []);
+  feedSendAt = Date.now();
+  feedHold = Array.isArray(f.hold) ? f.hold : [];
+  if (f.state === 'busy') feedRetryAt = Date.now() + Math.max(2, Math.min(f.retry_after || 5, 120)) * 1000;
+  feedTotals.applied += f.applied || 0;
+  if (feedOff()) tickBuf = [];
+  saveFeed();
+}
+
 // ------------------------------------------------------------------ which Quotex account this tab is logged into
 // hook.js reports the account number it sees in the account's own messages ({k:'a', u}). It is turned into a SHA-256 here and only that leaves the browser; the server ties
 // it to the Tradzen account. Orders and balance are held back until the account is known (a hosted server refuses them from an unknown or a different Quotex account).
@@ -104,7 +169,8 @@ const HOLD_MAX = 300, HOLD_MS = 10 * 60 * 1000;
 async function loadAcct() {
   if (acctLoaded) return;
   acctLoaded = true;
-  const s = await chrome.storage.session.get(['acctByTab', 'needsLink', 'feeder', 'contrib', 'sentH']);
+  const s = await chrome.storage.session.get(['acctByTab', 'needsLink', 'feeder', 'contrib', 'sentH', 'feed']);
+  if (s.feed) { feedState = s.feed.state || null; feedRetryAt = s.feed.retryAt || 0; feedHold = s.feed.hold || []; Object.assign(feedTotals, s.feed.totals || {}); }
   for (const [k, v] of Object.entries(s.acctByTab || {})) acctByTab.set(Number(k), v);
   if (typeof s.needsLink === 'boolean') needsLink = s.needsLink;
   if (isFeeder === null && typeof s.feeder === 'boolean') isFeeder = s.feeder;        // the worker was restarted: what the server said last time still holds
@@ -154,6 +220,8 @@ async function doForward(items, tabId) {
   let sending = [];                                            // chart history that goes out with this request (see "shared candles")
   if (isFeeder === true) items = [...takeHistory(tabId, true).map((x) => x.item), ...items];      // the server said this is the price feed: what was held goes out as it is
   else if (histReady(tabId)) { sending = takeHistory(tabId); items = [...items, ...sending.map((x) => x.item)]; }
+  fedNow = false;
+  if (isFeeder === false) items = [...items, ...takeFeed()];       // live prices: presence, and the ticks of the pairs the server asked for
   if (!seqLoaded) { const s = await chrome.storage.session.get('seq'); lastSeq = s.seq ?? null; seqLoaded = true; }
   const conn = await chrome.storage.local.get(['backendUrl', 'token']);
   const url = (conn.backendUrl || DEFAULT_BACKEND).replace(/\/$/, '');
@@ -173,6 +241,7 @@ async function doForward(items, tabId) {
   if (typeof j.seq === 'number') { lastSeq = j.seq; chrome.storage.session.set({ seq: j.seq }); }
   if (typeof j.feeder === 'boolean') isFeeder = j.feeder;
   if (isFeeder === false || sending.length) afterContrib(j, sending, tabId);
+  if (isFeeder === false) afterFeed(j);
   needsLink = !!j.qx;                                                    // only a server that ties accounts answers with the state
   chrome.storage.session.set({ needsLink, qx: j.qx ? { ...j.qx, at: Date.now() } : null, who: j.as || null, feeder: !!j.feeder });
   if (j.qx && (j.qx.state === 'mismatch' || j.qx.state === 'taken')) held.delete(tabId);

@@ -10,6 +10,7 @@ import math
 import os
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +30,7 @@ from .style import NAME as STYLE_NAME, Style
 from .risk import RiskBook
 from .edgelab import EdgeLab
 from .contrib import Contributions
+from .leases import Leases
 from .research import ResearchRunner
 from .sweep import SweepRunner
 from .spec import validate_spec
@@ -104,6 +106,9 @@ class Engine:
         self._sty: list = []
         self._sty_at = 0.0
         self.edgelab = EdgeLab(self)
+        self.feed_at: dict[str, float] = {}                 # symbol -> when the admin's price feed (feeder token) last sent a tick for it
+        self.tick_ring: dict[str, deque] = {}               # symbol -> its last few applied ticks (ts, price): what other accounts' ticks are compared with
+        self.leases = Leases(self, enabled=os.getenv("QXS_LIVE_FEED", "on").lower() not in ("off", "0", "false", "no"))   # live prices from ordinary accounts, one holder per pair
         self.contrib = Contributions(self, (*TFS, *STORE_ONLY_TFS), enabled=os.getenv("QXS_CONTRIB", "on").lower() not in ("off", "0", "false", "no"))   # shared candles: history contributed by every extension
         self._mtg: dict[int, dict] = {}              # strategy id -> one-step martingale summary of its real settled signals (refreshed in the background)
         self._mtg_at, self._mtg_ready, self._mtg_busy = 0.0, False, False
@@ -169,6 +174,7 @@ class Engine:
 
     def drop_user(self, uid: int) -> None:
         """Forget a deleted user: close and delete their private database."""
+        self.leases.drop(int(uid))
         ctx = self.users.pop(int(uid), None)
         if ctx is not None:
             try:
@@ -445,8 +451,10 @@ class Engine:
             if not feeder and k not in ("o", "b"):
                 continue
             if k == "t":
+                now_f = time.time()
                 for sym, ts, price, *rest in item.get("d", []):
                     self.on_tick(sym, float(ts), float(price))
+                    self.feed_at[sym] = now_f                # the price feed has this pair: nobody else holds it
                     n_ticks += 1
             elif k == "h":
                 self.seed_history(item.get("asset"), rows_from_history(item.get("rows", [])))
@@ -495,9 +503,14 @@ class Engine:
         self.db.commit()
 
     # ------------------------------------------------------------------ ticks -> candles
-    def on_tick(self, sym: str, ts: float, price: float) -> None:
+    def on_tick(self, sym: str, ts: float, price: float, src: str = "tick") -> None:
+        """One live price. `src` is where the candles built from it are tagged ("tick" = the price feed, "tick:<account id>" = a leased ordinary account)."""
         if ts > 1e11:
             ts /= 1000.0
+        ring = self.tick_ring.get(sym)
+        if ring is None:
+            ring = self.tick_ring[sym] = deque(maxlen=12)
+        ring.append((ts, price))
         prev = self.last_tick.get(sym)
         if prev and ts - prev["ts"] > GAP_LIMIT:
             # server-time gap vs wall-clock gap tells "delivery paused" (both large) from "ticks lost upstream" (wall small)
@@ -517,7 +530,7 @@ class Engine:
                     self._close(sym, tf, cur)
                 # after an outage the first tick may be mid-candle => OHLC unreliable unless it is right at the start
                 self.open[key] = {"t": b, "o": price, "h": price, "l": price, "c": price, "n": 1,
-                                  "first": ts, "last": ts, "partial": bool(outage and ts - b > 3)}
+                                  "first": ts, "last": ts, "partial": bool(outage and ts - b > 3), "src": src}
             else:
                 if ts - cur["last"] > GAP_LIMIT:
                     cur["partial"] = True                  # ticks went missing inside this candle
@@ -526,6 +539,8 @@ class Engine:
                 cur["c"] = price
                 cur["n"] += 1
                 cur["last"] = ts
+                if src != cur.get("src"):
+                    cur["src"] = "tick" if "tick" in (src, cur.get("src")) else "tick:mixed"      # more than one source built this candle (a hand-over): the feed's tag wins
         for st in self._active_styles():
             if st.enabled_fast:
                 st.on_tick(sym, ts, price)                 # (catches its own errors: the tick path must never break)
@@ -536,9 +551,10 @@ class Engine:
     def _close(self, sym: str, tf: int, row: dict) -> None:
         if row.get("partial"):
             return          # joined mid-candle / ticks went missing: OHLC unreliable (history, if any, will fill it)
+        src = row.get("src", "tick")
         row = {k: row[k] for k in ("t", "o", "h", "l", "c", "n")}
         self._series(sym, tf).put(row)
-        self._queue_candle(sym, tf, row, "tick")
+        self._queue_candle(sym, tf, row, src)
         self._settle(sym, tf, row)
         self._run_strategies(sym, tf, row)
         if tf == 60:

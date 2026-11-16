@@ -88,7 +88,8 @@ _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile
     (r"^/api/tokens$", {"POST"}, "any", "cap.extension.connect"),
     (r"^/api/tokens(/\d+)?$", None, "any", None),
     (r"^/api/events$", {"GET"}, "any", None),
-    (r"^/api/contrib/mine$", {"GET"}, "any", None),                    # the shared-candle contributions of the caller; everything else under /api/contrib is admin-only
+    (r"^/api/livefeed/mine$", {"GET"}, "any", None),                   # the live-price leases of the caller; everything else under /api/livefeed is admin-only
+    (r"^/api/contrib/mine$", {"GET"}, "any", None),                  # the shared-candle contributions of the caller; everything else under /api/contrib is admin-only
     # Private data of the signed-in user (their own database): open to every role, each behind its own switch.
     (r"^/api/(trades|account)(/|$)", None, "any", "menu.trades"),
     (r"^/api/guard(/|$)", None, "any", "menu.guard"),

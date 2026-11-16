@@ -258,9 +258,22 @@ def m016_contrib(conn: sqlite3.Connection) -> None:
     """)
 
 
+def m017_live_feed(conn: sqlite3.Connection) -> None:
+    """Live prices from ordinary accounts (per-pair leases): per day and account what was applied / refused / late and how the account's ticks compared with the
+    established feed, and the accounts whose live prices are paused."""
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS feed_stats (
+        day TEXT NOT NULL, uid INTEGER NOT NULL, requests INTEGER NOT NULL DEFAULT 0, applied INTEGER NOT NULL DEFAULT 0, bad INTEGER NOT NULL DEFAULT 0,
+        late INTEGER NOT NULL DEFAULT 0, shadow_ok INTEGER NOT NULL DEFAULT 0, shadow_bad INTEGER NOT NULL DEFAULT 0, dropped INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (day, uid)) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS feed_block (
+        uid INTEGER PRIMARY KEY, reason TEXT, since REAL, auto INTEGER NOT NULL DEFAULT 0);
+    """)
+
+
 MIGRATIONS = [(1, m001_foundation), (2, m002_backtests), (3, m003_settings), (4, m004_manual_trades), (5, m005_sweeps), (6, m006_research),
               (7, m007_broker_trades), (8, m008_broker_trades_hidden), (9, m009_guard_alerts), (10, m010_style), (11, m011_style_step), (12, m012_accounts), (13, m013_features), (14, m014_strategy_owner),
-              (15, m015_quotex_link), (16, m016_contrib)]
+              (15, m015_quotex_link), (16, m016_contrib), (17, m017_live_feed)]
 
 
 def schema_version(conn: sqlite3.Connection) -> int:

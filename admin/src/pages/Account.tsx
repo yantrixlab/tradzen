@@ -127,6 +127,28 @@ function SharedCandles() {
   );
 }
 
+/** The live prices this account's extension streams (one account holds each pair; the price feed has priority). */
+function LivePrices() {
+  const q = useQuery({ queryKey: ['livefeed-mine'], queryFn: () => api<{ enabled: boolean; paused: { reason: string } | null; holding: { symbol: string; name: string }[]; today: { applied: number; bad: number }; week: { applied: number; bad: number; shadow_ok: number; shadow_bad: number } }>('/api/livefeed/mine'), refetchInterval: 15000 });
+  const d = q.data;
+  const n = (x: number) => x.toLocaleString();
+  return (
+    <Card title="Live prices">
+      {!d ? <p className="note">…</p> : !d.enabled ? <p className="note">This server does not take live prices from extensions.</p> : (
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center gap-2">{d.paused ? <Badge tone="down">PAUSED</Badge> : d.holding.length ? <Badge tone="up">STREAMING</Badge> : <Badge>READY</Badge>}<span className="note">{d.paused ? 'Your admin paused your live prices. Trades and alerts are not affected.' : d.holding.length ? `Your Quotex tab streams ${d.holding.map((h) => h.name).join(', ')} for everybody. Keep it open.` : 'If you open a pair that nobody else streams, your tab streams it for everybody.'}</span></div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded border border-line p-2"><div className="text-lg font-semibold tabular-nums">{n(d.today.applied)}</div><div className="note">prices used today</div></div>
+            <div className="rounded border border-line p-2"><div className="text-lg font-semibold tabular-nums">{n(d.week.applied)}</div><div className="note">used in 7 days</div></div>
+            <div className="rounded border border-line p-2"><div className="text-lg font-semibold tabular-nums">{n(d.week.bad)}</div><div className="note">refused in 7 days</div></div>
+          </div>
+          <p className="note">One account streams each pair at a time and the admin's price feed always has priority. Only the Quotex account linked to this account is used. Prices are read from your own tab; nothing is ever clicked or traded.</p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function Account() {
   const me = useMe().data;
   if (!me) return null;
@@ -139,6 +161,7 @@ export default function Account() {
         {me.auth_enabled ? <Tokens isAdmin={u.role === 'admin'} /> : <Card title="Chrome extension"><p className="note">On this local server the extension needs no token.</p></Card>}
         {me.auth_enabled && <QuotexLink linked={!!u.qx_linked} hint={u.qx_hint} at={u.qx_at} enforced={me.quotex_link !== false} />}
         {me.auth_enabled && <SharedCandles />}
+        {me.auth_enabled && <LivePrices />}
       </div>
     </div>
   );
