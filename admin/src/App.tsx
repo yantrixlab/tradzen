@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
+import { clearPrefs } from './prefs';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Me, useLiveState, useMe } from './hooks';
 import Overview from './pages/Overview';
@@ -81,6 +82,7 @@ function Shell({ me }: { me: Me }) {
   async function signOut() {
     try { await api('/api/auth/logout', { method: 'POST', body: {} }); } catch { /* the session is gone either way */ }
     qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
+    clearPrefs();                                                   // the next person on this browser starts from their own saved choices
     window.dispatchEvent(new Event('qxs-unauth'));
   }
   const gate = (min: 'trader' | 'editor' | 'admin', el: JSX.Element) => (may(role, min) ? el : <Navigate to={home} replace />);

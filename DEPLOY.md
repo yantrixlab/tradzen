@@ -105,6 +105,11 @@ The admin runs a **session** (Session console in the admin panel, `/admin/sessio
 - **Free and premium:** a session is free or premium. A premium session's signals, alerts and results are shown only to plans with the feature **Premium sessions** (off by default: make a "Premium" plan on the Features page, or give one user the feature). This is enforced on the server; the shared candle chart itself stays visible. Each user can also switch session alerts off on the Live sessions page.
 - Alerts reach users while their extension is signed in and the Quotex tab is open; the Live sessions page also plays a tone and shows a banner. There is no phone or Telegram push yet.
 
+## The chart
+- **Zones stay until a candle closes through them:** a supply zone runs on to the right edge until a candle *closes* above its top, a demand zone until one closes below its bottom (a wick or a close inside does not end it). Closed zones are drawn faint up to that candle (switch **Past zones** off to see only the standing ones). The strategies keep their own stricter rules (a zone used up after the first visit, expiry); the chart does not cut a zone for them.
+- **Switches:** Zones, Past zones, Zone text (the "SUPPLY · fresh · 1.5 ATR" line), Candle tags (ENGULFED, BASE, DEP), HH/HL structure, BUY / SELL, MTG and the **Indicators** menu (moving averages, Bollinger, Donchian, Supertrend, SAR, RSI, MACD, Stochastic, CCI, Williams %R, ROC, ADX, ATR).
+- **Saved per account:** every switch and the picked indicators are stored on the account (`user_prefs`, migration 20, `GET/PUT /api/prefs`), so they follow the person to another browser; this browser keeps a copy so the chart paints at once. Nothing else about trading depends on them.
+
 ## Updating
 ```bash
 git pull            # or copy the new files

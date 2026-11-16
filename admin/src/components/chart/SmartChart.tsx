@@ -5,6 +5,8 @@ import { useStrategies } from '../../hooks';
 import { ChartData, indicatorGroup } from '../StrategyChart';
 import { ErrorBox } from '../ui';
 import { PriceChart } from './PriceChart';
+import { catalogItem, IndicatorMenu } from './IndicatorMenu';
+import { usePref } from '../../prefs';
 import type { BtTrade, ChartArea, ChartBand, ChartCandle, ChartMarker, MtgSummary, SeriesGroup } from './types';
 
 /** What /api/backtests/chart returns: a pair's candles, and (with a strategy) the trades it would have taken, their results, the validation split and the MTG summary. */
@@ -33,6 +35,7 @@ export interface SmartChartProps {
   height?: number; compact?: boolean; limit?: number; initialCount?: number; enabled?: boolean;
 }
 
+const NO_PICKS: string[] = [];
 const toCandle = (c: Candle): ChartCandle => ({ t: c.t, o: c.o, h: c.h, l: c.l, c: c.c });
 
 /**
@@ -42,9 +45,11 @@ const toCandle = (c: Candle): ChartCandle => ({ t: c.t, o: c.o, h: c.h, l: c.l, 
 export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockStrategy = false, mtgSteps, mtgMult, live, overlay, height = 320, compact = false, limit = 4000, initialCount = 150, enabled = true }: SmartChartProps) {
   const strategies = useStrategies();
   const [sid, setSid] = useState<number | null>(strategyId);
-  const [showInd, setShowInd] = useState(true);
-  const [lSteps, setLSteps] = useState(0);
-  const [lMult, setLMult] = useState(2.2);
+  // saved on the account (prefs.ts): the strategy's indicators on / off, the martingale buttons, and the indicators the person picked from the menu
+  const [showInd, setShowInd] = usePref('chart.strategy-indicators', true);
+  const [lSteps, setLSteps] = usePref('chart.mtg-steps', 0);
+  const [lMult, setLMult] = usePref('chart.mtg-mult', 2.2);
+  const [picked, setPicked] = usePref<string[]>('chart.indicators', NO_PICKS);
   useEffect(() => { setSid(strategyId); }, [strategyId]);
   const applied = lockStrategy ? strategyId : sid;
   const steps = mtgSteps ?? lSteps, mult = mtgMult ?? lMult;
@@ -61,6 +66,14 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
     queryFn: () => api<ChartData>('/api/strategies/chart', { body: { spec: applied && spec.data && !isMeta ? spec.data.spec : {}, symbol, tf, count: Math.max(limit, 400), exprs: {}, patterns: {}, marks: true, all: true } }),
   });
 
+  // the indicators picked from the menu are asked for on their own (the strategy's signals and zones are never touched by them)
+  const mine = useMemo(() => picked.map((k) => catalogItem(k)).filter((c): c is NonNullable<typeof c> => !!c), [picked]);
+  const mineKey = mine.map((c) => c.key).join(',');
+  const own = useQuery({
+    queryKey: ['smart-own-ind', symbol, tf, mineKey, limit], enabled: !compact && !!symbol && mine.length > 0, staleTime: 15_000, retry: false, refetchInterval: live ? 30_000 : false,
+    queryFn: () => api<ChartData>('/api/strategies/chart', { body: { spec: { indicators: mine.map((c) => ({ id: `u_${c.key}`, type: c.type, ...c.params })) }, symbol, tf, count: Math.max(limit, 400), exprs: {}, patterns: {}, marks: false, all: true } }),
+  });
+
   const candles = useMemo<ChartCandle[]>(() => {
     const m = new Map<number, ChartCandle>();
     for (const r of q.data?.candles ?? []) m.set(r[0], { t: r[0], o: r[1], h: r[2], l: r[3], c: r[4] });
@@ -71,18 +84,23 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
 
   const { overlays, panes } = useMemo(() => {
     const out = { overlays: [] as SeriesGroup[], panes: [] as SeriesGroup[] };
-    const d = ind.data;
-    if (!d || !showInd || !candles.length) return out;
+    if (!candles.length) return out;
     const pos = new Map(candles.map((c, i) => [c.t, i] as [number, number]));
-    const align = (values: (number | null)[]) => { const a: (number | null)[] = new Array(candles.length).fill(null); d.candles.forEach((c, j) => { const i = pos.get(c.t); if (i !== undefined) a[i] = values[j] ?? null; }); return a; };
-    d.indicators.forEach((it, k) => {
-      const base = indicatorGroup(it, k, d);
-      if (!base) return;
-      const g: SeriesGroup = { ...base, lines: base.lines.map((l, j) => ({ ...l, values: align(it.series[j].values) })) };
-      (it.panel === 'price' ? out.overlays : out.panes).push(g);
-    });
+    const add = (d: ChartData | undefined, colorOf?: (id: string) => { color: string; label: string } | undefined) => {
+      if (!d) return;
+      const align = (values: (number | null)[]) => { const a: (number | null)[] = new Array(candles.length).fill(null); d.candles.forEach((c, j) => { const i = pos.get(c.t); if (i !== undefined) a[i] = values[j] ?? null; }); return a; };
+      d.indicators.forEach((it, k) => {
+        const base = indicatorGroup(it, k, d);
+        if (!base) return;
+        const mark = colorOf?.(it.id);
+        const g: SeriesGroup = { ...base, ...(mark ?? {}), lines: base.lines.map((l, j) => ({ ...l, values: align(it.series[j].values) })) };
+        (it.panel === 'price' ? out.overlays : out.panes).push(g);
+      });
+    };
+    if (showInd) add(ind.data);
+    add(own.data, (id) => { const c = catalogItem(id.replace(/^u_/, '')); return c ? { color: c.color, label: c.name } : undefined; });
     return out;
-  }, [ind.data, showInd, candles]);
+  }, [ind.data, own.data, showInd, candles]);
 
   const pickable = (strategies.data ?? []).filter((s) => s.status !== 'archived' && !s.tags.includes('meta') && s.key !== 'consensus-3');
   const toolbarLeft = (
@@ -91,7 +109,8 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
         <select className="input !w-56 !py-1 text-xs" value={sid ?? ''} onChange={(e) => setSid(e.target.value ? Number(e.target.value) : null)} title="Apply a strategy to this chart: its trades, results and indicators are drawn">
           <option value="">Strategy: none</option>{pickable.map((s) => <option key={s.id} value={s.id}>{s.name}{s.status === 'live' ? ' (live)' : ''}</option>)}
         </select>)}
-      {applied && !compact && <label className="flex cursor-pointer items-center gap-1 text-mut" title="Draw the indicators and zones the strategy uses (newest 400 candles)"><input type="checkbox" checked={showInd} onChange={(e) => setShowInd(e.target.checked)} />Indicators</label>}
+      {!compact && <IndicatorMenu picked={picked} onChange={setPicked} />}
+      {applied && !compact && <label className="flex cursor-pointer items-center gap-1 text-mut" title="Draw the indicators the strategy uses"><input type="checkbox" checked={showInd} onChange={(e) => setShowInd(e.target.checked)} />Strategy lines</label>}
       {(applied || runId) && mtgSteps === undefined && !compact && (
         <div className="flex items-center gap-1" title="Martingale: after a losing trade, re-enter the same direction on the next candle with a bigger stake">
           <span style={{ color: '#38bdf8' }} className="font-semibold">MTG</span>
@@ -113,6 +132,7 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
       emptyText="Not enough stored candles for this pair and timeframe yet."
       footer={<>
         {q.data?.note && <div className="mt-1 text-xs text-warn">{q.data.note}</div>}
+        {own.isError && <div className="mt-1 text-[11px] text-mut">The indicators you picked could not be drawn: {own.error instanceof Error ? own.error.message : 'not available'}.</div>}
         {ind.isError && <div className="mt-1 text-[11px] text-mut">Zones, structure and indicators are not drawn here: {ind.error instanceof Error ? ind.error.message : 'not available'}.</div>}
         {(ind.data?.runs ?? 0) > 1 && <div className="mt-1 text-[11px] text-mut">Zones, structure and indicators are worked out separately for each of the {ind.data!.runs} uninterrupted stretches of candles (they never span a data gap).</div>}
       </>}

@@ -143,12 +143,27 @@ def _with_default_marks(inds: list[dict]) -> list[dict]:
     return [*inds, *extra]
 
 
+def close_through(closes: np.ndarray, kind: str, lo: float, hi: float, born: int) -> int | None:
+    """The first candle after `born` that CLOSES beyond the zone: above a supply zone's top, below a demand zone's bottom. None = it is still standing.
+    This is what ends a zone on the chart (the strategy indicators have their own, stricter rules: expiry, 'used after the first visit', a buffer beyond the edge)."""
+    tail = closes[born + 1:]
+    hit = np.flatnonzero(tail > hi) if kind == "supply" else np.flatnonzero(tail < lo)
+    return int(hit[0]) + born + 1 if len(hit) else None
+
+
 def _zone_and_swing_marks(inds: list[dict], df: pd.DataFrame, tail: int, limit: int = MAX_ZONES_DRAWN) -> tuple[list[dict], list[dict]]:
     """What the zone tracker and the structure indicator of the strategy would draw by hand: every supply / demand zone (band, base candles that formed it,
-    departure, visits, whether it was broken) and every swing high / low labelled HH / LH / HL / LL. Times are candle times, so a chart can place them anywhere."""
+    departure, visits, whether it was broken) and every swing high / low labelled HH / LH / HL / LL. Times are candle times, so a chart can place them anywhere.
+    A zone that expired or was 'used up' for the strategy is still sent while price has not closed through it: the chart keeps it going until a candle does."""
     n, first = len(df), len(df) - tail
     ts = df["t"].to_numpy().astype(np.int64)
+    closes = df["close"].to_numpy(float)
     at = lambda i: int(ts[min(max(i, 0), n - 1)])  # noqa: E731
+
+    def gone(r: dict) -> bool:                                               # closed through before the window starts: nothing of it can be seen
+        born = r["dep"][1] if r.get("dep") else r["start"]
+        b = close_through(closes, r["kind"], r["lo"], r["hi"], born)
+        return b is not None and b < first
     zones_out: list[dict] = []
     swings_out: list[dict] = []
     for it in inds:
@@ -158,7 +173,7 @@ def _zone_and_swing_marks(inds: list[dict], df: pd.DataFrame, tail: int, limit: 
                 recs = zones_mod.lifecycle(df, **params)
                 for r in recs:
                     end = n - 1 if r["end"] is None else r["end"]
-                    if end < first:
+                    if gone(r):
                         continue
                     zones_out.append({
                         "id": it["id"], "kind": r["kind"], "lo": r["lo"], "hi": r["hi"], "t0": at(max(r["start"], first)), "t1": at(end), "alive": r["end"] is None,
@@ -169,7 +184,7 @@ def _zone_and_swing_marks(inds: list[dict], df: pd.DataFrame, tail: int, limit: 
             elif it["type"] == "engulf":
                 for r in engulf_mod.lifecycle(df, **params):
                     end = n - 1 if r["end"] is None else r["end"]
-                    if end < first:
+                    if gone(r):
                         continue
                     zones_out.append({
                         "id": it["id"], "kind": r["kind"], "lo": r["lo"], "hi": r["hi"], "t0": at(max(r["start"], first)), "t1": at(end), "alive": r["end"] is None,

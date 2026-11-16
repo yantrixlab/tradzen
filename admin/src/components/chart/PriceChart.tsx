@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { pct, signed } from '../../format';
-import type { BtTrade, ChartCandle, ChartZone, MtgLadder, MtgSummary, PriceChartProps, SeriesGroup } from './types';
+import { usePref } from '../../prefs';
+import type { BtTrade, ChartCandle, ChartSwing, ChartZone, MtgLadder, MtgSummary, PriceChartProps, SeriesGroup } from './types';
 
 /**
  * THE chart of the app. Everything a trader expects, in one component used by every screen:
@@ -20,10 +21,12 @@ const DEMAND = '#22c55e', SUPPLY = '#ef4444';                                  /
 const zoneColor = (z: ChartZone) => (z.kind === 'demand' ? DEMAND : SUPPLY);
 const zoneName = (z: ChartZone) => `${z.kind === 'demand' ? 'Demand' : 'Supply'} zone${z.flip ? ' (flipped: it was the opposite kind before it broke)' : ''}`;
 const nth = (k: number) => (k === 1 ? '1st' : k === 2 ? '2nd' : k === 3 ? '3rd' : `${k}th`);
-const zoneState = (z: ChartZone) => (z.src === 'engulf'
-  ? (z.why === 'used' ? 'used (1st visit)' : z.why === 'broken' ? 'broken' : z.why === 'expired' ? 'expired' : 'fresh')
-  : z.broken ? 'broken' : z.tests === 0 ? 'untested' : `${nth(z.tests)} visit`);
-const zoneHidden = (z: ChartZone) => z.broken || z.why === 'expired';                  // history: shown only when "Broken" is ticked
+/** A zone lives until a candle CLOSES through it (above a supply zone, below a demand zone): that is `closed`. The strategy's own rules (used after one visit, expiry) only change the wording. */
+const zoneState = (z: ChartZone, closed: boolean) => (closed ? 'closed through'
+  : z.src === 'engulf' ? (z.why === 'used' ? 'used (1st visit)' : 'fresh')
+    : z.tests === 0 ? 'untested' : `${nth(z.tests)} visit`);
+const NO_HID: Record<string, boolean> = {};
+const NONE: never[] = [];                                                              // a stable empty list, so memoised layers are not rebuilt on every render
 const SWING_COLOR: Record<string, string> = { HH: '#4ade80', HL: '#4ade80', LH: '#f87171', LL: '#f87171', EH: '#94a3b8', EL: '#94a3b8', '': '#94a3b8' };
 const MTG_FILL: Record<string, string> = { win: 'rgba(34,197,94,0.30)', loss: 'rgba(245,158,11,0.26)', draw: 'rgba(148,163,184,0.20)' };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -60,8 +63,22 @@ function linePath(values: (number | null)[], i0: number, i1: number, x: (i: numb
 
 interface View { start: number; count: number }
 
+/** A pill switch for the toolbar: one tap shows / hides a layer of the chart. */
+function Pill({ on, set, color, title, children }: { on: boolean; set: (v: boolean) => void; color?: string; title?: string; children: React.ReactNode }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} title={title} onClick={() => set(!on)}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium leading-none transition-colors ${on ? 'text-fg' : 'border-line bg-transparent text-mut hover:text-fg'}`}
+      style={on ? { borderColor: `${color ?? ACC}99`, background: `${color ?? ACC}22` } : undefined}>
+      <span className="inline-block h-2 w-2 rounded-full transition-opacity" style={{ background: color ?? ACC, opacity: on ? 1 : 0.35 }} />{children}
+    </button>
+  );
+}
+
+/** A row of joined buttons (zoom, scroll, ranges). */
+const Seg = ({ children }: { children: React.ReactNode }) => <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-line bg-panel2 [&>button]:border-0 [&>button]:rounded-none [&>button+button]:border-l [&>button+button]:border-line">{children}</div>;
+
 export function PriceChart(props: PriceChartProps) {
-  const { candles, forming = null, lastPrice = null, overlays = [], panes = [], markers = [], bands = [], areas = [], boxes = [], zones = [], swings = [], trades = [], payout = null, splitT = null, mtg = null,
+  const { candles, forming = null, lastPrice = null, overlays = [], panes = [], markers = [], bands = [], areas = [], boxes = [], zones = NONE as ChartZone[], swings = NONE as ChartSwing[], trades = [], payout = null, splitT = null, mtg = null,
     height = 320, initialCount = 150, compact = false, resetKey = '', toolbarLeft, toolbarRight, tooltipExtra, footer, emptyText = 'No candles to show yet.' } = props;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const root = useRef<HTMLDivElement>(null);
@@ -76,14 +93,17 @@ export function PriceChart(props: PriceChartProps) {
   const [view, setView] = useState<View>(() => ({ start: Math.max(0, n - Math.min(n, initialCount)), count: Math.max(1, Math.min(n, initialCount)) }));
   const [hover, setHover] = useState<{ i: number; y: number } | null>(null);
   const [drag, setDrag] = useState(false);
-  const [showBuy, setShowBuy] = useState(true);
-  const [showSell, setShowSell] = useState(true);
-  const [showResult, setShowResult] = useState(true);
-  const [showMtg, setShowMtg] = useState(true);
-  const [showZones, setShowZones] = useState(true);
-  const [showBroken, setShowBroken] = useState(false);                // zones price already broke through are history: hidden until asked for
-  const [showSwings, setShowSwings] = useState(true);
-  const [hid, setHid] = useState<Record<string, boolean>>({});
+  // every switch is saved on the account (see prefs.ts): the next visit, on any browser, opens the chart the way this person left it
+  const [showBuy, setShowBuy] = usePref('chart.buy', true);
+  const [showSell, setShowSell] = usePref('chart.sell', true);
+  const [showResult, setShowResult] = usePref('chart.result-tint', true);
+  const [showMtg, setShowMtg] = usePref('chart.mtg-candles', true);
+  const [showZones, setShowZones] = usePref('chart.zones', true);
+  const [showBroken, setShowBroken] = usePref('chart.past-zones', true);   // zones a candle already closed through: drawn up to that candle (switch off to see only the standing ones)
+  const [showSwings, setShowSwings] = usePref('chart.structure', true);
+  const [showZoneText, setShowZoneText] = usePref('chart.zone-text', true);   // "SUPPLY · fresh · 1.5 ATR"
+  const [showTags, setShowTags] = usePref('chart.candle-tags', true);       // ENGULFED / ENGULF / BASE / DEP on the candles that formed a zone
+  const [hid, setHid] = usePref<Record<string, boolean>>('chart.hidden-lines', NO_HID);                // indicator lines the person switched off by tapping their chip
 
   useEffect(() => {
     if (!wrap.current) return;
@@ -230,15 +250,115 @@ export function PriceChart(props: PriceChartProps) {
   const visibleTrades = tradeIdx.filter((i) => i >= i0 - 1 && i <= i1 && (tradeAt.get(i)!.dir > 0 ? showBuy : showSell));
   const visibleMarkers = markers.filter((m) => { const i = idxOf.get(m.t); return i !== undefined && i >= i0 - 1 && i <= i1 && (m.dir > 0 ? showBuy : showSell); });
 
-  // ---- interaction
+  // ---- supply / demand zones: each runs from where it was formed until a candle CLOSES through it (above a supply zone, below a demand zone). One that no candle has
+  //      closed through is still standing and runs on to the right edge, however long ago it formed (nothing cuts it at a first visit, a timer or a data gap).
+  const closedN = candles.length;                                        // the candles that have closed (the forming one is not one of them)
+  const zoneEnd = useMemo(() => zones.map((z) => {
+    const born = z.dep ? z.dep[1] : z.t0;                                // the candle that completed the zone: only later candles can close through it
+    let a = 0, b = closedN;
+    while (a < b) { const m = (a + b) >> 1; if (candles[m].t < born) a = m + 1; else b = m; }
+    for (let i = a + 1; i < closedN; i++) { const c = candles[i].c; if (z.kind === 'supply' ? c > z.hi : c < z.lo) return i; }
+    return null;
+  }), [zones, candles, closedN]);
+  const zoneSpans = useMemo(() => (showZones ? zones.flatMap((z, k) => {
+    const end = zoneEnd[k];
+    if (end !== null && !showBroken) return [];
+    const a = firstAtOrAfter(z.t0), e = end ?? n - 1;
+    if (a >= n || e < i0 - 1 || a > i1 + 1) return [];
+    const span = (p: [number, number] | null) => (p ? { a: firstAtOrAfter(p[0]), b: Math.min(n - 1, firstAtOrAfter(p[1] + 1) - 1) } : null);
+    return [{ z, a, e, closed: end !== null, base: span(z.base), dep: span(z.dep) }];
+  }) : []), [showZones, showBroken, zones, zoneEnd, firstAtOrAfter, n, i0, i1]);
+  const standing = useMemo(() => zoneEnd.filter((e) => e === null).length, [zoneEnd]);
+  const pastCount = zones.length - standing;
+
+  // ---- the heavy layers are built only when the view, the data or a switch changes, never on a plain mouse move (that is what keeps hover / crosshair smooth)
+  const zoneLayer = useMemo(() => (
+    <g>
+      {zoneSpans.map(({ z, a, e, closed }, k) => {
+        const col = zoneColor(z), x0 = x(a) - step / 2, x1 = closed ? x(e) + step / 2 : w - PAD_R;
+        let top = y(z.hi), bot = y(z.lo);
+        if (bot - top < 7) { const mid = (top + bot) / 2; top = mid - 3.5; bot = mid + 3.5; }                // a one-candle zone can be a hair thin at this scale: keep it visible
+        const spent = closed || z.why === 'used';                                                           // closed through: history, faint and dashed; used: still standing but no longer a first visit
+        const fillOp = closed ? 0.045 : spent ? 0.11 : z.tests >= 3 ? 0.1 : 0.17;
+        const dash = closed ? '3 4' : z.flip ? '6 4' : undefined, lineOp = closed ? 0.4 : spent ? 0.85 : 1;
+        const lx = Math.max(x0, PAD_L) + 6, room = x1 - Math.max(x0, PAD_L);
+        const label = `${z.kind === 'demand' ? 'DEMAND' : 'SUPPLY'}${z.flip ? ' ⟲' : ''} · ${zoneState(z, closed)} · ${z.move.toFixed(1)} ATR`;
+        return (
+          <g key={`z${k}`}>
+            <rect x={x0} y={top} width={Math.max(2, x1 - x0)} height={bot - top} fill={col} opacity={fillOp} />
+            <g stroke={col} strokeWidth={1.3} opacity={lineOp}>
+              <line x1={x0} x2={x1} y1={top} y2={top} strokeDasharray={dash} /><line x1={x0} x2={x1} y1={bot} y2={bot} strokeDasharray={dash} />
+              <line x1={x0} x2={x0} y1={top} y2={bot} />{closed && <line x1={x1} x2={x1} y1={top} y2={bot} strokeWidth={2} />}
+            </g>
+            {showZoneText && !closed && room > 120 && bot - top > 9 && <text x={lx} y={bot - top >= 15 ? top + 11 : top - 4} fontSize="9.5" fontWeight={700} fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{label}</text>}
+          </g>);
+      })}
+    </g>
+  ), [zoneSpans, step, view.start, hi, lo, mainH, w, showZoneText]);                                         // eslint-disable-line react-hooks/exhaustive-deps
+
+  const candleLayer = useMemo(() => (dense
+    ? <path d={(() => { let d = ''; for (let i = i0; i <= i1; i++) d += `${d ? 'L' : 'M'}${x(i).toFixed(1)},${y(all[i].c).toFixed(1)}`; return d; })()} fill="none" stroke="#9aa6d1" strokeWidth={1.2} strokeLinejoin="round" />
+    : <g>{all.slice(i0, i1 + 1).map((c, k) => {
+      const i = i0 + k, col = c.c >= c.o ? UP : DOWN, cx = x(i), bw = Math.max(1.6, step * 0.68);
+      const top = y(Math.max(c.o, c.c)), bh = Math.max(1.4, Math.abs(y(c.o) - y(c.c)));
+      return <g key={c.t} opacity={c.syn ? 0.4 : forming && i === n - 1 ? 0.65 : 1}><line x1={cx} x2={cx} y1={y(c.h)} y2={y(c.l)} stroke={col} strokeWidth={step > 6 ? 1.4 : 1} /><rect x={cx - bw / 2} y={top} width={bw} height={bh} fill={col} rx={step > 9 ? 1 : 0} /></g>;
+    })}</g>), [all, i0, i1, step, view.start, hi, lo, mainH, dense, forming, n]);                              // eslint-disable-line react-hooks/exhaustive-deps
+
+  const swingPts = useMemo(() => (showSwings ? swings.map((s) => ({ s, i: idxOf.get(s.t) })).filter((p): p is { s: ChartSwing; i: number } => p.i !== undefined && p.i >= i0 - 1 && p.i <= i1 + 1) : []), [showSwings, swings, idxOf, i0, i1]);
+  const originLayer = useMemo(() => (
+    <g>
+      {/* the candles each zone was made from: BASE (dashed outline) and DEPARTURE (solid, tinted); a diamond where price came back to the zone */}
+      {zoneSpans.map(({ z, base, dep, closed }, k) => {
+        const col = zoneColor(z), box = (a: number, b: number, pad: number) => {
+          let top = Infinity, bot = -Infinity;
+          for (let i = Math.max(0, a); i <= Math.min(n - 1, b); i++) { top = Math.min(top, y(all[i].h)); bot = Math.max(bot, y(all[i].l)); }
+          return { top: top - pad, bot: bot + pad, bx: x(a) - step / 2 + 0.5, bw: Math.max(3, step * (b - a + 1) - 1) };
+        };
+        const bs = base && base.b >= i0 - 1 && base.a <= i1 + 1 ? box(base.a, base.b, 4) : null;
+        const ds = dep && dep.b >= i0 - 1 && dep.a <= i1 + 1 ? box(dep.a, dep.b, 4) : null;
+        return (
+          <g key={`zb${k}`} opacity={closed ? 0.55 : 1}>
+            {bs && <g><rect x={bs.bx} y={bs.top} width={bs.bw} height={bs.bot - bs.top} fill="none" stroke={col} strokeWidth={1.4} strokeDasharray="4 3" rx={3} />
+              {showTags && bs.bw > (z.src === 'engulf' ? 12 : 34) && <text x={bs.bx + bs.bw / 2} y={z.kind === 'demand' ? bs.bot + 11 : bs.top - 4} fontSize="9" fontWeight={800} textAnchor="middle" fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{z.src === 'engulf' ? (step > 11 ? 'ENGULFED' : '') : 'BASE'}</text>}</g>}
+            {ds && <g><rect x={ds.bx} y={ds.top} width={ds.bw} height={ds.bot - ds.top} fill={col} fillOpacity={0.14} stroke={col} strokeWidth={1.5} rx={3} />
+              {showTags && ds.bw > 14 && <text x={ds.bx + ds.bw / 2} y={z.kind === 'demand' ? ds.top - 4 : ds.bot + 11} fontSize="9" fontWeight={800} textAnchor="middle" fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{z.src === 'engulf' ? (z.kind === 'demand' ? '▲ ENGULF' : '▼ ENGULF') : z.kind === 'demand' ? '▲ DEP' : '▼ DEP'}</text>}</g>}
+            {z.touches.map((t) => { const i = idxOf.get(t); return i === undefined || i < i0 || i > i1 ? null
+              : <path key={t} d={`M${x(i)},${y(z.kind === 'demand' ? z.hi : z.lo) - 5} l5,5 l-5,5 l-5,-5 z`} fill={BG} stroke={col} strokeWidth={1.6} />; })}
+          </g>);
+      })}
+      {/* market-structure swings: HH / HL green, LH / LL red */}
+      {swingPts.map(({ s, i }) => {
+        const col = SWING_COLOR[s.label] ?? '#94a3b8', up = s.kind === 'high';
+        return (
+          <g key={`sw${s.id}${s.t}${s.kind}`}>
+            <circle cx={x(i)} cy={y(s.price)} r={3} fill={col} stroke={BG} strokeWidth={1} />
+            {s.label && !dense && <text x={x(i)} y={up ? y(s.price) - 8 : y(s.price) + 16} fontSize="10" fontWeight={800} textAnchor="middle" fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{s.label}</text>}
+          </g>);
+      })}
+    </g>
+  ), [zoneSpans, swingPts, step, view.start, hi, lo, mainH, all, i0, i1, n, dense, showTags, idxOf]);        // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- interaction (pointer moves are coalesced to one update per frame)
   const dragRef = useRef<{ x: number; start: number } | null>(null);
+  const moveRef = useRef<{ cx: number; cy: number; left: number; top: number } | null>(null);
+  const frame = useRef(0);
+  useEffect(() => () => { if (frame.current) cancelAnimationFrame(frame.current); }, []);
   const onDown = (e: React.PointerEvent<SVGSVGElement>) => { (e.currentTarget as Element).setPointerCapture(e.pointerId); dragRef.current = { x: e.clientX, start: view.start }; setDrag(true); };
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    if (dragRef.current) { const d = dragRef.current; setView((v) => clamp({ ...v, start: d.start - (e.clientX - d.x) / step })); return; }
-    const i = Math.floor((e.clientX - r.left - PAD_L) / step + view.start);
-    setHover(i >= 0 && i < n && e.clientX - r.left >= PAD_L && e.clientX - r.left <= PAD_L + innerW ? { i, y: e.clientY - r.top } : null);
+    moveRef.current = { cx: e.clientX, cy: e.clientY, left: r.left, top: r.top };
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      const m = moveRef.current;
+      if (!m) return;
+      const d = dragRef.current;
+      if (d) { setView((v) => clamp({ ...v, start: d.start - (m.cx - d.x) / step })); return; }
+      const i = Math.floor((m.cx - m.left - PAD_L) / step + view.start);
+      setHover(i >= 0 && i < n && m.cx - m.left >= PAD_L && m.cx - m.left <= PAD_L + innerW ? { i, y: m.cy - m.top } : null);
+    });
   };
+  const onLeave = () => { moveRef.current = null; if (!dragRef.current) setHover(null); };
   const onUp = () => { dragRef.current = null; setDrag(false); };
   const onKey = (e: React.KeyboardEvent) => {
     const k = e.key;
@@ -293,7 +413,7 @@ export function PriceChart(props: PriceChartProps) {
   const priceNow = lastPrice ?? (forming ? forming.c : null);
   const rangeBtn = (label: string, count: number) => {
     const active = Math.abs(view.count - Math.min(count, n)) < 1;
-    return <button key={label} className={`btn btn-sm !px-2 ${active ? 'border-acc text-[#c4b5fd]' : ''}`} onClick={() => show(count)}>{label}</button>;
+    return <button key={label} className={`btn btn-sm !px-2.5 ${active ? '!bg-acc/25 text-[#c4b5fd]' : ''}`} onClick={() => show(count)}>{label}</button>;
   };
   const groupValue = (g: SeriesGroup, i: number) => g.lines.map((l) => fmt(l.values[i], l.values[i] ?? 1)).join(' / ');
   const chip = (g: SeriesGroup) => (
@@ -304,24 +424,15 @@ export function PriceChart(props: PriceChartProps) {
   const anyTrades = tradeIdx.length > 0, anySignals = anyTrades || markers.length > 0;
   const clipId = `clip-${uid}`;
 
-  // ---- supply / demand zones and market-structure swings, placed on candle indices
-  const lastX = (z: ChartZone) => Math.min(n - 1, firstAtOrAfter(z.t1 + 1) - 1);          // the candle where the zone ends (a zone never crosses a data gap)
-  const zoneSpans = showZones ? zones.filter((z) => showBroken || !zoneHidden(z)).map((z) => {
-    const a = firstAtOrAfter(z.t0), e = lastX(z);
-    const span = (p: [number, number] | null) => (p ? { a: firstAtOrAfter(p[0]), b: Math.min(n - 1, firstAtOrAfter(p[1] + 1) - 1) } : null);
-    return { z, a, e, base: span(z.base), dep: span(z.dep) };
-  }).filter((s) => s.a < n && s.e >= i0 - 1 && s.a <= i1 + 1) : [];
-  const swingPts = showSwings ? swings.map((s) => ({ s, i: idxOf.get(s.t) })).filter((p): p is { s: typeof swings[number]; i: number } => p.i !== undefined && p.i >= i0 - 1 && p.i <= i1 + 1) : [];
-  const brokenCount = zones.filter((z) => z.broken).length;
-  const hZones = hover ? zoneSpans.flatMap(({ z, a, e, base, dep }) => {
-    const out: { z: ChartZone; what: string }[] = [];
+  const hZones = hover ? zoneSpans.flatMap(({ z, a, e, closed, base, dep }) => {
+    const out: { z: ChartZone; what: string; closed: boolean }[] = [];
     const px = hover.y <= mainH ? yInv(hover.y) : null;
-    if (px !== null && hover.i >= a && hover.i <= (z.alive && e >= n - 2 ? n - 1 : e) && px >= z.lo - (z.hi - z.lo) * 0.2 && px <= z.hi + (z.hi - z.lo) * 0.2 && !(base && hover.i >= base.a && hover.i <= base.b) && !(dep && hover.i >= dep.a && hover.i <= dep.b)) {
-      out.push({ z, what: z.src === 'engulf' ? `inside this zone (${z.why === 'used' ? 'it was used up by the first visit' : z.why ? z.why : 'it works on the first visit only'})` : 'inside this zone' });
+    if (px !== null && hover.i >= a && hover.i <= e && px >= z.lo - (z.hi - z.lo) * 0.2 && px <= z.hi + (z.hi - z.lo) * 0.2 && !(base && hover.i >= base.a && hover.i <= base.b) && !(dep && hover.i >= dep.a && hover.i <= dep.b)) {
+      out.push({ z, closed, what: z.src === 'engulf' && z.why === 'used' ? 'inside this zone (the first visit already used it up for the strategy; it stands until a candle closes through it)' : 'inside this zone' });
     }
     const eng = z.src === 'engulf';
-    if (base && hover.i >= base.a && hover.i <= base.b) out.push({ z, what: eng ? `the ENGULFED ${z.kind === 'demand' ? 'red' : 'green'} candle: its full high-low range is the zone` : 'a BASE candle: the tight candles that built this zone' });
-    else if (dep && hover.i >= dep.a && hover.i <= dep.b) out.push({ z, what: eng ? `the candle(s) that ENGULFED it (${z.run === 1 ? 'one candle' : `${z.run} candles`}): they closed beyond the zone` : 'the DEPARTURE candle: the strong move away that made it a zone' });
+    if (base && hover.i >= base.a && hover.i <= base.b) out.push({ z, closed, what: eng ? `the ENGULFED ${z.kind === 'demand' ? 'red' : 'green'} candle: its full high-low range is the zone` : 'a BASE candle: the tight candles that built this zone' });
+    else if (dep && hover.i >= dep.a && hover.i <= dep.b) out.push({ z, closed, what: eng ? `the candle(s) that ENGULFED it (${z.run === 1 ? 'one candle' : `${z.run} candles`}): they closed beyond the zone` : 'the DEPARTURE candle: the strong move away that made it a zone' });
     return out;
   }) : [];
   const hSwing = hover ? swings.find((s) => idxOf.get(s.t) === hover.i) : undefined;
@@ -330,39 +441,46 @@ export function PriceChart(props: PriceChartProps) {
     <div ref={root} className={fs ? 'fixed inset-0 z-[200] flex flex-col overflow-auto bg-bg p-4' : ''}>
       <div ref={wrap} className="outline-none" tabIndex={0} onKeyDown={onKey}>
         {/* toolbar */}
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
-          {toolbarLeft}
-          <div className="flex items-center gap-1">
-            <button className="btn btn-sm !px-2" title="Zoom out (−)" onClick={() => zoom(1.35)}>−</button>
-            <button className="btn btn-sm !px-2" title="Zoom in (+)" onClick={() => zoom(0.74)}>+</button>
-            <button className="btn btn-sm !px-2" title="Scroll back (←)" onClick={() => pan(-Math.max(1, view.count / 3))}>◀</button>
-            <button className="btn btn-sm !px-2" title="Scroll forward (→)" onClick={() => pan(Math.max(1, view.count / 3))}>▶</button>
+        <div className="mb-2 rounded-xl border border-line bg-panel2/40 p-2">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {toolbarLeft}
+            <Seg>
+              <button className="btn btn-sm !px-2.5" title="Zoom out (−)" onClick={() => zoom(1.35)}>−</button>
+              <button className="btn btn-sm !px-2.5" title="Zoom in (+)" onClick={() => zoom(0.74)}>+</button>
+              <button className="btn btn-sm !px-2.5" title="Scroll back (←)" onClick={() => pan(-Math.max(1, view.count / 3))}>◀</button>
+              <button className="btn btn-sm !px-2.5" title="Scroll forward (→)" onClick={() => pan(Math.max(1, view.count / 3))}>▶</button>
+            </Seg>
+            {!compact && <Seg>{rangeBtn('50', 50)}{rangeBtn('100', 100)}{rangeBtn('250', 250)}{rangeBtn('500', 500)}{rangeBtn('All', n)}</Seg>}
+            <button className="btn btn-sm" title="Jump to the newest candles" onClick={() => show(Math.min(view.count, n))}>Latest</button>
+            {anyTrades && <Seg>
+              <button className="btn btn-sm" title="Centre the previous trade" onClick={() => jump(-1)}>⏮ Trade</button>
+              <button className="btn btn-sm" title="Centre the next trade" onClick={() => jump(1)}>Trade ⏭</button></Seg>}
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {toolbarRight}
+              <button className="btn btn-sm" title="Back to the newest candles at the default zoom (double-click the chart too)" onClick={reset}>Reset</button>
+              <button className="btn btn-sm" title={fs ? 'Leave full screen (Esc)' : 'Full screen (F)'} onClick={toggleFs}>{fs ? '✕ Exit full screen' : '⛶ Full screen'}</button>
+            </div>
           </div>
-          {!compact && <div className="flex items-center gap-1">{rangeBtn('50', 50)}{rangeBtn('100', 100)}{rangeBtn('250', 250)}{rangeBtn('500', 500)}{rangeBtn('All', n)}</div>}
-          <button className="btn btn-sm" title="Jump to the newest candles" onClick={() => show(Math.min(view.count, n))}>Latest</button>
-          {anyTrades && <div className="flex items-center gap-1">
-            <button className="btn btn-sm" title="Centre the previous trade" onClick={() => jump(-1)}>⏮ Trade</button>
-            <button className="btn btn-sm" title="Centre the next trade" onClick={() => jump(1)}>Trade ⏭</button></div>}
-          <div className="ml-auto flex flex-wrap items-center gap-3">
-            {anySignals && <>
-              <label className="flex cursor-pointer items-center gap-1" style={{ color: UP }}><input type="checkbox" checked={showBuy} onChange={(e) => setShowBuy(e.target.checked)} />▲ BUY</label>
-              <label className="flex cursor-pointer items-center gap-1" style={{ color: DOWN }}><input type="checkbox" checked={showSell} onChange={(e) => setShowSell(e.target.checked)} />▼ SELL</label></>}
-            {anyTrades && <label className="flex cursor-pointer items-center gap-1 text-mut"><input type="checkbox" checked={showResult} onChange={(e) => setShowResult(e.target.checked)} />Result tint</label>}
-            {zones.length > 0 && <>
-              <label className="flex cursor-pointer items-center gap-1" title="Supply (red) and demand (green) zones, with the BASE and DEPARTURE candles that formed each one"><input type="checkbox" checked={showZones} onChange={(e) => setShowZones(e.target.checked)} /><span style={{ color: DEMAND }}>Demand</span>/<span style={{ color: SUPPLY }}>Supply</span> zones</label>
-              {brokenCount > 0 && showZones && <label className="flex cursor-pointer items-center gap-1 text-mut" title="Zones price has already broken through (dashed)"><input type="checkbox" checked={showBroken} onChange={(e) => setShowBroken(e.target.checked)} />Broken</label>}</>}
-            {swings.length > 0 && <label className="flex cursor-pointer items-center gap-1" title="Swing highs and lows labelled higher-high / lower-high / higher-low / lower-low"><input type="checkbox" checked={showSwings} onChange={(e) => setShowSwings(e.target.checked)} /><span style={{ color: '#4ade80' }}>HH/HL</span>·<span style={{ color: '#f87171' }}>LH/LL</span> structure</label>}
-            {hasMtg && <label className="flex cursor-pointer items-center gap-1" style={{ color: SKY }} title="Martingale re-entries after a losing trade"><input type="checkbox" checked={showMtg} onChange={(e) => setShowMtg(e.target.checked)} />MTG candles</label>}
-            {toolbarRight}
-            <button className="btn btn-sm" title="Back to the newest candles at the default zoom (double-click the chart too)" onClick={reset}>Reset</button>
-            <button className="btn btn-sm" title={fs ? 'Leave full screen (Esc)' : 'Full screen (F)'} onClick={toggleFs}>{fs ? '✕ Exit full screen' : '⛶ Full screen'}</button>
-          </div>
+          {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || hasMtg) && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line/60 pt-2">
+              <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-mut">Show</span>
+              {anySignals && <><Pill on={showBuy} set={setShowBuy} color={UP}>▲ BUY</Pill><Pill on={showSell} set={setShowSell} color={DOWN}>▼ SELL</Pill></>}
+              {anyTrades && <Pill on={showResult} set={setShowResult} color={MUTED} title="Tint the candle each trade settles on">Result tint</Pill>}
+              {zones.length > 0 && <>
+                <Pill on={showZones} set={setShowZones} color={DEMAND} title="Supply (red) and demand (green) zones. A zone stays on the chart until a candle CLOSES through it: above a supply zone, below a demand zone">Demand / Supply zones</Pill>
+                {showZones && <>
+                  {pastCount > 0 && <Pill on={showBroken} set={setShowBroken} color={MUTED} title={`Zones a candle already closed through, drawn up to that candle (${pastCount}). Off = only the ${standing} still standing`}>Past zones · {pastCount}</Pill>}
+                  <Pill on={showZoneText} set={setShowZoneText} color={SKY} title="The text on each zone: SUPPLY · fresh · 1.5 ATR">Zone text</Pill>
+                  <Pill on={showTags} set={setShowTags} color={AMBER} title="The tags on the candles that formed a zone: ENGULFED, ENGULF, BASE, DEP">Candle tags</Pill></>}</>}
+              {swings.length > 0 && <Pill on={showSwings} set={setShowSwings} color="#4ade80" title="Swing highs and lows labelled higher-high / lower-high / higher-low / lower-low">HH/HL · LH/LL structure</Pill>}
+              {hasMtg && <Pill on={showMtg} set={setShowMtg} color={SKY} title="Martingale re-entries after a losing trade">MTG candles</Pill>}
+            </div>)}
         </div>
         {(overlays.length > 0 || panes.length > 0) && <div className="mb-2 flex flex-wrap items-center gap-1.5">{overlays.map(chip)}{panes.map(chip)}</div>}
 
         <div className="relative">
-          <svg ref={svg} width={w} height={H} className={`block select-none rounded-lg ${drag ? 'cursor-grabbing' : 'cursor-crosshair'}`} style={{ touchAction: 'none', background: BG }}
-            onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onMouseLeave={() => { if (!dragRef.current) setHover(null); }} onDoubleClick={reset}>
+          <svg ref={svg} width={w} height={H} className={`block select-none rounded-xl border border-line/70 ${drag ? 'cursor-grabbing' : 'cursor-crosshair'}`} style={{ touchAction: 'none', background: `linear-gradient(180deg, #0e1530 0%, ${BG} 100%)` }}
+            onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onMouseLeave={onLeave} onDoubleClick={reset}>
             <defs>
               <clipPath id={`${clipId}-main`}><rect x={PAD_L} y={0} width={innerW} height={mainH} /></clipPath>
               <clipPath id={`${clipId}-all`}><rect x={PAD_L} y={0} width={innerW} height={H - AXIS_H} /></clipPath>
@@ -404,24 +522,7 @@ export function PriceChart(props: PriceChartProps) {
               })}
 
               {/* supply (red) and demand (green) zones: a shaded rectangle with solid edge lines from the base to where it ended */}
-              <g clipPath={`url(#${clipId}-main)`}>
-                {zoneSpans.map(({ z, a, e }, k) => {
-                  const col = zoneColor(z), x0 = x(a) - step / 2, x1 = z.alive && e >= n - 2 ? w - PAD_R : x(e) + step / 2 + (z.why === 'used' ? Math.max(0, 8 - (e - a + 1)) * step : 0);   // a zone used up within a few candles stays visible for ~8 candles (it no longer works: dashed, lighter)
-                  let top = y(z.hi), bot = y(z.lo);
-                  if (bot - top < 7) { const mid = (top + bot) / 2; top = mid - 3.5; bot = mid + 3.5; }                // a one-candle zone can be a hair thin at this scale: keep it visible
-                  const spent = z.broken || z.why === 'used' || z.why === 'expired';                              // a used-up engulf zone no longer works: dashed and lighter
-                  const dashed = spent || z.flip, fillOp = z.broken ? 0.05 : z.why === 'used' ? 0.1 : z.tests >= 3 ? 0.09 : 0.17;
-                  const label = `${z.kind === 'demand' ? 'DEMAND' : 'SUPPLY'}${z.flip ? ' ⟲' : ''} · ${zoneState(z)} · ${z.move.toFixed(1)} ATR`;
-                  return (
-                    <g key={`z${k}`} opacity={z.broken ? 0.7 : 1}>
-                      <rect x={x0} y={top} width={Math.max(2, x1 - x0)} height={bot - top} fill={col} opacity={fillOp} />
-                      <line x1={x0} x2={x1} y1={top} y2={top} stroke={col} strokeWidth={1.5} strokeDasharray={dashed ? '6 4' : undefined} />
-                      <line x1={x0} x2={x1} y1={bot} y2={bot} stroke={col} strokeWidth={1.5} strokeDasharray={dashed ? '6 4' : undefined} />
-                      <line x1={x0} x2={x0} y1={top} y2={bot} stroke={col} strokeWidth={1.5} />
-                      {x1 - x0 > 110 && bot - top > 9 && <text x={x0 + 5} y={top + 10} fontSize="9" fontWeight={700} fill={col}>{label}</text>}
-                    </g>);
-                })}
-              </g>
+              <g clipPath={`url(#${clipId}-main)`}>{zoneLayer}</g>
 
               {/* price areas of live-session signals (always drawn, whatever the zone switches say) */}
               <g clipPath={`url(#${clipId}-main)`}>
@@ -460,48 +561,14 @@ export function PriceChart(props: PriceChartProps) {
                   </g>);
               })}
 
-              {dense
-                ? <path d={(() => { let d = ''; for (let i = i0; i <= i1; i++) d += `${d ? 'L' : 'M'}${x(i).toFixed(1)},${y(all[i].c).toFixed(1)}`; return d; })()} fill="none" stroke="#9aa6d1" strokeWidth={1.2} />
-                : all.slice(i0, i1 + 1).map((c, k) => {
-                  const i = i0 + k, col = c.c >= c.o ? UP : DOWN, cx = x(i), bw = Math.max(1.6, step * 0.68);
-                  const top = y(Math.max(c.o, c.c)), bh = Math.max(1.4, Math.abs(y(c.o) - y(c.c)));
-                  return <g key={c.t} opacity={c.syn ? 0.4 : forming && i === lastIdx ? 0.65 : 1}><line x1={cx} x2={cx} y1={y(c.h)} y2={y(c.l)} stroke={col} strokeWidth={step > 6 ? 1.4 : 1} /><rect x={cx - bw / 2} y={top} width={bw} height={bh} fill={col} /></g>;
-                })}
+              {candleLayer}
 
               <g clipPath={`url(#${clipId}-main)`}>
                 {overlays.filter((g) => !hid[g.id]).map((g) => g.lines.map((l, k) => (l.style === 'dots'
                   ? l.values.slice(Math.max(0, i0 - 1), i1 + 2).map((v, j) => (v === null || v === undefined ? null : <circle key={`${g.id}${k}${j}`} cx={x(Math.max(0, i0 - 1) + j)} cy={y(v)} r={1.8} fill={l.color ?? g.color} />))
                   : <path key={`${g.id}${k}`} d={linePath(l.values, i0, i1, x, y)} fill="none" stroke={l.color ?? g.color} strokeWidth={l.color ? 1.2 : 1.6} strokeDasharray={l.style === 'dash' ? '5 4' : undefined} opacity={l.color ? 0.75 : 0.95} />)))}
 
-                {/* the candles each zone was made from: BASE (dashed outline) and DEPARTURE (solid, tinted); a diamond where price came back to the zone */}
-                {zoneSpans.map(({ z, base, dep }, k) => {
-                  const col = zoneColor(z), box = (a: number, b: number, pad: number) => {
-                    let top = Infinity, bot = -Infinity;
-                    for (let i = Math.max(0, a); i <= Math.min(n - 1, b); i++) { top = Math.min(top, y(all[i].h)); bot = Math.max(bot, y(all[i].l)); }
-                    return { top: top - pad, bot: bot + pad, bx: x(a) - step / 2 + 0.5, bw: Math.max(3, step * (b - a + 1) - 1) };
-                  };
-                  const bs = base && base.b >= i0 - 1 && base.a <= i1 + 1 ? box(base.a, base.b, 4) : null;
-                  const ds = dep && dep.b >= i0 - 1 && dep.a <= i1 + 1 ? box(dep.a, dep.b, 4) : null;
-                  return (
-                    <g key={`zb${k}`}>
-                      {bs && <g><rect x={bs.bx} y={bs.top} width={bs.bw} height={bs.bot - bs.top} fill="none" stroke={col} strokeWidth={1.5} strokeDasharray="4 3" rx={3} />
-                        {bs.bw > (z.src === 'engulf' ? 12 : 34) && <text x={bs.bx + bs.bw / 2} y={z.kind === 'demand' ? bs.bot + 11 : bs.top - 4} fontSize="9" fontWeight={800} textAnchor="middle" fill={col}>{z.src === 'engulf' ? (step > 11 ? 'ENGULFED' : '') : 'BASE'}</text>}</g>}
-                      {ds && <g><rect x={ds.bx} y={ds.top} width={ds.bw} height={ds.bot - ds.top} fill={col} fillOpacity={0.16} stroke={col} strokeWidth={1.6} rx={3} />
-                        {ds.bw > 14 && <text x={ds.bx + ds.bw / 2} y={z.kind === 'demand' ? ds.top - 4 : ds.bot + 11} fontSize="9" fontWeight={800} textAnchor="middle" fill={col}>{z.src === 'engulf' ? (z.kind === 'demand' ? '▲ ENGULF' : '▼ ENGULF') : z.kind === 'demand' ? '▲ DEP' : '▼ DEP'}</text>}</g>}
-                      {z.touches.map((t) => { const i = idxOf.get(t); return i === undefined || i < i0 || i > i1 ? null
-                        : <path key={t} d={`M${x(i)},${y(z.kind === 'demand' ? z.hi : z.lo) - 5} l5,5 l-5,5 l-5,-5 z`} fill={BG} stroke={col} strokeWidth={1.6} />; })}
-                    </g>);
-                })}
-
-                {/* market-structure swings: HH / HL green, LH / LL red */}
-                {swingPts.map(({ s, i }) => {
-                  const col = SWING_COLOR[s.label] ?? '#94a3b8', up = s.kind === 'high';
-                  return (
-                    <g key={`sw${s.id}${s.t}${s.kind}`}>
-                      <circle cx={x(i)} cy={y(s.price)} r={3} fill={col} stroke={BG} strokeWidth={1} />
-                      {s.label && !dense && <text x={x(i)} y={up ? y(s.price) - 8 : y(s.price) + 16} fontSize="10" fontWeight={800} textAnchor="middle" fill={col}>{s.label}</text>}
-                    </g>);
-                })}
+                {originLayer}
               </g>
 
               {visibleMarkers.map((m) => {
@@ -558,13 +625,25 @@ export function PriceChart(props: PriceChartProps) {
             {hover && <g><rect x={Math.min(w - PAD_R - 46, Math.max(PAD_L, x(hover.i) - 23))} y={H - AXIS_H + 2} width={46} height={16} rx={3} fill="#2a3358" /><text x={Math.min(w - PAD_R - 23, Math.max(PAD_L + 23, x(hover.i)))} y={H - AXIS_H + 14} fontSize="10" textAnchor="middle" fill="#e5e9ff">{hhmm(all[hover.i].t)}</text></g>}
           </svg>
 
+          {(() => {
+            const rc = hc ?? all[lastIdx];
+            if (!rc || w < 520) return null;
+            const up = rc.c >= rc.o, col = up ? UP : DOWN, chg = rc.o ? ((rc.c - rc.o) / rc.o) * 100 : 0;
+            return (
+              <div className="pointer-events-none absolute left-3 top-2 z-[5] flex items-center gap-2 rounded-md bg-[#0b1126]/75 px-2 py-1 font-mono text-[10.5px] text-mut backdrop-blur-sm">
+                <span>O <b style={{ color: col }}>{fmt(rc.o, hi)}</b></span><span>H <b style={{ color: col }}>{fmt(rc.h, hi)}</b></span>
+                <span>L <b style={{ color: col }}>{fmt(rc.l, hi)}</b></span><span>C <b style={{ color: col }}>{fmt(rc.c, hi)}</b></span>
+                <span style={{ color: col }}>{chg >= 0 ? '+' : ''}{chg.toFixed(3)}%</span>
+              </div>);
+          })()}
+
           {hc && hover && !drag && (
             <div className="pointer-events-none absolute top-2 z-10 w-60 rounded-lg border border-line bg-panel2/95 p-2 text-[11px] shadow-xl" style={{ left: x(hover.i) > w / 2 ? Math.max(4, x(hover.i) - 252) : Math.min(w - 248, x(hover.i) + 16) }}>
               <div className="font-semibold">{full(hc.t)}{forming && hover.i === lastIdx && <span className="ml-1 font-normal text-mut">forming</span>}</div>
               <div className="mt-0.5 font-mono text-mut">O {fmt(hc.o, hi)} H {fmt(hc.h, hi)}<br />L {fmt(hc.l, hi)} C {fmt(hc.c, hi)}</div>
               {[...overlays, ...panes].filter((g) => !hid[g.id]).map((g) => <div key={g.id} className="mt-0.5 flex justify-between gap-2"><span style={{ color: g.color }}>{g.label}</span><span className="font-mono">{groupValue(g, hover.i)}</span></div>)}
-              {hZones.map(({ z, what }, k) => <div key={`hz${k}`} className="mt-1 border-t border-line pt-1" style={{ color: zoneColor(z) }}>
-                <b>This is {what}.</b><div className="text-mut">{zoneName(z)} {fmt(z.lo, hi)} – {fmt(z.hi, hi)} · {zoneState(z)} · departure {z.move.toFixed(1)} ATR</div></div>)}
+              {hZones.map(({ z, what, closed }, k) => <div key={`hz${k}`} className="mt-1 border-t border-line pt-1" style={{ color: zoneColor(z) }}>
+                <b>This is {what}.</b><div className="text-mut">{zoneName(z)} {fmt(z.lo, hi)} – {fmt(z.hi, hi)} · {zoneState(z, closed)} · departure {z.move.toFixed(1)} ATR</div></div>)}
               {hSwing && <div className="mt-1 font-semibold" style={{ color: SWING_COLOR[hSwing.label] }}>Swing {hSwing.kind} {hSwing.label && `(${hSwing.label})`} at {fmt(hSwing.price, hi)}</div>}
               {hMarker && <div className={`mt-1 font-bold ${hMarker.dir > 0 ? 'text-up' : 'text-down'}`}>{hMarker.tip ?? (hMarker.dir > 0 ? '▲ CALL signal' : '▼ PUT signal')}</div>}
               {hTrade && <div className="mt-1 border-t border-line pt-1">

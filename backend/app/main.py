@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import backup, expr, extpack, seed as seedmod, indreg, routes_auth, routes_control, routes_sessions
+from . import backup, expr, extpack, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_sessions
 from .auth import COOKIE as COOKIE_NAME, from_env
 from .strategy_access import Access, is_staff
 from .feature_flags import Features
@@ -823,6 +823,24 @@ async def events(request: Request, after: int | None = None) -> dict:
     user = request.state.user
     lr = engine.ingest_stats["last_recv"]
     return {"seq": engine.seq, "events": [e for e in engine.events_since(after, user["id"]) if routes_auth.event_visible(user, e, features.can, access)], "feed_age": (time.time() - lr) if lr else None}
+
+
+class PrefsIn(BaseModel):
+    prefs: dict
+
+
+@app.get("/api/prefs")
+async def get_prefs(request: Request) -> dict:
+    """The caller's own display preferences (which chart layers are on, the indicators picked ...), kept per account so they follow the person between browsers."""
+    return {"prefs": prefs_mod.get_all(engine.db, request.state.user["id"])}
+
+
+@app.put("/api/prefs")
+async def put_prefs(request: Request, body: PrefsIn) -> dict:
+    try:
+        return {"prefs": prefs_mod.apply(engine.db, request.state.user["id"], body.prefs)}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/api/mychart")

@@ -181,6 +181,8 @@ class Engine:
         self.leases.drop(int(uid))
         self.user_sel.pop(int(uid), None)
         self.sessions.mute(int(uid), True)                      # forget its "session alerts off" row
+        self.db.execute("DELETE FROM user_prefs WHERE user_id=?", (int(uid),))
+        self.db.commit()
         ctx = self.users.pop(int(uid), None)
         if ctx is not None:
             try:

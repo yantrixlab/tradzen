@@ -42,6 +42,7 @@ PANEL_ALLOW = [(re.compile(p), m) for p, m in [
     (r"^/api/(strategies/(bulk|pause-all|resume-all|chart)|backtests/chart|settings|presets|presets/apply)$", {"POST"}),
     (r"^/api/presets/[^/]+$", {"DELETE"}),
     (r"^/api/sessions/alerts$", {"PUT"}),
+    (r"^/api/prefs$", {"GET", "PUT"}),
 ]]
 
 
@@ -101,6 +102,7 @@ _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile
     (r"^/ingest$", {"POST"}, "ingest", None),
     (r"^/api/auth/", None, "any", None),
     (r"^/api/me$", None, "any", None),
+    (r"^/api/prefs$", {"GET", "PUT"}, "any", None),                      # the caller's own display preferences (chart switches ...)
     (r"^/api/tokens$", {"POST"}, "any", "cap.extension.connect"),
     (r"^/api/tokens(/\d+)?$", None, "any", None),
     (r"^/api/events$", {"GET"}, "any", None),
