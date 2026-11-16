@@ -23,6 +23,9 @@ def test_the_build_points_at_one_server_and_only_that_one():
     assert f"const DEFAULT_BACKEND = '{ORIGIN}';" in files["background.js"].decode() and f"const DEFAULT_URL = '{ORIGIN}';" in files["popup.js"].decode()
     assert "sidepanel.html" not in files and "sidepanel.js" not in files
     assert not any(n.startswith("test_") or n.startswith("dev/") for n in files), "no test or developer files"
+    pop = files["popup.html"].decode()
+    assert 'id="panel">Open live board</button>' in pop and 'id="panel" hidden' not in pop, "the button that opens the live board stays"
+    assert "/admin/live" in files["popup.js"].decode()
     assert "hook.js" in files and "icons/icon128.png" in files
     z1, z2 = extpack.build_zip(SRC, ORIGIN), extpack.build_zip(SRC, ORIGIN)
     assert z1 == z2, "the same input gives the same file"

@@ -3,7 +3,7 @@
 
 The build for https://signals.example.com:
   * talks to that server by default and is allowed to reach only that server (no other host permission),
-  * has no side panel (the hosted panel is opened in a browser tab instead) and no developer / test files.
+  * has no side panel (the button "Open live board" opens the hosted live board in a browser tab instead) and no developer / test files.
 """
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ def build_files(src: Path, origin: str) -> dict[str, bytes]:
     put("popup.js", _sub(text("popup.js"), "const DEFAULT_URL = 'http://127.0.0.1:8787';", f"const DEFAULT_URL = '{origin}';", "DEFAULT_URL"))
     t = text("popup.html")
     t = _sub(t, 'placeholder="http://127.0.0.1:8787"', f'placeholder="{origin}"', "server placeholder")
-    t = _sub(t, 'id="panel">Open signal panel</button>', 'id="panel" hidden>Open signal panel</button>', "side panel button")
+    t = _sub(t, 'id="panel">Open signal panel</button>', 'id="panel">Open live board</button>', "side panel button")        # the hosted build opens the live board in a tab (popup.js)
     t = _sub(t, "Send market data to the local backend", "Send my trades to the server", "forward label")
     put("popup.html", t)
 
