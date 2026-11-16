@@ -20,11 +20,11 @@ const RESULT: Record<string, { fill: string; text: string; label: string }> = {
 const DEMAND = '#22c55e', SUPPLY = '#ef4444';                                  // zone colours: demand = green (buyers), supply = red (sellers)
 const zoneColor = (z: ChartZone) => (z.kind === 'demand' ? DEMAND : SUPPLY);
 const zoneName = (z: ChartZone) => `${z.kind === 'demand' ? 'Demand' : 'Supply'} zone${z.flip ? ' (flipped: it was the opposite kind before it broke)' : ''}`;
-const nth = (k: number) => (k === 1 ? '1st' : k === 2 ? '2nd' : k === 3 ? '3rd' : `${k}th`);
 /** A zone lives until a candle CLOSES through it (above a supply zone, below a demand zone): that is `closed`. The strategy's own rules (used after one visit, expiry) only change the wording. */
 const zoneState = (z: ChartZone, closed: boolean) => (closed ? 'closed through'
-  : z.src === 'engulf' ? (z.why === 'used' ? 'used (1st visit)' : 'fresh')
-    : z.tests === 0 ? 'untested' : `${nth(z.tests)} visit`);
+  : z.tests === 0 ? 'fresh' : `${z.tests} touch${z.tests === 1 ? '' : 'es'}${z.src === 'engulf' && z.why === 'used' ? ' · used up' : ''}`);
+/** How strong a zone still is: a fresh one is at full strength and every touch (price coming back into it) wears it down: 100% → 80 → 60 → 40 → 25% (the floor). The chart fades it to match. */
+const zoneStrength = (z: ChartZone) => Math.max(0.25, 1 - 0.2 * Math.max(0, z.tests));
 const NO_HID: Record<string, boolean> = {};
 const NONE: never[] = [];                                                              // a stable empty list, so memoised layers are not rebuilt on every render
 const SWING_COLOR: Record<string, string> = { HH: '#4ade80', HL: '#4ade80', LH: '#f87171', LL: '#f87171', EH: '#94a3b8', EL: '#94a3b8', '': '#94a3b8' };
@@ -102,6 +102,7 @@ export function PriceChart(props: PriceChartProps) {
   const [showBroken, setShowBroken] = usePref('chart.past-zones', true);   // zones a candle already closed through: drawn up to that candle (switch off to see only the standing ones)
   const [showSwings, setShowSwings] = usePref('chart.structure', true);
   const [showZoneText, setShowZoneText] = usePref('chart.zone-text', true);   // "SUPPLY · fresh · 1.5 ATR"
+  const [fade, setFade] = usePref('chart.zone-fade', true);              // zones fade with every touch: bold = fresh and strong, light = worn and weak
   const [showTags, setShowTags] = usePref('chart.candle-tags', true);       // ENGULFED / ENGULF / BASE / DEP on the candles that formed a zone
   const [hid, setHid] = usePref<Record<string, boolean>>('chart.hidden-lines', NO_HID);                // indicator lines the person switched off by tapping their chip
 
@@ -278,33 +279,33 @@ export function PriceChart(props: PriceChartProps) {
         const col = zoneColor(z), x0 = x(a) - step / 2, x1 = closed ? x(e) + step / 2 : w - PAD_R;
         let top = y(z.hi), bot = y(z.lo);
         if (bot - top < 7) { const mid = (top + bot) / 2; top = mid - 3.5; bot = mid + 3.5; }                // a one-candle zone can be a hair thin at this scale: keep it visible
-        const spent = closed || z.why === 'used';                                                           // closed through: history, faint and dashed; used: still standing but no longer a first visit
-        const fillOp = closed ? 0.045 : spent ? 0.11 : z.tests >= 3 ? 0.1 : 0.17;
-        const dash = closed ? '3 4' : z.flip ? '6 4' : undefined, lineOp = closed ? 0.4 : spent ? 0.85 : 1;
+        // strength fades the zone: fresh = bold, every touch makes it lighter (see zoneStrength); a zone a candle closed through is history: faint and dashed
+        const s = closed || !fade ? 1 : zoneStrength(z), weak = !closed && fade && s <= 0.4;
+        const fillOp = closed ? 0.045 : Math.max(0.04, 0.22 * s * s);
+        const dash = closed || weak ? '3 4' : z.flip ? '6 4' : undefined, lineOp = closed ? 0.4 : 0.25 + 0.75 * s, lineW = closed ? 1.1 : 0.9 + 0.7 * s;
         const lx = Math.max(x0, PAD_L) + 6, room = x1 - Math.max(x0, PAD_L);
         const label = `${z.kind === 'demand' ? 'DEMAND' : 'SUPPLY'}${z.flip ? ' ⟲' : ''} · ${zoneState(z, closed)} · ${z.move.toFixed(1)} ATR`;
         return (
           <g key={`z${k}`}>
             <rect x={x0} y={top} width={Math.max(2, x1 - x0)} height={bot - top} fill={col} opacity={fillOp} />
-            <g stroke={col} strokeWidth={1.3} opacity={lineOp}>
+            <g stroke={col} strokeWidth={lineW} opacity={lineOp}>
               <line x1={x0} x2={x1} y1={top} y2={top} strokeDasharray={dash} /><line x1={x0} x2={x1} y1={bot} y2={bot} strokeDasharray={dash} />
               <line x1={x0} x2={x0} y1={top} y2={bot} />{closed && <line x1={x1} x2={x1} y1={top} y2={bot} strokeWidth={2} />}
             </g>
-            {showZoneText && !closed && room > 120 && bot - top > 9 && <text x={lx} y={bot - top >= 15 ? top + 11 : top - 4} fontSize="9.5" fontWeight={700} fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{label}</text>}
+            {showZoneText && !closed && room > 120 && bot - top > 9 && <text x={lx} y={bot - top >= 15 ? top + 11 : top - 4} fontSize="9.5" fontWeight={700} fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke" opacity={0.55 + 0.45 * s}>{label}</text>}
           </g>);
       })}
     </g>
-  ), [zoneSpans, step, view.start, hi, lo, mainH, w, showZoneText]);                                         // eslint-disable-line react-hooks/exhaustive-deps
+  ), [zoneSpans, step, view.start, hi, lo, mainH, w, showZoneText, fade]);                                   // eslint-disable-line react-hooks/exhaustive-deps
 
   const candleLayer = useMemo(() => (dense
     ? <path d={(() => { let d = ''; for (let i = i0; i <= i1; i++) d += `${d ? 'L' : 'M'}${x(i).toFixed(1)},${y(all[i].c).toFixed(1)}`; return d; })()} fill="none" stroke="#9aa6d1" strokeWidth={1.2} strokeLinejoin="round" />
     : <g>{all.slice(i0, i1 + 1).map((c, k) => {
       const i = i0 + k, col = c.c >= c.o ? UP : DOWN, cx = x(i), bw = Math.max(1.6, step * 0.68);
-      if (c.syn) {                                                     // no data was received for this candle: a faint slot with a dashed line at the last known price
-        const sw = Math.max(4, step * 0.8), sy = y(c.c);
-        return <g key={c.t}><rect x={cx - sw / 2} y={8} width={sw} height={mainH - 16} fill={MUTED} opacity={0.05} rx={2} />
-          <line x1={cx - sw / 2} x2={cx + sw / 2} y1={sy} y2={sy} stroke={MUTED} strokeWidth={1.4} strokeDasharray="3 3" opacity={0.75} />
-          {step > 14 && <text x={cx} y={sy - 6} fontSize="9" textAnchor="middle" fill={MUTED} opacity={0.85}>no data</text>}</g>;
+      if (c.syn) {                                                     // never received: a flat grey candle at the previous candle's close
+        const sy = y(c.c);
+        return <g key={c.t}><line x1={cx - bw / 2} x2={cx + bw / 2} y1={sy} y2={sy} stroke="#94a3b8" strokeWidth={2} opacity={0.75} strokeLinecap="round" />
+          {step > 16 && <text x={cx} y={sy - 6} fontSize="8.5" textAnchor="middle" fill={MUTED} opacity={0.8}>filled</text>}</g>;
       }
       const top = y(Math.max(c.o, c.c)), bh = Math.max(1.4, Math.abs(y(c.o) - y(c.c)));
       return <g key={c.t} opacity={c.syn ? 0.4 : forming && i === n - 1 ? 0.65 : 1}><line x1={cx} x2={cx} y1={y(c.h)} y2={y(c.l)} stroke={col} strokeWidth={step > 6 ? 1.4 : 1} /><rect x={cx - bw / 2} y={top} width={bw} height={bh} fill={col} rx={step > 9 ? 1 : 0} /></g>;
@@ -323,7 +324,7 @@ export function PriceChart(props: PriceChartProps) {
         const bs = base && base.b >= i0 - 1 && base.a <= i1 + 1 ? box(base.a, base.b, 4) : null;
         const ds = dep && dep.b >= i0 - 1 && dep.a <= i1 + 1 ? box(dep.a, dep.b, 4) : null;
         return (
-          <g key={`zb${k}`} opacity={closed ? 0.55 : 1}>
+          <g key={`zb${k}`} opacity={closed ? 0.5 : fade ? 0.4 + 0.6 * zoneStrength(z) : 1}>
             {bs && <g><rect x={bs.bx} y={bs.top} width={bs.bw} height={bs.bot - bs.top} fill="none" stroke={col} strokeWidth={1.4} strokeDasharray="4 3" rx={3} />
               {showTags && bs.bw > (z.src === 'engulf' ? 12 : 34) && <text x={bs.bx + bs.bw / 2} y={z.kind === 'demand' ? bs.bot + 11 : bs.top - 4} fontSize="9" fontWeight={800} textAnchor="middle" fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{z.src === 'engulf' ? (step > 11 ? 'ENGULFED' : '') : 'BASE'}</text>}</g>}
             {ds && <g><rect x={ds.bx} y={ds.top} width={ds.bw} height={ds.bot - ds.top} fill={col} fillOpacity={0.14} stroke={col} strokeWidth={1.5} rx={3} />
@@ -342,7 +343,7 @@ export function PriceChart(props: PriceChartProps) {
           </g>);
       })}
     </g>
-  ), [zoneSpans, swingPts, step, view.start, hi, lo, mainH, all, i0, i1, n, dense, showTags, idxOf]);        // eslint-disable-line react-hooks/exhaustive-deps
+  ), [zoneSpans, swingPts, step, view.start, hi, lo, mainH, all, i0, i1, n, dense, showTags, idxOf, fade]);        // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- interaction (pointer moves are coalesced to one update per frame)
   const dragRef = useRef<{ x: number; start: number } | null>(null);
@@ -476,6 +477,7 @@ export function PriceChart(props: PriceChartProps) {
                 <Pill on={showZones} set={setShowZones} color={DEMAND} title="Supply (red) and demand (green) zones. A zone stays on the chart until a candle CLOSES through it: above a supply zone, below a demand zone">Demand / Supply zones</Pill>
                 {showZones && <>
                   {pastCount > 0 && <Pill on={showBroken} set={setShowBroken} color={MUTED} title={`Zones a candle already closed through, drawn up to that candle (${pastCount}). Off = only the ${standing} still standing`}>Past zones · {pastCount}</Pill>}
+                  <Pill on={fade} set={setFade} color="#a78bfa" title="Fade a zone with every touch (price coming back into it): fresh 100%, then 80, 60, 40, and 25% at 4 or more touches. Bold = still strong, light = worn out">Fade by touches</Pill>
                   <Pill on={showZoneText} set={setShowZoneText} color={SKY} title="The text on each zone: SUPPLY · fresh · 1.5 ATR">Zone text</Pill>
                   <Pill on={showTags} set={setShowTags} color={AMBER} title="The tags on the candles that formed a zone: ENGULFED, ENGULF, BASE, DEP">Candle tags</Pill></>}</>}
               {swings.length > 0 && <Pill on={showSwings} set={setShowSwings} color="#4ade80" title="Swing highs and lows labelled higher-high / lower-high / higher-low / lower-low">HH/HL · LH/LL structure</Pill>}
@@ -634,7 +636,7 @@ export function PriceChart(props: PriceChartProps) {
           {(() => {
             const rc = hc ?? all[lastIdx];
             if (!rc || w < 520) return null;
-            if (rc.syn) return <div className="pointer-events-none absolute left-3 top-2 z-[5] rounded-md bg-[#0b1126]/75 px-2 py-1 font-mono text-[10.5px] text-warn backdrop-blur-sm">no data for this candle</div>;
+            if (rc.syn) return <div className="pointer-events-none absolute left-3 top-2 z-[5] rounded-md bg-[#0b1126]/75 px-2 py-1 font-mono text-[10.5px] text-warn backdrop-blur-sm">filled at previous close {fmt(rc.c, hi)}</div>;
             const up = rc.c >= rc.o, col = up ? UP : DOWN, chg = rc.o ? ((rc.c - rc.o) / rc.o) * 100 : 0;
             return (
               <div className="pointer-events-none absolute left-3 top-2 z-[5] flex items-center gap-2 rounded-md bg-[#0b1126]/75 px-2 py-1 font-mono text-[10.5px] text-mut backdrop-blur-sm">
@@ -648,11 +650,11 @@ export function PriceChart(props: PriceChartProps) {
             <div className="pointer-events-none absolute top-2 z-10 w-60 rounded-lg border border-line bg-panel2/95 p-2 text-[11px] shadow-xl" style={{ left: x(hover.i) > w / 2 ? Math.max(4, x(hover.i) - 252) : Math.min(w - 248, x(hover.i) + 16) }}>
               <div className="font-semibold">{full(hc.t)}{forming && hover.i === lastIdx && <span className="ml-1 font-normal text-mut">forming</span>}</div>
               {hc.syn
-                ? <div className="mt-0.5 text-warn">No data for this candle: the connection to Quotex dropped here. It fills in when Quotex re-sends its history (switch the timeframe or pair on the Quotex tab and back).</div>
+                ? <div className="mt-0.5 text-warn">Never received (the connection to Quotex dropped here): drawn flat at the previous close {fmt(hc.c, hi)}. The real candle replaces it when Quotex re-sends its history (switch the timeframe or pair on the Quotex tab and back).</div>
                 : <div className="mt-0.5 font-mono text-mut">O {fmt(hc.o, hi)} H {fmt(hc.h, hi)}<br />L {fmt(hc.l, hi)} C {fmt(hc.c, hi)}</div>}
               {[...overlays, ...panes].filter((g) => !hid[g.id]).map((g) => <div key={g.id} className="mt-0.5 flex justify-between gap-2"><span style={{ color: g.color }}>{g.label}</span><span className="font-mono">{groupValue(g, hover.i)}</span></div>)}
               {hZones.map(({ z, what, closed }, k) => <div key={`hz${k}`} className="mt-1 border-t border-line pt-1" style={{ color: zoneColor(z) }}>
-                <b>This is {what}.</b><div className="text-mut">{zoneName(z)} {fmt(z.lo, hi)} – {fmt(z.hi, hi)} · {zoneState(z, closed)} · departure {z.move.toFixed(1)} ATR</div></div>)}
+                <b>This is {what}.</b><div className="text-mut">{zoneName(z)} {fmt(z.lo, hi)} – {fmt(z.hi, hi)} · {zoneState(z, closed)}{!closed && ` · strength ${Math.round(zoneStrength(z) * 100)}%`} · departure {z.move.toFixed(1)} ATR</div></div>)}
               {hSwing && <div className="mt-1 font-semibold" style={{ color: SWING_COLOR[hSwing.label] }}>Swing {hSwing.kind} {hSwing.label && `(${hSwing.label})`} at {fmt(hSwing.price, hi)}</div>}
               {hMarker && <div className={`mt-1 font-bold ${hMarker.dir > 0 ? 'text-up' : 'text-down'}`}>{hMarker.tip ?? (hMarker.dir > 0 ? '▲ CALL signal' : '▼ PUT signal')}</div>}
               {hTrade && <div className="mt-1 border-t border-line pt-1">
