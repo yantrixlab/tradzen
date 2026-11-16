@@ -257,7 +257,7 @@ export function PriceChart(props: PriceChartProps) {
     const born = z.dep ? z.dep[1] : z.t0;                                // the candle that completed the zone: only later candles can close through it
     let a = 0, b = closedN;
     while (a < b) { const m = (a + b) >> 1; if (candles[m].t < born) a = m + 1; else b = m; }
-    for (let i = a + 1; i < closedN; i++) { const c = candles[i].c; if (z.kind === 'supply' ? c > z.hi : c < z.lo) return i; }
+    for (let i = a + 1; i < closedN; i++) { if (candles[i].syn) continue; const c = candles[i].c; if (z.kind === 'supply' ? c > z.hi : c < z.lo) return i; }       // a stand-in for a missing candle never closes through anything
     return null;
   }), [zones, candles, closedN]);
   const zoneSpans = useMemo(() => (showZones ? zones.flatMap((z, k) => {
@@ -300,6 +300,12 @@ export function PriceChart(props: PriceChartProps) {
     ? <path d={(() => { let d = ''; for (let i = i0; i <= i1; i++) d += `${d ? 'L' : 'M'}${x(i).toFixed(1)},${y(all[i].c).toFixed(1)}`; return d; })()} fill="none" stroke="#9aa6d1" strokeWidth={1.2} strokeLinejoin="round" />
     : <g>{all.slice(i0, i1 + 1).map((c, k) => {
       const i = i0 + k, col = c.c >= c.o ? UP : DOWN, cx = x(i), bw = Math.max(1.6, step * 0.68);
+      if (c.syn) {                                                     // no data was received for this candle: a faint slot with a dashed line at the last known price
+        const sw = Math.max(4, step * 0.8), sy = y(c.c);
+        return <g key={c.t}><rect x={cx - sw / 2} y={8} width={sw} height={mainH - 16} fill={MUTED} opacity={0.05} rx={2} />
+          <line x1={cx - sw / 2} x2={cx + sw / 2} y1={sy} y2={sy} stroke={MUTED} strokeWidth={1.4} strokeDasharray="3 3" opacity={0.75} />
+          {step > 14 && <text x={cx} y={sy - 6} fontSize="9" textAnchor="middle" fill={MUTED} opacity={0.85}>no data</text>}</g>;
+      }
       const top = y(Math.max(c.o, c.c)), bh = Math.max(1.4, Math.abs(y(c.o) - y(c.c)));
       return <g key={c.t} opacity={c.syn ? 0.4 : forming && i === n - 1 ? 0.65 : 1}><line x1={cx} x2={cx} y1={y(c.h)} y2={y(c.l)} stroke={col} strokeWidth={step > 6 ? 1.4 : 1} /><rect x={cx - bw / 2} y={top} width={bw} height={bh} fill={col} rx={step > 9 ? 1 : 0} /></g>;
     })}</g>), [all, i0, i1, step, view.start, hi, lo, mainH, dense, forming, n]);                              // eslint-disable-line react-hooks/exhaustive-deps
@@ -500,7 +506,7 @@ export function PriceChart(props: PriceChartProps) {
               })()}
 
               {gaps.filter((i) => i >= i0 && i <= i1).map((i) => <g key={i}><line x1={x(i) - step / 2} x2={x(i) - step / 2} y1={0} y2={mainH} stroke={AMBER} strokeDasharray="2 4" opacity={0.7} />
-                {step > 4 && <text x={x(i) - step / 2 + 3} y={mainH - 6} fontSize="9" fill={AMBER}>data gap</text>}</g>)}
+                {step > 4 && <text x={x(i) - step / 2 + 3} y={mainH - 6} fontSize="9" fill={AMBER}>{(() => { const m = Math.round((all[i].t - all[i - 1].t) / tf) - 1; return m >= 1 ? `${m} candle${m === 1 ? '' : 's'} missing` : 'data gap'; })()}</text>}</g>)}
 
               {bands.map((b, k) => {
                 const a = firstAtOrAfter(b.t0), z = Math.min(n - 1, firstAtOrAfter(b.t1 + 1) - 1);
@@ -628,6 +634,7 @@ export function PriceChart(props: PriceChartProps) {
           {(() => {
             const rc = hc ?? all[lastIdx];
             if (!rc || w < 520) return null;
+            if (rc.syn) return <div className="pointer-events-none absolute left-3 top-2 z-[5] rounded-md bg-[#0b1126]/75 px-2 py-1 font-mono text-[10.5px] text-warn backdrop-blur-sm">no data for this candle</div>;
             const up = rc.c >= rc.o, col = up ? UP : DOWN, chg = rc.o ? ((rc.c - rc.o) / rc.o) * 100 : 0;
             return (
               <div className="pointer-events-none absolute left-3 top-2 z-[5] flex items-center gap-2 rounded-md bg-[#0b1126]/75 px-2 py-1 font-mono text-[10.5px] text-mut backdrop-blur-sm">
@@ -640,7 +647,9 @@ export function PriceChart(props: PriceChartProps) {
           {hc && hover && !drag && (
             <div className="pointer-events-none absolute top-2 z-10 w-60 rounded-lg border border-line bg-panel2/95 p-2 text-[11px] shadow-xl" style={{ left: x(hover.i) > w / 2 ? Math.max(4, x(hover.i) - 252) : Math.min(w - 248, x(hover.i) + 16) }}>
               <div className="font-semibold">{full(hc.t)}{forming && hover.i === lastIdx && <span className="ml-1 font-normal text-mut">forming</span>}</div>
-              <div className="mt-0.5 font-mono text-mut">O {fmt(hc.o, hi)} H {fmt(hc.h, hi)}<br />L {fmt(hc.l, hi)} C {fmt(hc.c, hi)}</div>
+              {hc.syn
+                ? <div className="mt-0.5 text-warn">No data for this candle: the connection to Quotex dropped here. It fills in when Quotex re-sends its history (switch the timeframe or pair on the Quotex tab and back).</div>
+                : <div className="mt-0.5 font-mono text-mut">O {fmt(hc.o, hi)} H {fmt(hc.h, hi)}<br />L {fmt(hc.l, hi)} C {fmt(hc.c, hi)}</div>}
               {[...overlays, ...panes].filter((g) => !hid[g.id]).map((g) => <div key={g.id} className="mt-0.5 flex justify-between gap-2"><span style={{ color: g.color }}>{g.label}</span><span className="font-mono">{groupValue(g, hover.i)}</span></div>)}
               {hZones.map(({ z, what, closed }, k) => <div key={`hz${k}`} className="mt-1 border-t border-line pt-1" style={{ color: zoneColor(z) }}>
                 <b>This is {what}.</b><div className="text-mut">{zoneName(z)} {fmt(z.lo, hi)} – {fmt(z.hi, hi)} · {zoneState(z, closed)} · departure {z.move.toFixed(1)} ATR</div></div>)}

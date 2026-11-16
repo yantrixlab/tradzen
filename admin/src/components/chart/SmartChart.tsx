@@ -36,6 +36,7 @@ export interface SmartChartProps {
 }
 
 const NO_PICKS: string[] = [];
+const MAX_BRIDGE = 3;
 const toCandle = (c: Candle): ChartCandle => ({ t: c.t, o: c.o, h: c.h, l: c.l, c: c.c });
 
 /**
@@ -78,8 +79,21 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
     const m = new Map<number, ChartCandle>();
     for (const r of q.data?.candles ?? []) m.set(r[0], { t: r[0], o: r[1], h: r[2], l: r[3], c: r[4] });
     for (const c of live?.candles ?? []) m.set(c.t, toCandle(c));        // the live feed is newer than the stored history
-    return [...m.values()].sort((a, b) => a.t - b.t);
-  }, [q.data, live?.candles]);
+    const sorted = [...m.values()].sort((a, b) => a.t - b.t);
+    // A hole of up to 3 candles (the connection to Quotex dropped and its history had not caught up) is bridged with flat, faded stand-ins at the last close, so the time axis
+    // stays true and the hole is visible as what it is; they are replaced by the real candles as soon as Quotex re-sends its history. Bigger holes stay a marked gap.
+    const out: ChartCandle[] = [];
+    for (const c of sorted) {
+      const prev = out[out.length - 1];
+      if (prev && tf > 0 && (c.t - prev.t) % tf === 0) {
+        const miss = (c.t - prev.t) / tf - 1;
+        if (miss >= 1 && miss <= MAX_BRIDGE) for (let j = 1; j <= miss; j++) out.push({ t: prev.t + j * tf, o: prev.c, h: prev.c, l: prev.c, c: prev.c, syn: true });
+      }
+      out.push(c);
+    }
+    return out;
+  }, [q.data, live?.candles, tf]);
+  const bridged = useMemo(() => candles.slice(-300).filter((c) => c.syn).length, [candles]);
   const forming = live?.forming ? toCandle(live.forming) : null;
 
   const { overlays, panes } = useMemo(() => {
@@ -132,6 +146,7 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
       emptyText="Not enough stored candles for this pair and timeframe yet."
       footer={<>
         {q.data?.note && <div className="mt-1 text-xs text-warn">{q.data.note}</div>}
+        {bridged > 0 && <div className="mt-1 text-[11px] text-mut">{bridged} recent candle{bridged === 1 ? ' is' : 's are'} missing (the faint flat marks): the connection to Quotex dropped and its history had not caught up yet. They fill in by themselves when Quotex re-sends its history, for example after you switch the timeframe or the pair on the Quotex tab and back.</div>}
         {own.isError && <div className="mt-1 text-[11px] text-mut">The indicators you picked could not be drawn: {own.error instanceof Error ? own.error.message : 'not available'}.</div>}
         {ind.isError && <div className="mt-1 text-[11px] text-mut">Zones, structure and indicators are not drawn here: {ind.error instanceof Error ? ind.error.message : 'not available'}.</div>}
         {(ind.data?.runs ?? 0) > 1 && <div className="mt-1 text-[11px] text-mut">Zones, structure and indicators are worked out separately for each of the {ind.data!.runs} uninterrupted stretches of candles (they never span a data gap).</div>}
