@@ -83,10 +83,11 @@ function Shell({ me }: { me: Me }) {
   const gate = (min: 'trader' | 'editor' | 'admin', el: JSX.Element) => (may(role, min) ? el : <Navigate to={home} replace />);
   const hidden = (key: string | undefined) => key !== undefined && !on(me, key);
   if (loc.pathname === '/embed-chart') return <EmbedChart />;     // chart only, no sidebar: shown inside the extension's side panel
+  const compact = new URLSearchParams(loc.search).has('embed');   // ?embed=1: no sidebar or account bar, for the narrow window the extension opens beside the Quotex tab
   if (!may(role, minFor(loc.pathname)) || hidden(navFor(loc.pathname)?.[4])) return loc.pathname === home ? <NoAccess /> : <Navigate to={home} replace />;
   return (
     <div className="flex h-full">
-      <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-panel2">
+      {!compact && <aside className="flex w-56 shrink-0 flex-col border-r border-line bg-panel2">
         <div className="flex items-center gap-2 px-4 py-4">
           <div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-acc to-acc2 text-lg">⚡</div>
           <div><div className="font-bold leading-tight">Tradzen</div><div className="text-[10px] font-semibold uppercase tracking-widest text-mut">{role}</div></div>
@@ -110,10 +111,10 @@ function Shell({ me }: { me: Me }) {
             </div>
           )}
         </div>
-      </aside>
+      </aside>}
       <main className="min-w-0 flex-1 overflow-y-auto">
-        {on(me, 'menu.trades') && <AccountBar />}
-        <div className="mx-auto max-w-[1280px] p-6">
+        {!compact && on(me, 'menu.trades') && <AccountBar />}
+        <div className={`mx-auto max-w-[1280px] ${compact ? 'p-2' : 'p-6'}`}>
           <ErrorBoundary key={loc.pathname}>
           <Routes>
             <Route path="/" element={gate('editor', <Overview />)} />

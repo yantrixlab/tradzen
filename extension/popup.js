@@ -191,12 +191,28 @@ $('save').onclick = () => {
 };
 $('reset').onclick = async () => { if (tabId !== null) chrome.tabs.sendMessage(tabId, { __qxsCmd: 'reset' }).catch(() => {}); };
 
+async function openBoardWindow(url) {
+  try {
+    const s = await chrome.storage.session.get('boardWin');
+    if (s.boardWin) {
+      try { await chrome.windows.update(s.boardWin, { focused: true }); return; } catch (_) { /* it was closed: open a new one */ }
+    }
+  } catch (_) { /* no session storage: just open one */ }
+  const w = 460, sc = window.screen;
+  const left = (sc.availLeft || 0) + Math.max(0, sc.availWidth - w), top = sc.availTop || 0;
+  try {
+    const win = await chrome.windows.create({ url, type: 'popup', width: w, height: sc.availHeight || 800, left, top });
+    try { await chrome.storage.session.set({ boardWin: win.id }); } catch (_) { /* ignore */ }
+  } catch (_) { chrome.tabs.create({ url }); }
+}
+
 $('panel').onclick = async () => {
   const url = await serverUrl();
   let host = '';
   try { host = new URL(url).hostname; } catch (_) { /* ignore */ }
-  // A hosted server cannot be shown inside the side panel (its page forbids being framed, and the panel's own address is the local one): open the live board in a tab.
-  if (!isLocalHost(host)) { chrome.tabs.create({ url: url + '/admin/live' }); window.close(); return; }
+  // A hosted server cannot be shown inside the side panel (its page forbids being framed, and the panel's own address is the local one): open the live board in its own narrow
+  // window on the right edge of the screen, beside the Quotex tab. One window only: pressing the button again brings it to the front.
+  if (!isLocalHost(host)) { await openBoardWindow(url + '/admin/live?embed=1'); window.close(); return; }
   if (tabId === null) return;
   try { await chrome.sidePanel.open({ tabId }); window.close(); } catch (e) { chrome.tabs.create({ url: url + '/' }); }
 };
