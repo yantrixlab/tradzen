@@ -239,7 +239,7 @@ const kinds = (req) => req.body.items.map((i) => i.k);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(h.opened)), [{ tabId: 12 }], 'the panel opens beside the tab that asked');
   // a started / ended session event is delivered to the tab like any other (the page turns it into a dialog), a running-candle signal too
   const sdone = Date.now() / 1000;
-  h = boot(() => ({ ok: true, seq: 9, events: [
+  h = boot(() => ({ ok: true, seq: 9, now: sdone + 5, events: [
     { seq: 1, kind: 'session', aud: 'session', session_id: 4, stage: 'started', level: 'info', title: 'Live session started', message: 'Evening', sound: 'sstart', id: 'ss1', t: sdone, by: 1, session_title: 'Evening' },
     { seq: 2, kind: 'signal', aud: 'session', session_id: 4, id: 's5', direction: 'PUT', entry_mode: 'current', tier: 'A', tf: 60, name: 'EUR/USD', strength: 100, expire_t: sdone + 50, target_t: sdone - 5, t: sdone },
     { seq: 3, kind: 'session', aud: 'session', session_id: 4, stage: 'ended', level: 'info', title: 'Live session ended', message: 'x', sound: 'send', id: 'ss3', t: sdone, result: { wins: 2, losses: 1, total: 3, net: 0.6 } }], feeder: false, qx: { state: 'ok', hint: '234' } }));
@@ -248,5 +248,6 @@ const kinds = (req) => req.body.items.map((i) => i.k);
   await new Promise((r) => setTimeout(r, 60));
   assert.deepStrictEqual(h.delivered.map((m) => m.__qxsNotify.kind + ':' + (m.__qxsNotify.stage || m.__qxsNotify.entry_mode)), ['session:started', 'signal:current', 'session:ended']);
   assert.deepStrictEqual(h.delivered.map((m) => m.sound), ['sstart', 'put', 'send']);
+  assert(h.delivered.every((m) => m.skew > 4 && m.skew < 6), 'every card carries the server-clock skew (the server is 5 s ahead here), so its countdown is on the server clock');
   console.log('all background tests passed');
 })().catch((e) => { console.error(e); process.exit(1); });

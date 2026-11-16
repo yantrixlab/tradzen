@@ -230,6 +230,7 @@ async function doForward(items, tabId) {
   let ok = false, err = '', j = null;
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 8000);          // a hung backend must never stall the sender queue
+  const t0 = Date.now();
   try {
     const r = await fetch(url + '/ingest', { method: 'POST', headers, signal: ctl.signal,
                                              body: JSON.stringify({ items, after_seq: lastSeq, qx: acct || undefined }) });
@@ -239,6 +240,10 @@ async function doForward(items, tabId) {
   chrome.storage.session.set({ backend: { ok, err, url, at: Date.now() } });
   if (!j) { sending.forEach((e) => requeueHistory(tabId, e)); return; }       // the server could not be reached: try again with the next request
   if (typeof j.seq === 'number') { lastSeq = j.seq; chrome.storage.session.set({ seq: j.seq }); }
+  if (typeof j.now === 'number') {                                       // the server's clock against this computer's (at the middle of the round trip): countdowns are shown on the server's clock
+    const s = j.now - (t0 + Date.now()) / 2000;
+    clockSkew = clockSkew === null ? s : clockSkew * 0.7 + s * 0.3;
+  }
   if (typeof j.feeder === 'boolean') isFeeder = j.feeder;
   if (isFeeder === false || sending.length) afterContrib(j, sending, tabId);
   if (isFeeder === false) afterFeed(j);
@@ -268,12 +273,13 @@ async function handleEvents(events, tabId, cfg) {
   }
 }
 
+let clockSkew = null;                       // seconds the server's clock is ahead of this computer's (null until the first answer)
 async function deliver(ev, tabId, cfg) {
   const sound = soundFor(ev);
   const wantSound = sound && cfg.sound && (ev.kind === 'signal' || ev.kind === 'guard' || ev.kind === 'session' || cfg.resultSound);
   const playedHere = wantSound ? await playSound(sound, cfg.volume) : true;
   if (tabId != null) {
-    chrome.tabs.sendMessage(tabId, { __qxsNotify: ev, settings: cfg, sound, playHere: wantSound && !playedHere }, { frameId: 0 }).catch(() => {});
+    chrome.tabs.sendMessage(tabId, { __qxsNotify: ev, settings: cfg, sound, playHere: wantSound && !playedHere, skew: clockSkew }, { frameId: 0 }).catch(() => {});
   }
   if (cfg.desktop && ev.kind === 'signal') desktopNotify(ev, tabId);
   if (cfg.desktop && (ev.kind === 'guard' || ev.kind === 'session')) guardNotify(ev, tabId);

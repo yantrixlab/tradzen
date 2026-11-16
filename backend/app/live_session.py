@@ -377,7 +377,7 @@ class Sessions:
                           strength=100, score=sign * 100, agree=1, status=sig["status"], entry=sig.get("entry"), exit=sig.get("exit"), entry_mode=mode, entry_px=sig.get("entry_px"),
                           basis_t=sig["entry_t"] if mode == "current" else sig["entry_t"] - tf, target_t=sig["entry_t"],
                           entry_t=sig["entry_t"], expire_t=sig["entry_t"] + sig["expiry_candles"] * tf, expiry_candles=sig["expiry_candles"], payout=payout,
-                          breakeven=1 / (1 + payout / 100) if payout else None, price=lt["price"] if lt else None, now=lt["ts"] if lt else None, sentiment=None,
+                          breakeven=1 / (1 + payout / 100) if payout else None, price=lt["price"] if lt else None, now=time.time(), sentiment=None,           # `now` is the server's clock, not the last tick's time: a hand-sent signal can go out when the last tick is seconds old, and the card's countdown must not inherit that
                           factors=[{"name": "Live session", "vote": sign, "note": note}] if note else [{"name": "Live session", "vote": sign, "note": s["title"]}],
                           strategy=s["title"], strategy_id=None, also=[], tier_stats=self._brief(stats_of(rows)),
                           pair_stats=self._brief(stats_of([r for r in rows if r["symbol"] == sym])), area=area, note=sig.get("note") or "", session_title=s["title"], session_tier=s["tier"])

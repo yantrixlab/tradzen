@@ -50,7 +50,8 @@ export function SignalSender({ any = false, showList = true }: { any?: boolean; 
   const sel = d?.selected ?? null;
   const last = sel?.candles[sel.candles.length - 1];
   const livePx = sel?.last_price ?? last?.c ?? null;
-  const nowS = Date.now() / 1000;
+  // the server's clock (what decides which candle is running and when it ends), carried forward by this computer's clock since the answer arrived: a PC clock a few seconds off does not matter
+  const nowS = d ? d.now + (Date.now() - live.dataUpdatedAt) / 1000 : Date.now() / 1000;
   const here = Math.floor(nowS / tf) * tf;
   const left = here + tf - nowS;
 

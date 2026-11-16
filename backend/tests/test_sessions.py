@@ -242,10 +242,11 @@ def test_running_candle_defined_time_and_defined_price():
     # a running-candle trade is taken at once, at the live price: nothing to get ready for, and no price means no trade
     assert adm.post(url, json={"direction": "CALL", "entry": "current"}, headers=H).status_code == 400, "no heads-up for the running candle"
     assert adm.post(url, json={"direction": "CALL", "entry": "current", "send": True}, headers=H).status_code == 409, "no live price yet"
-    eng.on_tick(SYM, now, 1.0800)
+    eng.on_tick(SYM, now - 15, 1.0800)                                  # the last tick is 15 s old (its time is the feed's)
     cur = adm.post(url, json={"direction": "CALL", "entry": "current", "send": True, "note": "momentum"}, headers=H).json()
     assert cur["status"] == "pending" and cur["entry_mode"] == "current" and cur["entry_t"] == bucket(now, 60) and cur["entry"] == 1.08 and cur["entry_px"] == 1.08
     ev = [e for e in eng.notify_log if e["kind"] == "signal"][-1]
+    assert abs(ev["now"] - time.time()) < 5 and ev["now"] > now - 5, "the card counts down on the server's clock, not on the (older) time of the last tick"
     assert ev["entry_mode"] == "current" and ev["basis_t"] == cur["entry_t"] and "NOW" in ev["factors"][0]["note"] and "momentum" in ev["factors"][0]["note"]
     # it is settled by that candle's close against the price it was taken at (not against the candle's open)
     cur = _shift(eng, cur, 1)

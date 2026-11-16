@@ -501,7 +501,7 @@ class Engine:
         self._flush()
         lr = self.ingest_stats["last_recv"]
         return {"ok": True, "ticks": n_ticks, "seq": self.seq, "events": self.events_since(payload.get("after_seq"), uid), "feeder": feeder,
-                "feed_age": (time.time() - lr) if lr else None}
+                "feed_age": (time.time() - lr) if lr else None, "now": time.time()}          # `now`: the server's clock, so the extension can show countdowns on it (a PC clock may be a few seconds off)
 
     def _on_instruments(self, rows: list) -> None:
         now = time.time()

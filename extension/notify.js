@@ -142,7 +142,7 @@
   const TFN = { 60: '1 min', 300: '5 min', 900: '15 min' };
   const C = 2 * Math.PI * 25;
 
-  let host = null, root = null, stack = null, timer = null, settings = {}, detailsOpen = false;
+  let host = null, root = null, stack = null, timer = null, settings = {}, detailsOpen = false, skew = null;
   const cards = new Map();   // signal id -> {el, ev, offset, dismissAt}
 
   function mount() {
@@ -247,7 +247,9 @@
     el.querySelector('.more').addEventListener('click', () => setDetails(!detailsOpen));
     paintDetails(el);
     stack.prepend(el);
-    const offset = ev.now ? ev.now - Date.now() / 1000 : 0;
+    // The card counts down to the candle's end on the server's clock. A live session's signal is sent by hand at any moment, so `ev.now` is the server's clock at that moment and
+    // `skew` (server clock minus this computer's, measured by the worker on every answer) is the better offset: it does not include the seconds the event spent on its way here.
+    const offset = ev.session_id != null && skew !== null ? skew : ev.now ? ev.now - Date.now() / 1000 : 0;
     cards.set(ev.id, { el, ev, offset, dismissAt: ev.expire_t + 25 });
     const sk = [...cards.keys()].filter((k) => !cards.get(k).guard);
     while (sk.length > 3) dismiss(sk.shift());
@@ -370,6 +372,7 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (!msg || !msg.__qxsNotify) return;
     settings = msg.settings || settings;
+    if (typeof msg.skew === 'number') skew = msg.skew;
     if (msg.playHere && window.QXSound && settings.sound !== false) window.QXSound.play(msg.sound || 'call', settings.volume);
     if (settings.alerts === false) return;
     const ev = msg.__qxsNotify;
