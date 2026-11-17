@@ -1,0 +1,27 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [60, 300, 900],
+  "scope": {"symbols": null, "market": null},
+  "gates": {"min_candles": 60, "min_agree": 1, "max_opposing_weight": 100, "min_strength": 0, "tier_a": null},
+  "expiry_candles": 1,
+  "indicators": [
+    {"id": "ms", "type": "structure", "swing": 3, "max_age": 120},
+    {"id": "eg", "type": "engulf", "swing": 3, "trend_age": 120, "max_age": 120, "min_body": 0.5, "max_run": 3, "visits": 3, "brk_atr": 0.05}
+  ],
+  "factors": [
+    {
+      "id": "trend_rider",
+      "name": "Trend Rider: engulfing-candle zones traded only with the market structure",
+      "weight": 100,
+      "kind": "expr",
+      "call": "ms.lead == 1 and eg.dz_visit <= 3 and green and body > 0.3 * range and close > eg.dz_lo",
+      "put": "ms.lead == -1 and eg.sz_visit <= 3 and red and body < -0.3 * range and close < eg.sz_hi",
+      "vote": 1
+    }
+  ],
+  "filters": [
+    {"type": "one_per_run", "gap": 2},
+    {"type": "min_payout", "value": 80}
+  ]
+}

@@ -155,6 +155,32 @@ def test_bias_keeps_an_up_trend_through_a_pullback_and_turns_when_the_higher_low
     assert (a.bias.to_numpy() == -b.bias.to_numpy()).all()                              # symmetric: the mirror image reads the opposite way
 
 
+def test_lead_turns_down_the_moment_the_up_move_fails_to_make_a_new_high():
+    cs = zigzag([10, 12, 11, 14, 12.5, 16, 14.5, 18, 16, 17.2, 16.4])           # HH, HL, HH (18), pullback to 16 (HL), then a LOWER high (17.2)
+    s = structure.compute(frame(cs), swing=3)
+    t = s.lead.tolist()
+    assert 1 in t and t[-1] == -1                                                  # it led up while the highs and lows kept rising, then down at the lower high
+    first_dn = t.index(-1)
+    assert s.bias.iloc[first_dn] == 1                                              # `bias` still calls it an up-trend (the higher low holds); `lead` does not
+    assert s.hh.iloc[first_dn] == -1 and s.hl.iloc[first_dn] == 1
+
+
+def test_lead_turns_up_when_the_down_move_fails_to_make_a_new_low_and_is_symmetric():
+    up = zigzag([10, 12, 11, 14, 12.5, 16, 14.5, 18, 16, 17.2, 16.4])
+    mirror = [(40 - o, 40 - l, 40 - h, 40 - c) for o, h, l, c in up]              # LL, LH, then a HIGHER low
+    a, b = structure.compute(frame(up), swing=3), structure.compute(frame(mirror), swing=3)
+    assert b.lead.iloc[-1] == 1
+    assert (a.lead.to_numpy() == -b.lead.to_numpy()).all()
+
+
+def test_lead_is_dropped_when_the_swing_it_rests_on_breaks():
+    cs = zigzag([10, 12, 11, 14, 12.5, 16, 14.5, 18, 16, 17.2, 15.0, 15.8, 13.0])    # the lower high is followed by a close through the last higher low (16)
+    s = structure.compute(frame(cs), swing=3)
+    assert s.lead.iloc[-1] == -1                                                     # a lower high + a broken higher low = down, with or without a new swing low
+    up_only = zigzag([10, 12, 11, 14, 12.5, 16, 14.5, 18, 16, 19, 17.5, 20])        # HH, HL, HH, HL, HH
+    assert structure.compute(frame(up_only), swing=3).lead.iloc[-1] == 1
+
+
 def test_backtest_and_live_agree_candle_by_candle_on_random_walks():
     rng = np.random.default_rng(11)
     p = np.cumsum(rng.normal(0, 0.15, 900)) + 50

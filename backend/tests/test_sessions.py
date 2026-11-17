@@ -239,6 +239,9 @@ def test_running_candle_defined_time_and_defined_price():
     s = adm.post("/api/sessions", json={"title": "Modes", "symbol": SYM, "tf": 60}, headers=H).json()
     sid, url = s["id"], f"/api/sessions/{s['id']}/signals"
     now = time.time()
+    if 60 - now % 60 < 15:                                              # a running-candle trade needs >= 10 s left in the candle: start in the next minute instead of flaking
+        time.sleep(60 - now % 60 + 1)
+        now = time.time()
     # a running-candle trade is taken at once, at the live price: nothing to get ready for, and no price means no trade
     assert adm.post(url, json={"direction": "CALL", "entry": "current"}, headers=H).status_code == 400, "no heads-up for the running candle"
     assert adm.post(url, json={"direction": "CALL", "entry": "current", "send": True}, headers=H).status_code == 409, "no live price yet"
