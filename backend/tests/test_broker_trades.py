@@ -177,6 +177,31 @@ def test_garbage_is_survived_and_logged():
     assert b.query()["summary"]["n"] == 0
 
 
+def _closed(b, i, asset, amount, profit, at, call=True):
+    b.on_item(ev("s_orders/close", {"deals": [{"id": i, "asset": asset, "amount": amount, "command": 0 if call else 1, "profit": profit, "openPrice": 1.0 + i / 100, "closePrice": 1.1, "isDemo": 0,
+                                               "openTimestamp": at, "closeTimestamp": at + 60}]}, at + 61))
+
+
+def test_a_date_range_and_the_table_order_are_applied_by_the_server():
+    db, b = fresh()
+    DAY = 86400
+    _closed(b, 1, "EURUSD_otc", 5, 4.0, T)                      # three trades on three different days
+    _closed(b, 2, "AUDUSD_otc", 1, -1.0, T + DAY)
+    _closed(b, 3, "GBPUSD_otc", 3, 2.5, T + 2 * DAY)
+    assert b.query()["total"] == 3
+    day2 = b.query(since=T + DAY - 10, until=T + 2 * DAY - 10)      # 'yesterday' style range: opened at or after `since`, before `until`
+    assert day2["total"] == 1 and day2["trades"][0]["symbol"] == "AUDUSD_otc" and day2["summary"]["net"] == -1.0
+    assert b.query(until=T + DAY - 10)["total"] == 1 and b.query(since=T + DAY - 10)["total"] == 2
+    order = lambda **k: [r["symbol"] for r in b.query(**k)["trades"]]
+    assert order() == ["GBPUSD_otc", "AUDUSD_otc", "EURUSD_otc"]                                     # newest first by default
+    assert order(sort="t", desc=False) == ["EURUSD_otc", "AUDUSD_otc", "GBPUSD_otc"]
+    assert order(sort="profit", desc=True) == ["EURUSD_otc", "GBPUSD_otc", "AUDUSD_otc"]
+    assert order(sort="amount", desc=False) == ["AUDUSD_otc", "GBPUSD_otc", "EURUSD_otc"]
+    assert order(sort="symbol", desc=False) == ["AUDUSD_otc", "EURUSD_otc", "GBPUSD_otc"]
+    assert b.query(sort="profit", desc=True, limit=1)["trades"][0]["symbol"] == "EURUSD_otc"          # the order applies before the page is cut
+    assert b.query(sort="profit")["summary"]["net"] == b.query()["summary"]["net"] == 5.5            # sorting the table never changes the totals
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

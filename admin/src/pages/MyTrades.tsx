@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qs } from '../api';
 import { dateTime, pct, prettyPair } from '../format';
@@ -7,6 +7,8 @@ import { Badge, Card, DirBadge, Empty, ErrorBox, PageTitle, Spinner, Stat } from
 import TradeDetail from '../components/TradeDetail';
 import { useBoxWidth } from '../lib/useBoxWidth';
 import UndoToasts, { UndoItem } from '../components/UndoToasts';
+import { SortSelect, SortTh, sortRows, useSortState } from '../components/SortHead';
+import { PRESETS, describeRange, rangeOf, ymd } from '../lib/dateRanges';
 
 interface Sig { id: number; tier: string; mode: string; strategy: string; strategy_id: number }
 interface Trade {
@@ -33,7 +35,10 @@ interface Resp {
 interface Raw { events: { ts: number; dir: string; name: string; payload: unknown }[] }
 
 const tone = (x: number | null | undefined): 'up' | 'down' | undefined => (x ? (x > 0 ? 'up' : 'down') : undefined);
-const RANGES: [string, number][] = [['Today', 1], ['7 days', 7], ['30 days', 30], ['All time', 0]];
+const QUICK = ['today', 'yesterday', '7d', '30d', 'month', 'lastmonth', 'all'];          // shown as buttons; the rest sit in the "More" list
+const MORE = PRESETS.filter((p) => !QUICK.includes(p.key));
+const TRADE_SORTS: [string, string][] = [['t', 'opened'], ['symbol', 'pair'], ['direction', 'side'], ['amount', 'stake'], ['price', 'price in'], ['status', 'result'], ['profit', 'profit / loss'], ['source', 'source']];
+const FIRST_DESC = (k: string) => ['t', 'amount', 'profit', 'price', 'n', 'wins', 'win_rate', 'staked', 'net', 'exposure', 'first', 'step'].includes(k);          // numbers and dates start high-to-low, text starts A-Z
 const SRC: Record<string, [string, string]> = {
   followed: ['Followed signal', 'You entered the same pair and direction shortly after a Tradzen signal.'],
   own: ['Own call', 'No Tradzen signal for that pair around the time you entered.'],
@@ -73,8 +78,14 @@ const OUTCOME: Record<string, [string, string]> = {
 };
 const cls = (x: number | null | undefined) => (x ? (x > 0 ? 'text-up' : 'text-down') : '');
 
+const CYCLE_VALUE = (c: Cyc, k: string): string | number | null => (k === 't' ? c.t : k === 'symbol' ? prettyPair(c.symbol) : k === 'dir' ? c.dir : k === 'first' ? c.first.net : k === 'step' ? (c.step ? c.step.net : null)
+  : k === 'outcome' ? OUTCOME[c.outcome][1] : k === 'net' ? c.net : k === 'exposure' ? c.exposure : null);
+const CYCLE_COLS: [string, string | undefined][] = [['Opened', 't'], ['Pair', 'symbol'], ['Side', 'dir'], ['First trade', 'first'], ['MTG step', 'step'], ['Cycle result', 'outcome'], ['Cycle P / L', 'net'], ['Most at risk', 'exposure'], ['', undefined]];
+
 function MtgCard({ m, onOpen }: { m: Mtg; onOpen: (id: string) => void }) {
   const money = useMoney();
+  const [sort, toggle] = useSortState(null, FIRST_DESC);
+  const cycles = useMemo(() => sortRows(m.list, sort, CYCLE_VALUE), [m.list, sort]);
   if (!m.cycles) return null;
   const lostFirst = m.taken + m.losses_not_followed + (m.list.filter((c) => c.outcome === 'running' && c.first.status === 'loss').length);
   const diff = Math.round((m.net_with_mtg - m.net_without_mtg) * 100) / 100;
@@ -94,8 +105,8 @@ function MtgCard({ m, onOpen }: { m: Mtg; onOpen: (id: string) => void }) {
       {lostFirst > 0 && <p className="note mt-2">Of {lostFirst} lost first trades, you took the step after {m.taken}{m.losses_not_followed ? ` and walked away from ${m.losses_not_followed}` : ''}.</p>}
       <div className="mt-3 overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr>{['Opened', 'Pair', 'Side', 'First trade', 'MTG step', 'Cycle result', 'Cycle P / L', 'Most at risk', ''].map((h, i) => <th key={i} className="th">{h}</th>)}</tr></thead>
-          <tbody>{m.list.slice(0, 30).map((c) => (
+          <thead><tr>{CYCLE_COLS.map(([h, k], i) => <SortTh key={i} label={h} k={k} sort={sort} onSort={toggle} title={k === 'first' || k === 'step' ? `Sort by the ${h.toLowerCase()} result` : undefined} />)}</tr></thead>
+          <tbody>{cycles.slice(0, 30).map((c) => (
             <tr key={c.t + c.symbol} className="group cursor-pointer transition hover:bg-acc/5 focus-visible:bg-acc/10 focus-visible:outline-none" tabIndex={0} role="button" aria-label={`Open the ${prettyPair(c.symbol)} cycle`}
               onClick={() => onOpen(c.id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(c.id); } }}>
               <td className="td whitespace-nowrap" style={{ boxShadow: `inset 3px 0 0 ${c.outcome === 'first' ? '#22c55e' : c.outcome === 'recovered' ? '#8b5cf6' : c.outcome === 'running' ? '#f59e0b' : c.outcome === 'draw' ? '#8a93b2' : '#ef4444'}` }}>{dateTime(c.t)}</td><td className="td whitespace-nowrap font-medium">{prettyPair(c.symbol)}</td><td className="td whitespace-nowrap"><DirBadge dir={c.dir} /></td>
@@ -112,12 +123,16 @@ function MtgCard({ m, onOpen }: { m: Mtg; onOpen: (id: string) => void }) {
   );
 }
 
+const GROUP_COLS: [string, string][] = [['', 'name'], ['Trades', 'n'], ['Won', 'wins'], ['Win rate', 'win_rate'], ['Staked', 'staked'], ['Net', 'net']];
+
 function GroupTable({ rows, label }: { rows: (Group & { key: string; name: string; hint?: string })[]; label: string }) {
   const money = useMoney();
+  const [sort, toggle] = useSortState(null, FIRST_DESC);
+  const shown = useMemo(() => sortRows(rows, sort, (r, k) => (r as unknown as Record<string, string | number | null>)[k]), [rows, sort]);
   return (
     <div className="overflow-x-auto"><table className="w-full text-sm">
-      <thead><tr>{[label, 'Trades', 'Won', 'Win rate', 'Staked', 'Net'].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
-      <tbody>{rows.map((r) => (
+      <thead><tr>{GROUP_COLS.map(([h, k]) => <SortTh key={k} label={h || label} k={k} sort={sort} onSort={toggle} />)}</tr></thead>
+      <tbody>{shown.map((r) => (
         <tr key={r.key}><td className="td font-medium" title={r.hint}>{r.name}</td><td className="td tabular-nums">{r.n}</td>
           <td className="td tabular-nums">{r.wins}<span className="text-mut"> / {r.losses}</span></td><td className="td tabular-nums">{pct(r.win_rate)}</td>
           <td className="td tabular-nums">{money(r.staked)}</td>
@@ -130,12 +145,22 @@ export default function MyTrades() {
   const money = useMoney();
   const qc = useQueryClient();
   const [account, setAccount] = usePersisted('trades-account', 'all');
-  const [days, setDays] = usePersisted('trades-days', 7);
+  const [range, setRange] = usePersisted('trades-range', '7d');
+  const [custom, setCustom] = usePersisted('trades-custom', { from: ymd(new Date()), to: ymd(new Date()) });
+  const [sort, toggleSort, setSort] = useSortState(null, FIRST_DESC);
   const [shown, setShown] = useState(50);
   const [raw, setRaw] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const tz = -new Date().getTimezoneOffset();
-  const q = useQuery({ queryKey: ['my-trades', account, days, tz, shown], queryFn: () => api<Resp>(`/api/trades${qs({ account, days, tz, limit: shown })}`), refetchInterval: 3000, placeholderData: (p) => p });
+  const span = useMemo(() => {
+    const c = custom.from && custom.to && custom.from > custom.to ? { from: custom.to, to: custom.from } : custom;          // dates picked in the wrong order are swapped
+    return rangeOf(range, new Date(), c);
+  }, [range, custom]);          // (a page left open past midnight keeps the old midnight until the range is clicked again or the page is reloaded)
+  const q = useQuery({
+    queryKey: ['my-trades', account, span.from, span.to, tz, shown, sort?.key, sort?.desc],
+    queryFn: () => api<Resp>(`/api/trades${qs({ account, since: span.from, until: span.to, tz, limit: shown, sort: sort?.key, desc: sort ? sort.desc : undefined })}`),
+    refetchInterval: 3000, placeholderData: (p) => p,
+  });
   const rawQ = useQuery({ queryKey: ['my-trades-raw'], queryFn: () => api<Raw>('/api/trades/raw?limit=40'), enabled: raw, refetchInterval: raw ? 4000 : false });
   const refresh = () => qc.invalidateQueries({ queryKey: ['my-trades'] });
   const [toasts, setToasts] = useState<UndoItem[]>([]);
@@ -168,10 +193,23 @@ export default function MyTrades() {
           {[['all', 'All accounts'], ['real', 'Real'], ['demo', 'Demo']].map(([k, l]) => (
             <button key={k} className={`btn btn-sm ${account === k ? 'btn-primary' : ''}`} onClick={() => { setAccount(k); setShown(50); }}>{l}</button>))}
         </div>
-        <div className="flex gap-1" role="group" aria-label="Period">
-          {RANGES.map(([l, v]) => <button key={l} className={`btn btn-sm ${days === v ? 'btn-primary' : ''}`} onClick={() => { setDays(v); setShown(50); }}>{l}</button>)}
+        <div className="-mx-1 flex max-w-full gap-1 overflow-x-auto px-1 pb-1 max-md:order-last max-md:w-full" role="group" aria-label="Period">
+          {QUICK.map((k) => <button key={k} className={`btn btn-sm shrink-0 whitespace-nowrap ${range === k ? 'btn-primary' : ''}`} aria-pressed={range === k}
+            onClick={() => { setRange(k); setShown(50); }}>{PRESETS.find((p) => p.key === k)!.label}</button>)}
+          <select className={`input !w-auto shrink-0 !py-1 text-xs ${MORE.some((p) => p.key === range) ? '!border-acc' : ''}`} aria-label="More date ranges" value={MORE.some((p) => p.key === range) ? range : ''}
+            onChange={(e) => { if (e.target.value) { setRange(e.target.value); setShown(50); } }}>
+            <option value="">More…</option>
+            {MORE.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </select>
         </div>
-        <span className="note ml-auto">{s.open ? `${s.open} trade${s.open === 1 ? '' : 's'} running now · ` : ''}updates every few seconds</span>
+        {range === 'custom' && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <input type="date" className="input !w-auto" aria-label="From date" value={custom.from} max={custom.to || undefined} onChange={(e) => { setCustom({ ...custom, from: e.target.value }); setShown(50); }} />
+            <span className="text-mut">to</span>
+            <input type="date" className="input !w-auto" aria-label="To date" value={custom.to} min={custom.from || undefined} onChange={(e) => { setCustom({ ...custom, to: e.target.value }); setShown(50); }} />
+          </div>
+        )}
+        <span className="note ml-auto" title="Trades are grouped by your own calendar days">Showing {describeRange(span)}{span.to === null && span.from !== null ? ' (so far)' : ''} · {s.open ? `${s.open} trade${s.open === 1 ? '' : 's'} running now · ` : ''}updates every few seconds</span>
       </div>
 
       {nothing && (
@@ -217,11 +255,12 @@ export default function MyTrades() {
 
       <MtgCard m={d.mtg} onOpen={setSel} />
 
-      <Card title={`Trades (${d.total})`} className="mt-4" right={<span className="note">Click a trade to see it on the chart</span>}>
-          {d.trades.length === 0 ? <Empty>No trades in this range.{d.removed > 0 && <div className="mt-2 text-sm">{d.removed} removed trade{d.removed === 1 ? '' : 's'} hidden · <button className="underline hover:text-fg" onClick={() => restoreAll.mutate()}>Restore {d.removed === 1 ? 'it' : 'all'}</button></div>}</Empty> : (
+      <Card title={`Trades (${d.total})`} className="mt-4" right={<span className="flex flex-wrap items-center justify-end gap-2"><SortSelect options={TRADE_SORTS} sort={sort} onChange={setSort} /><span className="note">Click a trade to see it on the chart</span></span>}>
+          {d.trades.length === 0 ? <Empty>No trades in this range ({describeRange(span)}).{d.removed > 0 && <div className="mt-2 text-sm">{d.removed} removed trade{d.removed === 1 ? '' : 's'} hidden · <button className="underline hover:text-fg" onClick={() => restoreAll.mutate()}>Restore {d.removed === 1 ? 'it' : 'all'}</button></div>}</Empty> : (
             <div className="overflow-x-auto max-md:overflow-visible">
               <table className="w-full stack text-sm">
-                <thead><tr>{['Opened', 'Pair', 'Side', 'Stake', 'Price in → out', 'Result', 'P / L', 'Source', '', ''].map((h, i) => <th key={i} className="th">{h}</th>)}</tr></thead>
+                <thead><tr>{([['Opened', 't'], ['Pair', 'symbol'], ['Side', 'direction'], ['Stake', 'amount'], ['Price in → out', 'price'], ['Result', 'status'], ['P / L', 'profit'], ['Source', 'source'], ['', undefined], ['', undefined]] as [string, string | undefined][])
+                  .map(([h, k], i) => <SortTh key={i} label={h} k={k} sort={sort} onSort={toggleSort} title={k === 'price' ? 'Sort by the entry price' : undefined} />)}</tr></thead>
                 <tbody>{d.trades.map((t) => (
                   <tr key={t.id} className={`group cursor-pointer transition hover:bg-acc/5 focus-visible:bg-acc/10 focus-visible:outline-none ${sel === t.id ? 'bg-acc/10' : ''}`} tabIndex={0} role="button"
                     aria-label={`Open the ${t.symbol ? prettyPair(t.symbol) : ''} ${t.direction ?? ''} trade`} onClick={() => setSel(t.id)}

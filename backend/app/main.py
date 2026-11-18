@@ -890,14 +890,20 @@ def _ctx(request: Request):
 
 
 @app.get("/api/trades")
-async def my_trades(request: Request, account: str = "all", days: float = 0, tz: int = 0, limit: int = 200, offset: int = 0) -> dict:
+async def my_trades(request: Request, account: str = "all", days: float = 0, tz: int = 0, limit: int = 200, offset: int = 0,
+                    since: float = 0, until: float = 0, sort: str = "", desc: bool = True) -> dict:
     """The trades you placed on the broker (read from the order events the extension sees) with totals, win rate, profit / loss, per day, per pair and
     whether each followed a Tradzen signal. account: all | real | demo. days: only the last N days (0 = everything; fractions allowed, 1 = the last 24 h).
+    since / until: an exact range in epoch seconds (the Trades page sends your own midnights: yesterday, last month ...); they win over `days`.
+    sort: t | symbol | direction | amount | price | status | profit | source - orders the table of trades only, `desc` picks the direction.
     tz: your UTC offset in minutes, so 'per day' follows your own calendar."""
     if account not in ("all", "real", "demo"):
         raise HTTPException(400, "account must be all, real or demo")
+    if sort and sort not in _ctx(request).trades.SORT_KEYS:
+        raise HTTPException(400, "sort must be one of " + ", ".join(_ctx(request).trades.SORT_KEYS))
     import time as _t
-    return _ctx(request).trades.query(account, (_t.time() - days * 86400) if days > 0 else None, tz, limit, offset, engine.names)
+    lo = since if since > 0 else ((_t.time() - days * 86400) if days > 0 else None)
+    return _ctx(request).trades.query(account, lo, tz, limit, offset, engine.names, until=until if until > 0 else None, sort=sort, desc=desc)
 
 
 class GuardSettings(BaseModel):

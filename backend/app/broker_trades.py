@@ -292,9 +292,12 @@ class BrokerTrades:
         self.db.commit()
         return cur.rowcount
 
+    SORT_KEYS = {"t": "t", "symbol": "symbol", "direction": "direction", "amount": "amount", "price": "open_price", "status": "status", "profit": "profit", "source": "source"}
+
     def query(self, account: str = "all", since: float | None = None, tz_min: int = 0, limit: int = 200, offset: int = 0,
-              names: dict[int, str] | None = None) -> dict:
-        """Everything the Trades page shows. account: all | real | demo. since: only trades opened at or after this time (seconds)."""
+              names: dict[int, str] | None = None, until: float | None = None, sort: str = "", desc: bool = True) -> dict:
+        """Everything the Trades page shows. account: all | real | demo. since / until: only trades opened at or after / before these times (seconds).
+        sort: one of SORT_KEYS - orders the TABLE of trades (the totals, charts and martingale cycles always cover the whole range); default newest first."""
         where, args = ["hidden = 0"], []
         if account == "real":
             where.append("COALESCE(is_demo, 0) = 0")
@@ -303,6 +306,9 @@ class BrokerTrades:
         if since:
             where.append("COALESCE(open_t, first_seen) >= ?")
             args.append(since)
+        if until:
+            where.append("COALESCE(open_t, first_seen) < ?")
+            args.append(until)
         cond = ("WHERE " + " AND ".join(where)) if where else ""
         rows = [dict(zip(("id", "symbol", "direction", "amount", "open_t", "expire_t", "close_t", "open_price", "close_price", "payout", "profit", "status", "is_demo"), r))
                 for r in self.db.execute(
@@ -313,8 +319,15 @@ class BrokerTrades:
         self._tag_signals(rows, names or {})
         mtg = self._martingale(rows)
         settled = [r for r in rows if r["status"] in ("win", "loss", "draw")]
+        page = rows
+        if sort in self.SORT_KEYS and sort != "t":
+            k = self.SORT_KEYS[sort]
+            have = [r for r in rows if r.get(k) is not None]
+            page = sorted(have, key=lambda r: (r[k], r["t"]), reverse=desc) + [r for r in rows if r.get(k) is None]     # empty values always last
+        elif sort == "t" and not desc:
+            page = rows[::-1]
         return {"summary": self._summary(settled, rows), "daily": self._daily(settled, tz_min), "pairs": self._pairs(settled), "source": self._by_source(settled),
-                "sides": self._by_side(settled), "mtg": mtg, "total": len(rows), "trades": rows[max(0, offset):max(0, offset) + max(1, min(limit, 1000))],
+                "sides": self._by_side(settled), "mtg": mtg, "total": len(rows), "trades": page[max(0, offset):max(0, offset) + max(1, min(limit, 1000))],
                 "events_seen": self.db.execute("SELECT COUNT(*) FROM broker_events").fetchone()[0],
                 "removed": self.db.execute("SELECT COUNT(*) FROM broker_trades WHERE hidden=1").fetchone()[0]}
 
