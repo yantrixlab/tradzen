@@ -30,12 +30,12 @@ export default function MyChart() {
     : <Card><Empty>No pair yet. Open a chart on Quotex (with the extension signed in) and this page follows the pair you open there, or pick a pair below.</Empty></Card>;
   return (
     <>
-      {!compact && <div className="mb-4"><h1 className="text-2xl font-bold">Live chart</h1>
+      {!compact && <div className="mb-4"><h1 className="text-xl font-bold sm:text-2xl">Live chart</h1>
         <p className="mt-1 text-sm text-mut">The pair open on your Quotex tab. Switch pairs there and the chart follows; pick one here to hold it.</p></div>}
       {compact ? (
         <div className="space-y-3">{view}<details className="card p-3"><summary className="cursor-pointer text-sm font-semibold">Choose another pair</summary><div className="mt-2">{picker}</div></details></div>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-[320px_1fr]"><div>{picker}</div><div className="min-w-0">{view}</div></div>
+        <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]"><div className="order-2 xl:order-1">{picker}</div><div className="order-1 min-w-0 xl:order-2">{view}</div></div>
       )}
     </>
   );

@@ -120,16 +120,16 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
   const toolbarLeft = (
     <>
       {!lockStrategy && (
-        <select className="input !w-56 !py-1 text-xs" value={sid ?? ''} onChange={(e) => setSid(e.target.value ? Number(e.target.value) : null)} title="Apply a strategy to this chart: its trades, results and indicators are drawn">
+        <select className="input !w-full !py-1 text-xs sm:!w-56" value={sid ?? ''} onChange={(e) => setSid(e.target.value ? Number(e.target.value) : null)} title="Apply a strategy to this chart: its trades, results and indicators are drawn">
           <option value="">Strategy: none</option>{pickable.map((s) => <option key={s.id} value={s.id}>{s.name}{s.status === 'live' ? ' (live)' : ''}</option>)}
         </select>)}
       {!compact && <IndicatorMenu picked={picked} onChange={setPicked} />}
-      {applied && !compact && <label className="flex cursor-pointer items-center gap-1 text-mut" title="Draw the indicators the strategy uses"><input type="checkbox" checked={showInd} onChange={(e) => setShowInd(e.target.checked)} />Strategy lines</label>}
+      {applied && !compact && <label className="flex min-h-[36px] cursor-pointer items-center gap-1.5 text-mut sm:min-h-0 sm:gap-1" title="Draw the indicators the strategy uses"><input type="checkbox" checked={showInd} onChange={(e) => setShowInd(e.target.checked)} />Strategy lines</label>}
       {(applied || runId) && mtgSteps === undefined && !compact && (
         <div className="flex items-center gap-1" title="Martingale: after a losing trade, re-enter the same direction on the next candle with a bigger stake">
           <span style={{ color: '#38bdf8' }} className="font-semibold">MTG</span>
           <div className="flex overflow-hidden rounded-lg border border-line">{[0, 1, 2, 3].map((s) => (
-            <button key={s} className={`px-2 py-0.5 ${s === lSteps ? 'bg-acc text-white' : 'bg-panel2 text-mut hover:text-fg'}`} onClick={() => setLSteps(s)}>{s === 0 ? 'off' : s}</button>))}</div>
+            <button key={s} className={`px-3 py-2 sm:px-2 sm:py-0.5 ${s === lSteps ? 'bg-acc text-white' : 'bg-panel2 text-mut hover:text-fg'}`} onClick={() => setLSteps(s)}>{s === 0 ? 'off' : s}</button>))}</div>
           {lSteps > 0 && <label className="flex items-center gap-1 text-mut">×<input className="input !w-14 !py-0.5 text-xs" type="number" min={1} max={10} step={0.1} value={lMult} onChange={(e) => setLMult(Math.min(10, Math.max(1, Number(e.target.value) || 2.2)))} /></label>}
         </div>)}
     </>

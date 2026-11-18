@@ -97,22 +97,22 @@ export default function TradeDetail({ id, onClose, onSelect, index, total, onPre
     <div className="fixed inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-[2px]" onClick={onClose} role="dialog" aria-modal="true" aria-label="Trade details">
       <aside className="flex h-full w-[min(100vw,940px)] flex-col border-l border-line bg-bg shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* top bar */}
-        <div className="flex items-center gap-2 border-b border-line bg-panel2/80 px-4 py-2.5">
+        <div className="flex items-center gap-2 border-b border-line bg-panel2/80 px-3 pb-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] sm:px-4">
           <button className="btn btn-sm" disabled={!onPrev} onClick={() => onPrev?.()} aria-label="Newer trade" title="Newer trade (←)">←</button>
           <button className="btn btn-sm" disabled={!onNext} onClick={() => onNext?.()} aria-label="Older trade" title="Older trade (→)">→</button>
           <span className="note ml-1">Trade {index + 1} of {total}</span>
           <span className="note ml-3 hidden sm:inline">← → to browse · Esc to close</span>
-          <button className="ml-auto rounded-md p-1.5 text-mut hover:bg-panel hover:text-fg" onClick={toggleAmounts} aria-pressed={visible} aria-label={visible ? 'Hide amounts' : 'Show amounts'} title={visible ? 'Hide amounts' : 'Show amounts'}><Eye off={!visible} /></button>
+          <button className="ml-auto grid h-10 w-10 place-items-center rounded-md text-mut hover:bg-panel hover:text-fg sm:h-auto sm:w-auto sm:p-1.5" onClick={toggleAmounts} aria-pressed={visible} aria-label={visible ? 'Hide amounts' : 'Show amounts'} title={visible ? 'Hide amounts' : 'Show amounts'}><Eye off={!visible} /></button>
           <button className="btn btn-sm" onClick={onClose} autoFocus>Close</button>
         </div>
 
         {!d || !t ? (q.isError ? <div className="p-6 text-down">Could not load this trade.</div> : <Spinner />) : (
-          <div className="flex-1 space-y-4 overflow-y-auto p-5">
+          <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5">
             {/* hero */}
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-2xl font-bold tracking-tight">{t.symbol ? prettyPair(t.symbol) : 'Unknown pair'}</h2>
+                  <h2 className="text-xl font-bold tracking-tight sm:text-2xl">{t.symbol ? prettyPair(t.symbol) : 'Unknown pair'}</h2>
                   {t.direction && <span className={`chip ${t.direction === 'CALL' ? 'border-up/40 bg-up/10 text-up' : 'border-down/40 bg-down/10 text-down'}`}>{t.direction === 'CALL' ? '▲ CALL / BUY' : '▼ PUT / SELL'}</span>}
                   <Badge tone={stTone}>{stLabel}</Badge>
                   {t.is_demo ? <Badge tone="warn">DEMO</Badge> : <Badge tone="mut">REAL</Badge>}
@@ -121,7 +121,7 @@ export default function TradeDetail({ id, onClose, onSelect, index, total, onPre
               </div>
               <div className="text-right">
                 <div className="text-[10.5px] font-semibold uppercase tracking-wider text-mut">Profit / loss</div>
-                <div className={`text-3xl font-bold tabular-nums ${TXT[stTone]}`}>{t.status === 'open' ? '…' : money(t.profit, true)}</div>
+                <div className={`text-2xl font-bold tabular-nums sm:text-3xl ${TXT[stTone]}`}>{t.status === 'open' ? '…' : money(t.profit, true)}</div>
                 {t.amount !== null && <div className="note">on a {money(t.amount)} stake{t.payout ? ` · ${t.payout}% payout` : ''}</div>}
               </div>
             </div>

@@ -67,7 +67,7 @@ interface View { start: number; count: number }
 function Pill({ on, set, color, title, children }: { on: boolean; set: (v: boolean) => void; color?: string; title?: string; children: React.ReactNode }) {
   return (
     <button type="button" role="switch" aria-checked={on} title={title} onClick={() => set(!on)}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium leading-none transition-colors ${on ? 'text-fg' : 'border-line bg-transparent text-mut hover:text-fg'}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-2 text-[11px] font-medium leading-none sm:py-1 transition-colors ${on ? 'text-fg' : 'border-line bg-transparent text-mut hover:text-fg'}`}
       style={on ? { borderColor: `${color ?? ACC}99`, background: `${color ?? ACC}22` } : undefined}>
       <span className="inline-block h-2 w-2 rounded-full transition-opacity" style={{ background: color ?? ACC, opacity: on ? 1 : 0.35 }} />{children}
     </button>
@@ -93,6 +93,7 @@ export function PriceChart(props: PriceChartProps) {
   const [view, setView] = useState<View>(() => ({ start: Math.max(0, n - Math.min(n, initialCount)), count: Math.max(1, Math.min(n, initialCount)) }));
   const [hover, setHover] = useState<{ i: number; y: number } | null>(null);
   const [drag, setDrag] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(false);                    // phones: the layer switches fold away (they are always shown from the sm width up)
   // every switch is saved on the account (see prefs.ts): the next visit, on any browser, opens the chart the way this person left it
   const [showBuy, setShowBuy] = usePref('chart.buy', true);
   const [showSell, setShowSell] = usePref('chart.sell', true);
@@ -108,7 +109,7 @@ export function PriceChart(props: PriceChartProps) {
 
   useEffect(() => {
     if (!wrap.current) return;
-    const ro = new ResizeObserver(([e]) => setW(Math.max(320, Math.floor(e.contentRect.width))));
+    const ro = new ResizeObserver(([e]) => setW(Math.max(240, Math.floor(e.contentRect.width))));
     ro.observe(wrap.current);
     return () => ro.disconnect();
   }, []);
@@ -350,9 +351,36 @@ export function PriceChart(props: PriceChartProps) {
   const moveRef = useRef<{ cx: number; cy: number; left: number; top: number } | null>(null);
   const frame = useRef(0);
   useEffect(() => () => { if (frame.current) cancelAnimationFrame(frame.current); }, []);
-  const onDown = (e: React.PointerEvent<SVGSVGElement>) => { (e.currentTarget as Element).setPointerCapture(e.pointerId); dragRef.current = { x: e.clientX, start: view.start }; setDrag(true); };
+  const ptrs = useRef(new Map<number, number>());                         // active pointers (fingers) -> clientX
+  const pinch = useRef<{ d: number; count: number; start: number; mid: number } | null>(null);
+  const onDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    ptrs.current.set(e.pointerId, e.clientX);
+    if (ptrs.current.size === 2) {
+      const [a, b] = [...ptrs.current.values()];
+      pinch.current = { d: Math.max(20, Math.abs(a - b)), count: view.count, start: view.start, mid: (a + b) / 2 };
+      dragRef.current = null; setHover(null);
+    } else if (ptrs.current.size === 1) {
+      dragRef.current = { x: e.clientX, start: view.start };
+      if (e.pointerType !== 'mouse') {                                    // a tap on a touch screen shows the readout of the candle under the finger
+        const r = e.currentTarget.getBoundingClientRect();
+        const i = Math.floor((e.clientX - r.left - PAD_L) / step + view.start);
+        setHover(i >= 0 && i < n && e.clientX - r.left >= PAD_L && e.clientX - r.left <= PAD_L + innerW ? { i, y: e.clientY - r.top } : null);
+      }
+    }
+    setDrag(true);
+  };
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
+    if (ptrs.current.has(e.pointerId)) ptrs.current.set(e.pointerId, e.clientX);
+    const pz = pinch.current;
+    if (pz && ptrs.current.size === 2) {                                  // two fingers: zoom about their midpoint
+      const [a, b] = [...ptrs.current.values()];
+      const count = Math.max(Math.min(MIN_VISIBLE, n), Math.min(pz.count * (pz.d / Math.max(20, Math.abs(a - b))), n));
+      const anchor = Math.min(1, Math.max(0, (pz.mid - r.left - PAD_L) / innerW));
+      setView(clamp({ count, start: pz.start + (pz.count - count) * anchor }));
+      return;
+    }
     moveRef.current = { cx: e.clientX, cy: e.clientY, left: r.left, top: r.top };
     if (frame.current) return;
     frame.current = requestAnimationFrame(() => {
@@ -366,7 +394,12 @@ export function PriceChart(props: PriceChartProps) {
     });
   };
   const onLeave = () => { moveRef.current = null; if (!dragRef.current) setHover(null); };
-  const onUp = () => { dragRef.current = null; setDrag(false); };
+  const onUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    ptrs.current.delete(e.pointerId);
+    if (ptrs.current.size < 2) pinch.current = null;
+    if (ptrs.current.size === 1) { dragRef.current = { x: [...ptrs.current.values()][0], start: view.start }; return; }
+    dragRef.current = null; setDrag(false);
+  };
   const onKey = (e: React.KeyboardEvent) => {
     const k = e.key;
     if (k === 'ArrowLeft') pan(-Math.max(1, view.count / 10));
@@ -424,7 +457,7 @@ export function PriceChart(props: PriceChartProps) {
   };
   const groupValue = (g: SeriesGroup, i: number) => g.lines.map((l) => fmt(l.values[i], l.values[i] ?? 1)).join(' / ');
   const chip = (g: SeriesGroup) => (
-    <button key={g.id} className={`inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[11px] ${hid[g.id] ? 'border-line text-mut line-through opacity-60' : 'border-line bg-panel2'}`}
+    <button key={g.id} className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] sm:px-1.5 sm:py-0.5 ${hid[g.id] ? 'border-line text-mut line-through opacity-60' : 'border-line bg-panel2'}`}
       title={hid[g.id] ? 'Show on the chart' : 'Hide from the chart'} onClick={() => setHid({ ...hid, [g.id]: !hid[g.id] })}>
       <span className="inline-block h-2 w-3 rounded-sm" style={{ background: g.color }} /><b style={{ color: hid[g.id] ? undefined : g.color }}>{g.label}</b></button>
   );
@@ -464,12 +497,13 @@ export function PriceChart(props: PriceChartProps) {
               <button className="btn btn-sm" title="Centre the next trade" onClick={() => jump(1)}>Trade ⏭</button></Seg>}
             <div className="ml-auto flex flex-wrap items-center gap-2">
               {toolbarRight}
+              {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || hasMtg) && <button className="btn btn-sm sm:hidden" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)}>Layers {layersOpen ? '▴' : '▾'}</button>}
               <button className="btn btn-sm" title="Back to the newest candles at the default zoom (double-click the chart too)" onClick={reset}>Reset</button>
               <button className="btn btn-sm" title={fs ? 'Leave full screen (Esc)' : 'Full screen (F)'} onClick={toggleFs}>{fs ? '✕ Exit full screen' : '⛶ Full screen'}</button>
             </div>
           </div>
           {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || hasMtg) && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line/60 pt-2">
+            <div className={`mt-2 flex-wrap items-center gap-1.5 border-t border-line/60 pt-2 sm:flex ${layersOpen ? 'flex' : 'hidden'}`}>
               <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-mut">Show</span>
               {anySignals && <><Pill on={showBuy} set={setShowBuy} color={UP}>▲ BUY</Pill><Pill on={showSell} set={setShowSell} color={DOWN}>▼ SELL</Pill></>}
               {anyTrades && <Pill on={showResult} set={setShowResult} color={MUTED} title="Tint the candle each trade settles on">Result tint</Pill>}
@@ -487,7 +521,7 @@ export function PriceChart(props: PriceChartProps) {
         {(overlays.length > 0 || panes.length > 0) && <div className="mb-2 flex flex-wrap items-center gap-1.5">{overlays.map(chip)}{panes.map(chip)}</div>}
 
         <div className="relative">
-          <svg ref={svg} width={w} height={H} className={`block select-none rounded-xl border border-line/70 ${drag ? 'cursor-grabbing' : 'cursor-crosshair'}`} style={{ touchAction: 'none', background: `linear-gradient(180deg, #0e1530 0%, ${BG} 100%)` }}
+          <svg ref={svg} width={w} height={H} className={`block select-none rounded-xl border border-line/70 ${drag ? 'cursor-grabbing' : 'cursor-crosshair'}`} style={{ touchAction: 'pan-y', background: `linear-gradient(180deg, #0e1530 0%, ${BG} 100%)` }}
             onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onMouseLeave={onLeave} onDoubleClick={reset}>
             <defs>
               <clipPath id={`${clipId}-main`}><rect x={PAD_L} y={0} width={innerW} height={mainH} /></clipPath>
@@ -673,7 +707,7 @@ export function PriceChart(props: PriceChartProps) {
         </div>
 
         {!compact && n > view.count && (
-          <svg width={w} height={MAP_H} className="mt-1 block cursor-grab touch-none select-none" style={{ touchAction: 'none' }}
+          <svg width={w} height={MAP_H} className="mt-1 block cursor-grab select-none rounded-md" style={{ touchAction: 'pan-y' }}
             onPointerDown={onMapDown} onPointerMove={onMapMove} onPointerUp={() => { mapDrag.current = null; }} onPointerCancel={() => { mapDrag.current = null; }}>
             <g transform={`translate(${PAD_L},0)`}>
               <rect width={innerW} height={MAP_H} rx={6} fill={BG} stroke={GRID} />
@@ -687,7 +721,8 @@ export function PriceChart(props: PriceChartProps) {
 
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-mut">
           <span>{candles.length.toLocaleString()} candles · showing {Math.round(view.count)}</span>
-          {!compact && <span>wheel = zoom · drag = move · shift+wheel / ← → = scroll · + − = zoom · F = full screen · double-click = reset</span>}
+          {!compact && <span className="hidden md:inline">wheel = zoom · drag = move · shift+wheel / ← → = scroll · + − = zoom · F = full screen · double-click = reset</span>}
+          {!compact && <span className="md:hidden">drag = move · pinch = zoom · tap = details</span>}
           {anyTrades && <span className="ml-auto">
             <b className="text-fg">{trades.length}</b> trades · <span className="text-up">{stats.wins}W</span> <span className="text-down">{stats.losses}L</span>{stats.draws ? ` ${stats.draws}D` : ''}
             {stats.acc !== null && <> · accuracy <b className={stats.be !== null && stats.acc >= stats.be ? 'text-up' : 'text-fg'}>{pct(stats.acc)}</b>{stats.be !== null && <> vs break-even {pct(stats.be)}</>}</>}

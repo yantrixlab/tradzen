@@ -19,26 +19,26 @@ export default function Library() {
     <div>
       <PageTitle title="Strategy library" sub="Strategies the team has tested and published. Each one shows its real record so far. Add one to receive its signals; remove it any time." />
       {toggle.isError && <div role="alert" className="mb-3 rounded-lg border border-down/40 bg-down/10 px-3 py-2 text-sm text-down">{(toggle.error as Error).message}</div>}
-      <Card>
+      <Card className="max-md:!border-0 max-md:!bg-transparent max-md:!p-0">
         {q.data.length === 0 ? <Empty>Nothing is published yet. When the team publishes a strategy it appears here.</Empty> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto max-md:overflow-visible">
+            <table className="w-full stack text-sm">
               <thead><tr>{['Strategy', 'Status', 'Signals', 'Won / lost', 'Win rate (95% range)', 'Verdict', 'Last signal', ''].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
               <tbody>{q.data.map((s) => (
                 <tr key={s.id}>
-                  <td className="td"><div className="font-semibold">{s.name}</div>{s.description && <div className="note max-w-md">{s.description}</div>}
+                  <td className="td stack-head"><div className="font-semibold">{s.name}</div>{s.description && <div className="note max-w-md">{s.description}</div>}
                     <div className="note">{s.always ? 'sent to everybody' : 'add it to receive it'}</div></td>
-                  <td className="td"><Badge tone={s.status === 'live' ? 'up' : s.status === 'paused' ? 'warn' : 'mut'}>{s.status.toUpperCase()}</Badge>
-                    {s.status !== 'live' && <div className="note">{s.status === 'paper' ? 'no alerts yet' : 'not alerting'}</div>}</td>
-                  <td className="td tabular-nums">{s.stats.total}</td>
-                  <td className="td tabular-nums">{s.stats.wins} / {s.stats.losses}</td>
-                  <td className="td tabular-nums">{pct(s.stats.accuracy)}{s.stats.settled > 0 && <span className="note"> ({pct(s.stats.ci_low, 0)}–{pct(s.stats.ci_high, 0)})</span>}
-                    {s.stats.breakeven !== null && <div className="note">break-even {pct(s.stats.breakeven, 0)}</div>}</td>
-                  <td className="td"><VerdictBadge settled={s.stats.settled} lo={s.stats.ci_low} hi={s.stats.ci_high} be={s.stats.breakeven} /></td>
-                  <td className="td note">{ago(s.last_signal)}</td>
-                  <td className="td text-right">
-                    {s.receiving ? <button className="btn btn-sm" disabled={toggle.isPending} onClick={() => toggle.mutate(s)}>{s.always ? 'Switch off for me' : 'Remove'}</button>
-                      : <button className="btn btn-sm btn-primary" disabled={toggle.isPending} onClick={() => toggle.mutate(s)}>{s.always ? 'Switch on' : 'Add to my account'}</button>}
+                  <td className="td" data-label="Status"><span className="text-right"><Badge tone={s.status === 'live' ? 'up' : s.status === 'paused' ? 'warn' : 'mut'}>{s.status.toUpperCase()}</Badge>
+                    {s.status !== 'live' && <div className="note">{s.status === 'paper' ? 'no alerts yet' : 'not alerting'}</div>}</span></td>
+                  <td className="td tabular-nums" data-label="Signals">{s.stats.total}</td>
+                  <td className="td tabular-nums" data-label="Won / lost">{s.stats.wins} / {s.stats.losses}</td>
+                  <td className="td tabular-nums" data-label="Win rate"><span>{pct(s.stats.accuracy)}{s.stats.settled > 0 && <span className="note"> ({pct(s.stats.ci_low, 0)}–{pct(s.stats.ci_high, 0)})</span>}
+                    {s.stats.breakeven !== null && <div className="note">break-even {pct(s.stats.breakeven, 0)}</div>}</span></td>
+                  <td className="td" data-label="Verdict"><VerdictBadge settled={s.stats.settled} lo={s.stats.ci_low} hi={s.stats.ci_high} be={s.stats.breakeven} /></td>
+                  <td className="td note" data-label="Last signal">{ago(s.last_signal)}</td>
+                  <td className="td stack-full text-right">
+                    {s.receiving ? <button className="btn btn-sm max-md:w-full" disabled={toggle.isPending} onClick={() => toggle.mutate(s)}>{s.always ? 'Switch off for me' : 'Remove'}</button>
+                      : <button className="btn btn-sm btn-primary max-md:w-full" disabled={toggle.isPending} onClick={() => toggle.mutate(s)}>{s.always ? 'Switch on' : 'Add to my account'}</button>}
                   </td>
                 </tr>))}</tbody>
             </table>

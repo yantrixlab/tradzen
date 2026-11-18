@@ -57,10 +57,10 @@ export function SessionDialogs({ enabled }: { enabled: boolean }) {
   const go = () => { setDlg(null); nav('/sessions' + (isPanel() ? window.location.search : '')); };
   return (
     <div className="dlg-back fixed inset-0 z-[300] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setDlg(null); }}>
-      <div role="alertdialog" aria-modal="true" aria-label={start ? 'Live session started' : 'Live session ended'} className="dlg-card relative w-full max-w-md overflow-hidden rounded-2xl border bg-panel text-center shadow-2xl"
+      <div role="alertdialog" aria-modal="true" aria-label={start ? 'Live session started' : 'Live session ended'} className="dlg-card relative max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border bg-panel text-center shadow-2xl"
         style={{ borderColor: `rgba(${glow}, 0.55)`, boxShadow: `0 0 0 1px rgba(${glow}, 0.25), 0 24px 80px rgba(${glow}, 0.28), 0 0 60px rgba(${glow}, 0.18)` }}>
         <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, transparent, rgb(${glow}), transparent)` }} />
-        <div className="px-7 pb-6 pt-7">
+        <div className="px-5 pb-5 pt-6 sm:px-7 sm:pb-6 sm:pt-7">
           <div className="relative mx-auto mb-4 grid h-16 w-16 place-items-center">
             {start && <><span className="ring-out absolute inset-0 rounded-full border-2 border-rose-500/60" /><span className="ring-out absolute inset-0 rounded-full border-2 border-rose-500/40" style={{ animationDelay: '0.9s' }} /></>}
             <span className="relative grid h-14 w-14 place-items-center rounded-full text-2xl" style={{ background: `rgba(${glow}, 0.18)`, border: `1px solid rgba(${glow}, 0.6)` }}>{start ? '◉' : '■'}</span>

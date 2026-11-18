@@ -48,12 +48,12 @@ export default function AccountBar() {
   const code = data?.currency?.code;
   const eye = (
     <button type="button" onClick={toggle} aria-pressed={visible} aria-label={visible ? 'Hide amounts' : 'Show amounts'} title={visible ? 'Hide balance and amounts' : 'Show balance and amounts'}
-      className="self-center rounded-md p-1 text-mut transition hover:bg-panel2 hover:text-fg"><Eye off={!visible} /></button>
+      className="-my-1.5 grid h-11 w-11 place-items-center self-center rounded-md text-mut transition hover:bg-panel2 hover:text-fg lg:my-0 lg:h-auto lg:w-auto lg:p-1"><Eye off={!visible} /></button>
   );
   const at = Math.max(data?.live_at ?? 0, data?.demo_at ?? 0) || null;
   return (
-    <div className="sticky top-0 z-20 border-b border-line bg-bg/95 px-6 py-2 backdrop-blur">
-      <div className="mx-auto flex max-w-[1280px] flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+    <div className="z-20 border-b border-line bg-bg/95 px-3 py-2 backdrop-blur sm:px-4 lg:sticky lg:top-0 lg:px-6">
+      <div className="mx-auto flex max-w-[1280px] flex-wrap items-center gap-x-4 gap-y-1 text-sm lg:gap-x-6">
         {seen ? (
           <>
             <span className="flex items-baseline gap-2" title="Your real Quotex account"><span className="text-[11px] font-semibold uppercase tracking-wide text-mut">Real balance</span>

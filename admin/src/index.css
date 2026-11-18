@@ -4,12 +4,19 @@
 
 :root { color-scheme: dark; }
 html, body, #root { height: 100%; }
-body { font-family: Inter, 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 14px; background: #0a0e1f; }
+@supports (height: 100dvh) { html, body, #root { height: 100dvh; } }       /* phones: the visible height, not the height with the address bar hidden */
+html { -webkit-text-size-adjust: 100%; }
+body { font-family: Inter, 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 14px; background: #0a0e1f; -webkit-tap-highlight-color: transparent; }
 * { scrollbar-width: thin; scrollbar-color: #2a3358 transparent; }
+img, svg, canvas, video { max-width: 100%; }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pl-safe { padding-left: env(safe-area-inset-left); }
+.pr-safe { padding-right: env(safe-area-inset-right); }
 
 @layer components {
   .card { @apply rounded-xl border border-line bg-panel p-4; }
-  .card-title { @apply mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-mut; }
+  .card-title { @apply mb-3 flex flex-wrap items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-mut; }
   .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-sm text-fg transition hover:border-acc disabled:cursor-not-allowed disabled:opacity-50; }
   .btn-primary { @apply border-acc bg-acc text-white hover:bg-acc2; }
   .btn-danger { @apply border-down/50 text-down hover:border-down; }
@@ -20,6 +27,38 @@ body { font-family: Inter, 'Segoe UI', system-ui, -apple-system, sans-serif; fon
   .td { @apply border-t border-line px-2 py-2 align-middle; }
   .note { @apply text-xs text-mut; }
   .chip { @apply inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold; }
+}
+
+/* Phones and touch screens: comfortable targets, 16px fields (iOS zooms into smaller ones), and wide tables scroll sideways inside their card instead of stretching the page. */
+@media (max-width: 767px), (pointer: coarse) {
+  :root:not(.qx-embed) button:not([class*='h-']):not([role='switch']):not([role='checkbox']) { min-height: 40px; }      /* (a button that has its own h-* size, like a switch or an icon, keeps it) */
+  :root:not(.qx-embed) .btn { min-height: 44px; padding-left: 0.875rem; padding-right: 0.875rem; }
+  :root:not(.qx-embed) .btn-sm { min-height: 38px; padding-left: 0.75rem; padding-right: 0.75rem; }
+  :root:not(.qx-embed) input.input, :root:not(.qx-embed) select.input, :root:not(.qx-embed) textarea.input { min-height: 44px; font-size: 16px; padding-left: 0.75rem; padding-right: 0.75rem; }
+  :root:not(.qx-embed) textarea.input { min-height: 88px; }
+  :root:not(.qx-embed) input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']), :root:not(.qx-embed) select, :root:not(.qx-embed) textarea { font-size: 16px; }
+  :root:not(.qx-embed) input[type='checkbox'], :root:not(.qx-embed) input[type='radio'] { width: 1.125rem; height: 1.125rem; }
+}
+@media (max-width: 1023px) {
+  :root:not(.qx-embed) .grid > * { min-width: 0; }
+}
+@media (max-width: 767px) {
+  :root:not(.qx-embed) .grid > * { min-width: 0; }              /* a wide table or chart in a grid cell must scroll/shrink inside it, never widen the whole page */
+  :root:not(.qx-embed) .card { padding: 0.875rem; }
+  :root:not(.qx-embed) .th, :root:not(.qx-embed) .td { padding-left: 0.5rem; padding-right: 0.5rem; }
+  :root:not(.qx-embed) .th { white-space: nowrap; }
+  :root:not(.qx-embed) table:where(:not(.overflow-x-auto table):not(.overflow-auto table)) { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }      /* (a table already inside a scrolling box is left alone) */
+  :root:not(.qx-embed) table.table { display: table; }          /* opt out: small key/value tables that must keep their full width */
+
+  /* table.stack: on a phone every row becomes a card, each cell a "label  value" line (the label comes from the cell's data-label; no label = a full-width cell) */
+  :root:not(.qx-embed) table.stack, :root:not(.qx-embed) table.stack tbody, :root:not(.qx-embed) table.stack tr { display: block; overflow: visible; }
+  :root:not(.qx-embed) table.stack thead { display: none; }
+  :root:not(.qx-embed) table.stack tr { margin-bottom: 0.625rem; border: 1px solid #1e2747; border-radius: 0.75rem; background: #0d1328; padding: 0.375rem 0.75rem; }
+  :root:not(.qx-embed) table.stack td { white-space: normal; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; border: 0; padding: 0.3rem 0; text-align: right; }
+  :root:not(.qx-embed) table.stack td[data-label]::before { content: attr(data-label); flex-shrink: 0; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #8a93b2; }
+  :root:not(.qx-embed) table.stack td.stack-head { display: block; text-align: left; border-bottom: 1px solid #1e2747; padding: 0.4rem 0 0.5rem; margin-bottom: 0.15rem; }
+  :root:not(.qx-embed) table.stack td.stack-full { display: block; text-align: left; }
+  :root:not(.qx-embed) table.stack td:empty { display: none; }
 }
 
 /* a live session: a pulsing dot, a glowing menu row, and the dialogs that announce its start and end */

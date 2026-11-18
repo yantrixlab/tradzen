@@ -102,7 +102,7 @@ export default function Sweeps() {
         </Card>
 
         <Card title="Sweeps" className="flex flex-col">
-          {!sweeps.data ? <Spinner /> : sweeps.data.length === 0 ? <Empty>No sweeps yet. Run one on the left.</Empty> : (
+          {!sweeps.data ? <Spinner /> : sweeps.data.length === 0 ? <Empty>No sweeps yet. Run one with the form.</Empty> : (
             <FillList min={300}><table className="w-full">
               <thead className="sticky top-0 z-10 bg-panel"><tr>{['Sweep', 'Status', 'Candidates', 'Best holdout z', 'Pure luck reaches', 'Pass', ''].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
               <tbody>{sweeps.data.map((s) => (

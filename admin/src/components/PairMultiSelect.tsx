@@ -38,7 +38,7 @@ export function PairMultiSelect({ options, value, onChange, unit = 'signals' }: 
         <span className="truncate">{label}</span><span className="text-mut">▾</span>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-40 mt-1 w-72 rounded-lg border border-line bg-panel p-2 shadow-xl">
+        <div className="fixed inset-x-2 bottom-2 z-[60] rounded-xl border border-line bg-panel p-2 shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:z-40 sm:mt-1 sm:w-72 sm:rounded-lg sm:shadow-xl">
           <input ref={search} className="input !py-1 text-sm" placeholder="Search pairs…" value={find} onChange={(e) => setFind(e.target.value)} />
           <div className="mt-2 flex items-center justify-between text-xs">
             <span className="text-mut">{value.length ? `${value.length} selected` : 'none selected = all pairs'}</span>
@@ -47,11 +47,11 @@ export function PairMultiSelect({ options, value, onChange, unit = 'signals' }: 
               <button type="button" className="text-acc hover:underline" disabled={!value.length} onClick={() => onChange([])}>Clear</button>
             </span>
           </div>
-          <ul className="mt-2 max-h-72 overflow-y-auto" role="listbox" aria-multiselectable="true">
+          <ul className="mt-2 max-h-[min(18rem,50dvh)] overflow-y-auto overscroll-contain" role="listbox" aria-multiselectable="true">
             {shown.length === 0 && <li className="px-2 py-3 text-center text-xs text-mut">No pair matches.</li>}
             {shown.map((o) => (
               <li key={o.symbol} role="option" aria-selected={picked.has(o.symbol)}>
-                <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-panel2">
+                <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-2.5 text-sm hover:bg-panel2 sm:py-1">
                   <input type="checkbox" checked={picked.has(o.symbol)} onChange={() => toggle(o.symbol)} />
                   <span className="flex-1 truncate">{prettyPair(o.symbol)}</span>
                   <span className="note tabular-nums" title={`${o.n.toLocaleString()} ${unit}${o.payout ? `, pays ${o.payout}%` : ''}`}>{o.n ? o.n.toLocaleString() : '–'}</span>

@@ -49,7 +49,7 @@ export default function SessionConsole() {
   if (!d) return live.isError ? <ErrorBox error={live.error} /> : <Spinner />;
   return (
     <>
-      <div className="mb-4"><h1 className="text-2xl font-bold">Live session</h1>
+      <div className="mb-4"><h1 className="text-xl font-bold sm:text-2xl">Live session</h1>
         <p className="mt-1 text-sm text-mut">Run a session: send heads-ups and signals, and everybody watching sees the candle and the area on the chart, gets the alert, and sees the result.</p></div>
       {!s ? <StartForm onStart={(title, tier) => start.mutate({ title, tier })} busy={start.isPending} error={start.error} /> : (
         <>
@@ -62,16 +62,16 @@ export default function SessionConsole() {
             </div>
             {d.stats && d.stats.settled > 0 && <div className="mt-2"><TrackRecord stats={d.stats} note={false} /></div>}
           </Card>
-          <div className="grid gap-4 xl:grid-cols-[340px_1fr]">
-            <div className="space-y-4">
-              <SignalSender any showList={false} />
-              <PairPicker data={{ symbols: d.symbols ?? [] } as unknown as LiveSelection} sym={d.pair?.symbol ?? ''} following={!!s.follow_admin}
-                onPick={(sym) => pair.mutate(sym ? { symbol: sym, tf: d.pair?.tf } : { symbol: null })} />
+          <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <div className="contents xl:block xl:space-y-4">
+              <div className="order-1 xl:order-none"><SignalSender any showList={false} /></div>
+              <div className="order-3 xl:order-none"><PairPicker data={{ symbols: d.symbols ?? [] } as unknown as LiveSelection} sym={d.pair?.symbol ?? ''} following={!!s.follow_admin}
+                onPick={(sym) => pair.mutate(sym ? { symbol: sym, tf: d.pair?.tf } : { symbol: null })} /></div>
             </div>
-            <div className="min-w-0 space-y-4">
+            <div className="order-2 min-w-0 space-y-4 xl:order-none">
               {d.selected
                 ? <LiveView sel={d.selected} tf={d.selected.tf} setTf={(t) => pair.mutate({ symbol: d.selected!.symbol, tf: t })} overlay={sessionOverlay(d.signals, d.selected.symbol, d.selected.tf)} count={40} />
-                : <Card><div className="note p-6 text-center">No pair yet. Open a chart on Quotex (this chart follows it) or pick a pair on the left.</div></Card>}
+                : <Card><div className="note p-6 text-center">No pair yet. Open a chart on Quotex (this chart follows it) or pick a pair from the list.</div></Card>}
               {d.pair?.symbol && <div className="note">Viewers see {prettyPair(d.pair.symbol)} on the {tfName(d.pair.tf)} chart{s.follow_admin ? ', following your Quotex tab' : ', the pair you picked'}.</div>}
               <Card title="Signals of this session">
                 <SignalList signals={d.signals ?? []} actions={(sg) => (

@@ -2,12 +2,14 @@ import { useMemo } from 'react';
 import { Candle } from '../api';
 import { dateTime, num, pct } from '../format';
 import { PriceChart } from './chart/PriceChart';
+import { useBoxWidth } from '../lib/useBoxWidth';
 import type { ChartBand, ChartMarker } from './chart/types';
 
 /** Cumulative profit curve (units of stake). `marker` draws a dashed line where the validation period starts. */
 export function EquityChart({ points, marker, height = 180 }: { points: [number, number][]; marker?: number | null; height?: number }) {
+  const [box, bw] = useBoxWidth(800);
   if (points.length < 2) return <div className="note p-4 text-center">Not enough settled trades for a curve yet.</div>;
-  const W = 800, H = height, pad = 28;
+  const W = Math.min(800, bw), H = height, pad = 28;
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(0, ...ys), y1 = Math.max(0, ...ys);
   const sx = (x: number) => pad + ((x - x0) / (x1 - x0 || 1)) * (W - pad * 1.5);
@@ -16,7 +18,7 @@ export function EquityChart({ points, marker, height = 180 }: { points: [number,
   const last = ys[ys.length - 1];
   const col = last >= 0 ? '#22c55e' : '#ef4444';
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="equity curve">
+    <div ref={box}><svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="equity curve">
       <line x1={pad} x2={W - 8} y1={sy(0)} y2={sy(0)} stroke="#2a3358" strokeDasharray="4 4" />
       {marker && marker > x0 && marker < x1 && (
         <g><line x1={sx(marker)} x2={sx(marker)} y1={8} y2={H - pad} stroke="#8b5cf6" strokeDasharray="4 4" />
@@ -29,7 +31,7 @@ export function EquityChart({ points, marker, height = 180 }: { points: [number,
       <text x={W - 8} y={sy(last) - 6} fill={col} fontSize="12" fontWeight="700" textAnchor="end">{last >= 0 ? '+' : ''}{num(last, 2)} units</text>
       <text x={4} y={sy(y1) + 4} fill="#8a93b2" fontSize="10">{num(y1, 1)}</text>
       <text x={4} y={sy(y0) + 4} fill="#8a93b2" fontSize="10">{num(y0, 1)}</text>
-    </svg>
+    </svg></div>
   );
 }
 

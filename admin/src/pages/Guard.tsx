@@ -4,6 +4,7 @@ import { api } from '../api';
 import { ago, pct } from '../format';
 import { currencySymbol, useAccount, useMoney } from '../hooks';
 import { Badge, Card, Empty, ErrorBox, PageTitle, Spinner } from '../components/ui';
+import { useBoxWidth } from '../lib/useBoxWidth';
 
 // ------------------------------------------------------------------ shapes (see backend/app/guard.py)
 interface Lim { on: boolean; value: number; unit: 'amount' | 'percent' }
@@ -39,14 +40,15 @@ const LVL: Record<string, { c: string; icon: string }> = { success: { c: UP, ico
 // ------------------------------------------------------------------ the profit / loss gauge
 function Gauge({ g }: { g: GuardStatus }) {
   const money = useMoney();
+  const [box, bw] = useBoxWidth(640);
   const { net, target, loss } = g;
   const hi = target ?? Math.max(Math.abs(net) * 1.4, 1), lo = -(loss ?? Math.max(Math.abs(net) * 1.4, 1));
-  const W = 640, H = 120, L = 20, R = 20, y = 66, th = 14;
+  const W = Math.min(640, bw), H = 120, L = 20, R = 20, y = 66, th = 14;
   const x = (v: number) => L + ((Math.min(hi * 1.12, Math.max(lo * 1.12, v)) - lo * 1.12) / (hi * 1.12 - lo * 1.12)) * (W - L - R);
   const mx = x(net), col = net >= 0 ? UP : DOWN;
   const past = (target && net > target) || (loss && -net > loss);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Today's result between the daily loss limit and the daily target">
+    <div ref={box}><svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Today's result between the daily loss limit and the daily target">
       <defs>
         <linearGradient id="gl" x1="0" x2="1"><stop offset="0" stopColor={DOWN} stopOpacity=".9" /><stop offset="1" stopColor={DOWN} stopOpacity=".08" /></linearGradient>
         <linearGradient id="gr" x1="0" x2="1"><stop offset="0" stopColor={UP} stopOpacity=".08" /><stop offset="1" stopColor={UP} stopOpacity=".9" /></linearGradient>
@@ -66,7 +68,7 @@ function Gauge({ g }: { g: GuardStatus }) {
       <text x={x(0)} y={y + th + 28} textAnchor="middle" fontSize={13} fill={MUT}>0</text>
       <text x={W - R} y={y + th + 28} textAnchor="end" fontSize={13} fontWeight={700} fill={UP}>{target ? `Target ${money(target)}` : 'No target'}</text>
       {past && <text x={W / 2} y={12} textAnchor="middle" fontSize={13} fontWeight={700} fill={net > 0 ? UP : DOWN}>{net > 0 ? 'Beyond your target' : 'Beyond your loss limit'}</text>}
-    </svg>
+    </svg></div>
   );
 }
 
@@ -199,7 +201,7 @@ export default function Guard() {
           <div>
             <div className="mb-1 flex items-end justify-between">
               <div><div className="text-[10.5px] font-semibold uppercase tracking-wider text-mut">Today's result · {g.day}</div>
-                <div className="text-4xl font-bold tabular-nums" style={{ color: g.net > 0 ? UP : g.net < 0 ? DOWN : undefined }}>{money(g.net, true)}</div></div>
+                <div className="text-3xl font-bold tabular-nums sm:text-4xl" style={{ color: g.net > 0 ? UP : g.net < 0 ? DOWN : undefined }}>{money(g.net, true)}</div></div>
               <div className="text-right text-xs text-mut">
                 <div>{g.trades.count} trade{g.trades.count === 1 ? '' : 's'} · <span className="text-up">{g.trades.wins}W</span> <span className="text-down">{g.trades.losses}L</span>{g.trades.running ? ` · ${g.trades.running} running` : ''}</div>
                 <div>{g.balance.start !== null ? `Day started at ${money(g.balance.start)}` : 'Waiting for your balance'}</div>
@@ -238,7 +240,7 @@ export default function Guard() {
         <Card title="Suggested stake for your next trade">
           {sug.amount === null ? <Empty>{sug.reason}</Empty> : (
             <>
-              <div className="flex items-baseline gap-2"><span className="text-4xl font-bold tabular-nums">{sug.amount > 0 ? money(sug.amount) : 'No trade'}</span>{sug.amount > 0 && <span className="text-sm text-mut">first trade</span>}</div>
+              <div className="flex items-baseline gap-2"><span className="text-3xl font-bold tabular-nums sm:text-4xl">{sug.amount > 0 ? money(sug.amount) : 'No trade'}</span>{sug.amount > 0 && <span className="text-sm text-mut">first trade</span>}</div>
               <p className="mt-2 text-sm text-mut">{sug.reason}.</p>
               {sug.amount > 0 && (
                 <dl className="mt-3 grid grid-cols-3 gap-2 text-center">

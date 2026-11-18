@@ -333,7 +333,7 @@ export default function TradeGenerator() {
   return (
     <>
       <div className="mb-4">
-        <h1 className="text-2xl font-bold">Trade generator</h1>
+        <h1 className="text-xl font-bold sm:text-2xl">Trade generator</h1>
         <p className="mt-1 text-sm text-mut">Pick a pair and an expiry, and every chosen strategy analyses it together. You get one graded trade idea with the reasons, the entry time, and what history says about that much agreement - or an honest NO TRADE.</p>
       </div>
 

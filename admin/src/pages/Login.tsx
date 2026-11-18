@@ -27,7 +27,7 @@ export default function Login() {
   }
 
   return (
-    <div className="grid h-full place-items-center bg-bg p-4">
+    <div className="grid min-h-full place-items-center overflow-y-auto bg-bg p-4">
       <form onSubmit={submit} className="card w-full max-w-sm space-y-4 p-6" aria-labelledby="login-title">
         <div className="flex items-center gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-acc to-acc2 text-xl">⚡</div>

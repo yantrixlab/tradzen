@@ -194,7 +194,7 @@ export default function StrategyBuilder({ mode }: { mode: 'new' | 'edit' | 'clon
           <Tabs tabs={[{ key: 'visual', label: 'Visual builder' }, { key: 'json', label: 'JSON' }]} value={tab} onChange={switchTab} />
           {tab === 'json' ? (
             <Card title="Strategy spec (JSON)" right={jsonErr ? <span className="text-down">{jsonErr}</span> : <span className="text-up">valid JSON</span>}>
-              <textarea className="input h-[620px] font-mono text-xs" spellCheck={false} value={json} onChange={(e) => onJson(e.target.value)} />
+              <textarea className="input h-[420px] font-mono text-xs sm:h-[620px]" spellCheck={false} value={json} onChange={(e) => onJson(e.target.value)} />
               <p className="note mt-2">Edits here update the visual builder as soon as the JSON parses. Conditions use a safe expression language - see the syntax help in the Toolbox.</p>
             </Card>
           ) : (
@@ -207,14 +207,14 @@ export default function StrategyBuilder({ mode }: { mode: 'new' | 'edit' | 'clon
                 </Grid>
                 <div className="mt-3"><Field label="Description"><textarea className="input" rows={2} value={meta.description} onChange={(e) => setMeta({ ...meta, description: e.target.value })} /></Field></div>
                 {mode === 'edit' ? <div className="mt-3"><Field label="What changed (version note)"><input className="input" value={meta.notes} onChange={(e) => setMeta({ ...meta, notes: e.target.value })} /></Field></div>
-                  : <div className="mt-3 w-56"><Field label="Start in mode"><select className="input" value={meta.status} onChange={(e) => setMeta({ ...meta, status: e.target.value })}><option value="paper">paper (recommended)</option><option value="draft">draft (not running)</option></select></Field></div>}
+                  : <div className="mt-3 w-full sm:w-56"><Field label="Start in mode"><select className="input" value={meta.status} onChange={(e) => setMeta({ ...meta, status: e.target.value })}><option value="paper">paper (recommended)</option><option value="draft">draft (not running)</option></select></Field></div>}
               </Card>
 
               <Card title="Where it runs">
                 <div className="flex flex-wrap items-end gap-4">
                   <div><span className="label">Timeframes</span><div className="flex gap-3">{cat.timeframes.map((t) => (
                     <label key={t} className="flex items-center gap-1.5"><input type="checkbox" checked={form.timeframes.includes(t)} onChange={(e) => upd({ timeframes: e.target.checked ? [...form.timeframes, t] : form.timeframes.filter((x) => x !== t) })} />{tfName(t)}</label>))}</div></div>
-                  <div className="w-40"><Field label="Market"><select className="input" value={form.market} onChange={(e) => upd({ market: e.target.value as SpecForm['market'] })}><option value="">OTC + Live</option><option value="OTC">OTC only</option><option value="LIVE">Live only</option></select></Field></div>
+                  <div className="w-full sm:w-40"><Field label="Market"><select className="input" value={form.market} onChange={(e) => upd({ market: e.target.value as SpecForm['market'] })}><option value="">OTC + Live</option><option value="OTC">OTC only</option><option value="LIVE">Live only</option></select></Field></div>
                   <div className="min-w-[220px] flex-1"><Field label="Only these pairs (optional)"><input className="input font-mono" placeholder="EURUSD_otc, GBPJPY_otc" value={form.symbols} onChange={(e) => upd({ symbols: e.target.value })} /></Field></div>
                 </div>
               </Card>
@@ -251,6 +251,11 @@ export default function StrategyBuilder({ mode }: { mode: 'new' | 'edit' | 'clon
             </div>
           )}
         </div>
+      </div>
+      <div className="sticky bottom-0 z-20 -mx-3 mt-4 flex gap-2 border-t border-line bg-bg/95 px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-4 sm:px-4 lg:hidden">
+        <Link className="btn flex-1" to={id ? `/strategies/${id}` : '/strategies'}>Cancel</Link>
+        <button className="btn btn-primary flex-[2]" disabled={save.isPending || !validation?.ok || !meta.name.trim() || (mode !== 'edit' && !meta.key.trim())} onClick={() => save.mutate()}>
+          {save.isPending ? 'Saving…' : mode === 'edit' ? 'Save new version' : 'Create strategy'}</button>
       </div>
     </BuilderProvider>
   );

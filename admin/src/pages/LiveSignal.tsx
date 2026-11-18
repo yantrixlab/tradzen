@@ -72,7 +72,7 @@ function ControlBar({ strategies }: { strategies: Strategy[] }) {
   const err = alerts.error ?? pause.error ?? resume.error ?? apply.error ?? save.error;
 
   return (
-    <div className="mb-4 rounded-2xl border border-line bg-gradient-to-br from-panel to-panel2 p-4">
+    <div className="mb-4 rounded-2xl border border-line bg-gradient-to-br from-panel to-panel2 p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <div className="flex items-center gap-3">
           <Switch on={alertsOn} busy={alerts.isPending} onChange={(v) => alerts.mutate(v)} />
@@ -90,7 +90,7 @@ function ControlBar({ strategies }: { strategies: Strategy[] }) {
           <div className="relative" ref={menuRef}>
             <button className="btn" onClick={() => setMenu(!menu)}>Presets ▾</button>
             {menu && (
-              <div className="absolute right-0 z-30 mt-2 w-80 rounded-xl border border-line bg-bg p-2 shadow-2xl">
+              <div className="fixed inset-x-2 bottom-2 z-[60] max-h-[75dvh] overflow-y-auto overscroll-contain rounded-xl border border-line bg-bg p-2 shadow-2xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:z-30 sm:mt-2 sm:max-h-none sm:w-80 sm:overflow-visible">
                 <div className="label px-2">Built-in</div>
                 {presets.data?.builtin.map((p) => (
                   <button key={p.name} className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-panel" onClick={() => confirm(`Apply preset "${p.name}"? ${p.description}`) && apply.mutate(p.name)}>
@@ -140,7 +140,7 @@ function StrategyGrid({ strategies }: { strategies: Strategy[] }) {
   const liveNames = usable.filter((s) => s.status === 'live').map((s) => s.name);
   return (
     <div className="rounded-2xl border border-line bg-panel">
-      <button onClick={toggleOpen} aria-expanded={open} className="flex w-full items-center gap-3 px-5 py-4 text-left">
+      <button onClick={toggleOpen} aria-expanded={open} className="flex w-full items-center gap-3 px-4 py-3.5 text-left sm:px-5 sm:py-4">
         <span className={`text-mut transition ${open ? 'rotate-90' : ''}`}>▸</span>
         <div className="min-w-0 flex-1">
           <div className="text-xs font-semibold uppercase tracking-wide text-mut">Strategies - choose what runs</div>
@@ -148,21 +148,21 @@ function StrategyGrid({ strategies }: { strategies: Strategy[] }) {
         </div>
         <span className="note hidden md:block">Off = not running · Paper = recorded &amp; measured, no alerts · Live = alerts on</span>
       </button>
-      {open && <div className="border-t border-line p-5">
+      {open && <div className="border-t border-line p-3 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input className="input !w-56" placeholder="Search strategies…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input min-w-0 flex-1 sm:!w-56 sm:flex-none" placeholder="Search strategies…" value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="flex flex-wrap gap-1.5">
           <button onClick={() => setTag('')} className={`chip ${!tag ? 'border-acc/60 bg-acc/20 text-[#c4b5fd]' : 'border-line text-mut hover:text-fg'}`}>all</button>
           {tags.map((t) => <button key={t} onClick={() => setTag(tag === t ? '' : t)} className={`chip ${tag === t ? 'border-acc/60 bg-acc/20 text-[#c4b5fd]' : 'border-line text-mut hover:text-fg'}`}>{t}</button>)}
         </div>
-        <div className="ml-auto flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 text-sm sm:ml-auto">
           <button className="btn btn-sm" onClick={() => setSel(visibleIds)}>Select visible</button>
           <button className="btn btn-sm" disabled={!sel.length} onClick={() => setSel([])}>Clear</button>
         </div>
       </div>
 
       {sel.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-acc/50 bg-acc/10 px-4 py-2.5">
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-acc/50 bg-acc/10 px-3 py-2.5 sm:px-4">
           <b>{sel.length} selected</b><span className="note">apply to all selected:</span>
           <Segmented value="" onChange={(m) => { setMode(sel, m); }} disabled={bulk.isPending} />
           <button className="btn btn-sm" onClick={() => setSel([])}>Done</button>
@@ -254,10 +254,10 @@ export function LiveView({ sel, tf, setTf, overlay, readOnly = false, count = 90
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-xl font-extrabold">{prettyPair(sel.symbol)}</div>
-          <div className="flex items-baseline gap-3"><span className="text-3xl font-bold tabular-nums">{price ?? '–'}</span>
+          <div className="flex items-baseline gap-3"><span className="text-2xl font-bold tabular-nums sm:text-3xl">{price ?? '–'}</span>
             {change != null && <span className={`text-sm font-semibold tabular-nums ${change >= 0 ? 'text-up' : 'text-down'}`}>{change >= 0 ? '▲' : '▼'} {Math.abs(change).toFixed(5)}</span>}</div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {sel.sentiment && <div className="w-36"><div className="note">Trader sentiment</div><div className="h-2 overflow-hidden rounded bg-line"><div className="h-full rounded bg-gradient-to-r from-down via-warn to-up" style={{ width: `${sel.sentiment.pct}%` }} /></div><div className="note text-right">{sel.sentiment.pct}%</div></div>}
           {rem !== null && <div className="text-right"><div className="note">Candle closes in</div><div className="text-2xl font-bold tabular-nums">{Math.floor(rem / 60)}:{String(Math.floor(rem % 60)).padStart(2, '0')}</div></div>}
           {!readOnly && <div className="inline-flex overflow-hidden rounded-lg border border-line text-sm font-semibold">
@@ -278,10 +278,10 @@ function BoardItem({ s, open, toggle, ready }: { s: import('../hooks').BoardRow;
   const single = s.factors.length <= 1;                    // a one-rule strategy: "strength" would always read 100, which says nothing about the chance of winning
   return (
     <div className={`overflow-hidden rounded-lg border ${s.direction === 'CALL' ? 'border-up/30 bg-up/5' : s.direction === 'PUT' ? 'border-down/30 bg-down/5' : 'border-line bg-panel2'}`}>
-      <button onClick={toggle} aria-expanded={open} className="grid w-full grid-cols-[1fr_auto_16px] items-center gap-3 px-3 py-2 text-left">
+      <button onClick={toggle} aria-expanded={open} className="grid w-full grid-cols-[minmax(0,1fr)_auto_16px] items-center gap-3 px-3 py-2 text-left">
         <div className="min-w-0">
-          <div className="flex items-center gap-2"><span className="truncate font-semibold">{s.name}</span>{s.status === 'live' ? <Badge tone="up">live</Badge> : <Badge tone="acc">paper</Badge>}{s.tier && <Badge>Tier {s.tier}</Badge>}</div>
-          {active && !single && <div className="mt-1 h-1.5 w-40 overflow-hidden rounded bg-line"><div className={`h-full ${s.direction === 'CALL' ? 'bg-up' : 'bg-down'}`} style={{ width: `${s.strength}%` }} /></div>}
+          <div className="flex min-w-0 items-center gap-2"><span className="truncate font-semibold">{s.name}</span>{s.status === 'live' ? <Badge tone="up">live</Badge> : <Badge tone="acc">paper</Badge>}{s.tier && <Badge>Tier {s.tier}</Badge>}</div>
+          {active && !single && <div className="mt-1 h-1.5 w-40 max-w-full overflow-hidden rounded bg-line"><div className={`h-full ${s.direction === 'CALL' ? 'bg-up' : 'bg-down'}`} style={{ width: `${s.strength}%` }} /></div>}
           <ReadinessBar r={ready} />
         </div>
         <div className="text-right">{active ? <><DirBadge dir={s.direction} /><div className="note">{single ? 'rule matched' : `agreement ${s.strength}`}</div></> : <span className="note">{s.warming ? 'warming up' : 'no signal'}</span>}</div>
@@ -375,19 +375,19 @@ export default function LiveSignal() {
   return (
     <>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="text-2xl font-bold">Quotex Signal</h1>
+        <div><h1 className="text-xl font-bold sm:text-2xl">Quotex Signal</h1>
           <p className="mt-1 text-sm text-mut">Run the strategies you want, watch the pair you trade, and see every strategy's opinion in one place. Accuracy is measured from settled signals, never promised.</p></div>
       </div>
       <FeedBanner health={q.data?.health} />
       <ControlBar strategies={strategies.data} />
       <StrategyGrid strategies={strategies.data} />
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[320px_1fr]">
-        <div>{q.data ? <PairPicker data={q.data} sym={sym} onPick={setPick} following={!pick} /> : <Card><Spinner /></Card>}</div>
-        <div className="min-w-0 space-y-4">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <div className="order-2 xl:order-1">{q.data ? <PairPicker data={q.data} sym={sym} onPick={setPick} following={!pick} /> : <Card><Spinner /></Card>}</div>
+        <div className="order-1 min-w-0 space-y-4 xl:order-2">
           {q.isError ? <ErrorBox error={q.error} /> : !q.data ? <Card><Spinner /></Card> : q.data.selected
             ? <LiveView sel={q.data.selected} tf={tf} setTf={setTf} overlay={sess.data?.mine ? sessionOverlay(sess.data.signals, q.data.selected.symbol, q.data.selected.tf) : undefined} />
-            : <Card><Empty>No pair is streaming. Open a chart on Quotex with the extension enabled, or pick a pair on the left to see its stored candles.</Empty></Card>}
+            : <Card><Empty>No pair is streaming. Open a chart on Quotex with the extension enabled, or pick a pair from the list to see its stored candles.</Empty></Card>}
           <SignalSender />
           <SignalBoard sym={sym} tf={tf} />
         </div>

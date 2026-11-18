@@ -42,7 +42,7 @@ function Toast({ item, onDismiss }: { item: UndoItem; onDismiss: (key: string) =
 /** Bottom-centre "snackbar" stack: each item shows for 10 seconds with an Undo button and a countdown bar (the countdown pauses while the pointer is over it). */
 export default function UndoToasts({ items, onDismiss }: { items: UndoItem[]; onDismiss: (key: string) => void }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-5 z-50 flex flex-col items-center gap-2 px-3" role="status" aria-live="polite">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-[70] flex flex-col items-center gap-2 px-3" role="status" aria-live="polite">
       {items.map((it) => <Toast key={it.key} item={it} onDismiss={onDismiss} />)}
     </div>
   );

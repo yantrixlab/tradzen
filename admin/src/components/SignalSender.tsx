@@ -97,7 +97,7 @@ export function SignalSender({ any = false, showList = true }: { any?: boolean; 
 
   return (
     <section className="overflow-hidden rounded-2xl border border-line bg-gradient-to-b from-panel to-panel2/60 shadow-lg" aria-label="Send a signal">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-panel2/60 px-4 py-2.5">
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-line bg-panel2/60 px-3 py-2.5 sm:px-4">
         <div className="flex items-center gap-2.5"><LiveBadge /><span className="text-sm font-bold">Send a signal</span>
           <span className="rounded-md bg-panel px-2 py-0.5 text-xs text-mut">{sel ? `${prettyPair(sel.symbol)} · ${tfName(tf)}` : 'no pair yet'}</span></div>
         <div className="flex items-center gap-3 text-xs">
@@ -106,7 +106,7 @@ export function SignalSender({ any = false, showList = true }: { any?: boolean; 
         </div>
       </header>
 
-      <div className="space-y-3.5 p-4">
+      <div className="space-y-3.5 p-3 sm:p-4">
         <div className="grid grid-cols-2 gap-2.5">
           {(['CALL', 'PUT'] as const).map((x) => {
             const on = dir === x, c = x === 'CALL' ? '#22c55e' : '#ef4444';
@@ -139,14 +139,14 @@ export function SignalSender({ any = false, showList = true }: { any?: boolean; 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <div className="label">Runs for</div>
-            <div className="inline-flex overflow-hidden rounded-lg border border-line">{[1, 2, 3].map((n) => (
-              <button key={n} type="button" onClick={() => setExpiry(n)} className={`px-4 py-1.5 text-sm font-semibold transition ${expiry === n ? 'bg-acc text-white' : 'bg-panel2 text-mut hover:text-fg'}`}>{n} candle{n > 1 ? 's' : ''}</button>))}</div>
+            <div className="inline-flex w-full overflow-hidden rounded-lg border border-line sm:w-auto [&>button]:flex-1 sm:[&>button]:flex-none">{[1, 2, 3].map((n) => (
+              <button key={n} type="button" onClick={() => setExpiry(n)} className={`px-4 py-2.5 text-sm font-semibold transition sm:py-1.5 ${expiry === n ? 'bg-acc text-white' : 'bg-panel2 text-mut hover:text-fg'}`}>{n} candle{n > 1 ? 's' : ''}</button>))}</div>
           </div>
           <div>
             <div className="label flex items-center justify-between">Entry price
               <span className="inline-flex overflow-hidden rounded-md border border-line normal-case tracking-normal">
-                <button type="button" onClick={() => setDefinePx(false)} className={`px-2 py-0.5 text-[11px] ${!definePx ? 'bg-acc text-white' : 'bg-panel2 text-mut'}`}>Auto</button>
-                <button type="button" onClick={() => { setDefinePx(true); if (px === '' && livePx !== null) setPx(String(livePx)); }} className={`px-2 py-0.5 text-[11px] ${definePx ? 'bg-acc text-white' : 'bg-panel2 text-mut'}`}>Define</button></span></div>
+                <button type="button" onClick={() => setDefinePx(false)} className={`px-3 py-1.5 text-[11px] sm:px-2 sm:py-0.5 ${!definePx ? 'bg-acc text-white' : 'bg-panel2 text-mut'}`}>Auto</button>
+                <button type="button" onClick={() => { setDefinePx(true); if (px === '' && livePx !== null) setPx(String(livePx)); }} className={`px-3 py-1.5 text-[11px] sm:px-2 sm:py-0.5 ${definePx ? 'bg-acc text-white' : 'bg-panel2 text-mut'}`}>Define</button></span></div>
             {definePx
               ? <div className="flex gap-1.5"><input className="input font-mono" inputMode="decimal" value={px} onChange={(e) => setPx(e.target.value)} placeholder="price" aria-invalid={pxBad} />
                 <button type="button" className="btn btn-sm whitespace-nowrap" onClick={() => livePx !== null && setPx(String(livePx))} disabled={livePx === null} title="Use the live price">Live</button></div>
@@ -157,12 +157,12 @@ export function SignalSender({ any = false, showList = true }: { any?: boolean; 
         <details className="rounded-xl border border-line bg-panel2/40 open:bg-panel2/60">
           <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-mut hover:text-fg">Area and note <span className="font-normal">(optional)</span></summary>
           <div className="space-y-2 px-3 pb-3">
-            <div className="flex items-end gap-2">
-              <label className="flex-1"><div className="note mb-1">Area from</div><input className="input font-mono" inputMode="decimal" value={lo} onChange={(e) => setLo(e.target.value)} placeholder="price" /></label>
-              <label className="flex-1"><div className="note mb-1">to</div><input className="input font-mono" inputMode="decimal" value={hi} onChange={(e) => setHi(e.target.value)} placeholder="price" /></label>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="min-w-[120px] flex-1"><div className="note mb-1">Area from</div><input className="input font-mono" inputMode="decimal" value={lo} onChange={(e) => setLo(e.target.value)} placeholder="price" /></label>
+              <label className="min-w-[120px] flex-1"><div className="note mb-1">to</div><input className="input font-mono" inputMode="decimal" value={hi} onChange={(e) => setHi(e.target.value)} placeholder="price" /></label>
               <button type="button" className="btn btn-sm" onClick={fill} disabled={!last} title="Fill the area with the high and low of the newest candle">Last candle</button>
             </div>
-            <div className="grid grid-cols-2 gap-2"><input className="input" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={60} placeholder="Area name (support, demand ...)" />
+            <div className="grid gap-2 sm:grid-cols-2"><input className="input" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={60} placeholder="Area name (support, demand ...)" />
               <input className="input" value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="Note for everybody" /></div>
             {half && <div className="text-xs text-warn">Give both ends of the area, or leave both empty.</div>}
           </div>

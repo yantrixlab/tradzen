@@ -100,11 +100,11 @@ function compare(a: Strategy, b: Strategy, sort: Sort): number {
 /** One-step martingale on this strategy's REAL settled signals: win rate with a re-entry, and what it did to the account. */
 function MtgCell({ s }: { s: Strategy }) {
   const m = s.mtg1;
-  if (!m) return <td className="td note" title={s.mtg1_pending ? 'Calculating…' : 'No settled signals yet'}>{s.mtg1_pending ? '…' : '–'}</td>;
+  if (!m) return <td className="td note" data-label="MTG-1 acc." title={s.mtg1_pending ? 'Calculating…' : 'No settled signals yet'}>{s.mtg1_pending ? '…' : '–'}</td>;
   const tip = `${m.taken.toLocaleString()} signals taken${m.skipped ? ` (${m.skipped.toLocaleString()} fired mid-ladder and were skipped)` : ''}: ${m.wins.toLocaleString()} won outright, ${m.rescued.toLocaleString()} rescued by the re-entry, ${m.lost.toLocaleString()} lost both. Net with MTG ${m.net.toFixed(1)} units vs ${m.flat_net.toFixed(1)} flat (stake x${m.mult}).`;
   return (
-    <td className="td tabular-nums" title={tip}>{pct(m.accuracy)}
-      <div className={`note ${m.net < m.flat_net ? 'text-down' : 'text-up'}`}>net {m.net >= 0 ? '+' : ''}{Math.round(m.net).toLocaleString()} u · {m.rescued} rescued</div></td>
+    <td className="td tabular-nums" data-label="MTG-1 acc." title={tip}><div className="md:text-left"><div>{pct(m.accuracy)}</div>
+      <div className={`note ${m.net < m.flat_net ? 'text-down' : 'text-up'}`}>net {m.net >= 0 ? '+' : ''}{Math.round(m.net).toLocaleString()} u · {m.rescued} rescued</div></div></td>
   );
 }
 
@@ -126,18 +126,20 @@ export default function Strategies() {
   return (
     <>
       <PageTitle title="Strategies" sub="Every strategy runs on the same candles with the same rules. Paper = recorded and settled, no alerts. Live = alerts on."
-        right={<><input className="input !w-56" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        right={<><input className="input min-w-0 flex-1 sm:!w-56 sm:flex-none" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
           <label className="flex items-center gap-1.5 text-sm text-mut"><input type="checkbox" checked={show === 'all'} onChange={(e) => setShow(e.target.checked ? 'all' : 'active')} />archived</label>
           <button className="btn btn-primary" onClick={() => nav('/strategies/new')}>+ New strategy</button></>} />
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-mut">
+        <select aria-label="Sort by" className="input !w-auto text-xs md:hidden" value={sort?.key ?? ''} onChange={(e) => { const c = COLS.find((x) => x.key === e.target.value); if (c) setSort({ key: c.key, dir: c.first }); else setSort(null); }}>
+          <option value="">Sort: default</option>{COLS.map((c) => <option key={c.key} value={c.key}>Sort: {c.label}</option>)}</select>
         {active && sort
           ? <><span>Sorted by <b className="text-fg">{active.label}</b> {sort.dir === 1 ? '▲' : '▼'}</span><button className="btn btn-sm" onClick={() => setSort(null)}>Back to default order</button></>
           : <span>Default order: <b className="text-fg">live strategies first, then highest accuracy</b>. Click any column title to sort by it; click again to reverse.</span>}
       </div>
-      <Card>
+      <Card className="max-md:!border-0 max-md:!bg-transparent max-md:!p-0">
         {rows.length === 0 ? <Empty>No strategies match.</Empty> : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full stack">
               <thead><tr>{COLS.map((c) => (
                 <th key={c.key} className="th" aria-sort={sort?.key === c.key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'} title={c.title}>
                   <button className={`whitespace-nowrap uppercase tracking-wide hover:text-fg ${sort?.key === c.key ? 'text-[#c4b5fd]' : ''}`} onClick={() => clickSort(c.key, c.first)}>
@@ -145,21 +147,21 @@ export default function Strategies() {
               <tbody>
                 {rows.map((s) => (
                   <tr key={s.id}>
-                    <td className="td">
+                    <td className="td stack-head">
                       <Link to={`/strategies/${s.id}`} className="font-semibold hover:text-acc">{s.name}</Link>
                       {s.error && <Badge tone="down" title={s.error.join('; ')}>ERROR</Badge>}
                       <div className="note">{s.kind === 'builtin' ? 'built-in' : s.mine ? 'my strategy' : 'custom'}{s.tags.length ? ' · ' + s.tags.join(' · ') : ''}</div>
                     </td>
-                    <td className="td"><StatusSelect s={s} />{staff && s.owner_id == null && <AudienceSelect s={s} />}</td>
-                    <td className="td tabular-nums">{s.version}</td>
-                    <td className="td tabular-nums">{s.stats.total}</td>
-                    <td className="td tabular-nums">{s.stats.wins} / {s.stats.losses}</td>
-                    <td className="td tabular-nums">{pct(s.stats.accuracy)}{s.stats.settled > 0 && <span className="note"> ({pct(s.stats.ci_low, 0)}–{pct(s.stats.ci_high, 0)})</span>}</td>
+                    <td className="td" data-label="Mode"><span className="inline-flex flex-wrap items-center justify-end gap-1"><StatusSelect s={s} />{staff && s.owner_id == null && <AudienceSelect s={s} />}</span></td>
+                    <td className="td tabular-nums" data-label="Version">{s.version}</td>
+                    <td className="td tabular-nums" data-label="Signals">{s.stats.total}</td>
+                    <td className="td tabular-nums" data-label="W / L">{s.stats.wins} / {s.stats.losses}</td>
+                    <td className="td tabular-nums" data-label="Accuracy"><span>{pct(s.stats.accuracy)}{s.stats.settled > 0 && <span className="note"> ({pct(s.stats.ci_low, 0)}–{pct(s.stats.ci_high, 0)})</span>}</span></td>
                     <MtgCell s={s} />
-                    <td className="td"><VerdictBadge settled={s.stats.settled} lo={s.stats.ci_low} hi={s.stats.ci_high} be={s.stats.breakeven} /></td>
-                    <td className="td tabular-nums">{signed(s.stats.expectancy)}</td>
-                    <td className="td note">{ago(s.last_signal)}</td>
-                    <td className="td"><div className="flex gap-1">
+                    <td className="td" data-label="Verdict"><VerdictBadge settled={s.stats.settled} lo={s.stats.ci_low} hi={s.stats.ci_high} be={s.stats.breakeven} /></td>
+                    <td className="td tabular-nums" data-label="Exp./trade">{signed(s.stats.expectancy)}</td>
+                    <td className="td note" data-label="Last signal">{ago(s.last_signal)}</td>
+                    <td className="td stack-full"><div className="flex gap-1">
                       <Link className="btn btn-sm" to={`/backtests?strategy=${s.id}`}>Backtest</Link>
                       <Link className="btn btn-sm" to={`/strategies/${s.id}/clone`}>Clone</Link></div></td>
                   </tr>

@@ -54,12 +54,12 @@ export function IndicatorMenu({ picked, onChange }: { picked: string[]; onChange
         <span className="font-serif italic">ƒx</span> Indicators{picked.length > 0 && <span className="rounded-full bg-acc px-1.5 text-[10px] font-bold leading-4 text-white">{picked.length}</span>}
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-1.5 w-[320px] max-w-[88vw] overflow-hidden rounded-xl border border-line bg-panel shadow-2xl">
+        <div className="fixed inset-x-2 bottom-2 z-[250] overflow-hidden sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:z-30 sm:mt-1.5 sm:w-[320px] sm:max-w-[88vw] rounded-xl border border-line bg-panel shadow-2xl">
           <div className="flex items-center gap-2 border-b border-line p-2">
-            <input autoFocus className="input !py-1 text-xs" placeholder="Search indicators…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className="input !py-1 text-xs" placeholder="Search indicators…" value={q} onChange={(e) => setQ(e.target.value)} />
             {picked.length > 0 && <button type="button" className="btn btn-sm whitespace-nowrap" onClick={() => onChange([])}>Clear</button>}
           </div>
-          <div className="max-h-[340px] overflow-y-auto p-1.5">
+          <div className="max-h-[min(340px,55dvh)] overflow-y-auto overscroll-contain p-1.5">
             {groups.length === 0 && <div className="p-4 text-center text-xs text-mut">No indicator matches “{q}”.</div>}
             {groups.map(([g, items]) => (
               <div key={g} className="mb-1.5">
@@ -68,7 +68,7 @@ export function IndicatorMenu({ picked, onChange }: { picked: string[]; onChange
                   const on = picked.includes(c.key);
                   return (
                     <button key={c.key} type="button" onClick={() => toggle(c.key)} title={c.hint}
-                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors ${on ? 'bg-acc/15 text-fg' : 'text-mut hover:bg-panel2 hover:text-fg'}`}>
+                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left text-xs transition-colors sm:py-1.5 ${on ? 'bg-acc/15 text-fg' : 'text-mut hover:bg-panel2 hover:text-fg'}`}>
                       <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: c.color }} />
                       <span className="flex-1 font-medium">{c.name}</span>
                       <span className="text-[10px] uppercase tracking-wide text-mut">{c.pane ? 'pane' : 'on price'}</span>

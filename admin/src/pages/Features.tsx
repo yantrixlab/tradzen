@@ -70,7 +70,7 @@ export default function Features() {
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <th className="th min-w-[280px]">Feature</th><th className="th">Available to</th>
+                <th className="th min-w-[190px] bg-panel max-md:sticky max-md:left-0 max-md:z-[1] md:min-w-[280px]">Feature</th><th className="th">Available to</th>
                 {plans.map((p) => (
                   <th key={p.id} className="th min-w-[150px] align-top normal-case tracking-normal">
                     <div className="flex items-center gap-1.5 text-sm font-semibold text-fg">{p.name}{p.is_default && <Badge tone="acc">DEFAULT</Badge>}</div>
@@ -91,7 +91,7 @@ export default function Features() {
                   <tr key={`g-${g}`}><td colSpan={2 + plans.length} className="bg-panel2 px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider text-mut">{g}</td></tr>,
                   ...rows.map((f) => (
                     <tr key={f.key}>
-                      <td className="td">
+                      <td className="td bg-panel max-md:sticky max-md:left-0 max-md:z-[1] max-md:border-r max-md:border-r-line">
                         <div className="font-medium">{f.label} {!f.enforced && <Badge tone="warn" title="Stored now; it starts to work for traders when the data is per-user / strategies can be published (a later phase).">NOT ACTIVE YET</Badge>}</div>
                         <div className="note">{f.desc}</div>
                       </td>

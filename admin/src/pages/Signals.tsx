@@ -35,6 +35,9 @@ const COLS: { key: string; label: string; first: 'asc' | 'desc'; title: string }
   { key: 'margin', label: 'Margin', first: 'desc', title: 'How far the candle closed past the entry, in ATRs (best first)' },
 ];
 
+/** Columns a phone does not show (tap a row for all of them). */
+const SECONDARY = ['tier', 'strength', 'adx', 'hour', 'mode', 'mtg1', 'mtg2', 'margin'];
+
 /** One signal's martingale outcome: "win" = no re-entry needed, "✓ M1" = rescued by the first re-entry, "✗ lost" = every step lost. */
 function MtgCell({ m, steps }: { m: SignalMtg | null | undefined; steps: 1 | 2 }) {
   if (!m) return <span className="note">–</span>;
@@ -128,7 +131,7 @@ export function SignalHistory({ strategyId }: { strategyId?: number }) {
               <thead><tr>{cols.map((c) => {
                 const on = sort?.key === c.key;
                 return (
-                  <th key={c.key} className="th" aria-sort={on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'} title={`${c.title} - click to sort the whole list`}>
+                  <th key={c.key} className={`th ${SECONDARY.includes(c.key) ? 'max-md:hidden' : ''}`} aria-sort={on ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'} title={`${c.title} - click to sort the whole list`}>
                     <button className={`whitespace-nowrap uppercase tracking-wide hover:text-fg ${on ? 'text-[#c4b5fd]' : ''}`} onClick={() => clickSort(c)}>
                       {c.label}{on ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}</button></th>);
               })}</tr></thead>
@@ -137,12 +140,12 @@ export function SignalHistory({ strategyId }: { strategyId?: number }) {
                   <tr key={r.id} className="cursor-pointer hover:bg-panel2" onClick={() => setOpen(r.id)}>
                     <td className="td tabular-nums">{dateTime(r.target_t)}</td><td className="td">{prettyPair(r.symbol)}</td><td className="td">{tfName(r.tf)}</td>
                     {strategyId === undefined && <td className="td note">{strategyName(strategies.data, r.strategy_id)}</td>}<td className="td"><DirBadge dir={r.direction} /><RiskChip risk={r.risk} /></td>
-                    <td className="td">{r.tier || '–'}</td><td className="td tabular-nums">{r.factors.length <= 1 ? <span className="note" title="A one-rule strategy has no strength: the rule matched or it did not (it would always read 100). See its track record.">–</span> : r.strength}</td><td className="td tabular-nums">{num(r.adx, 0)}</td>
-                    <td className="td tabular-nums">{r.hour_utc ?? '–'}</td>
-                    <td className="td">{r.mode === 'paper' ? <Badge tone="acc">paper</Badge> : <Badge tone="up">live</Badge>}</td>
+                    <td className="td max-md:hidden">{r.tier || '–'}</td><td className="td tabular-nums max-md:hidden">{r.factors.length <= 1 ? <span className="note" title="A one-rule strategy has no strength: the rule matched or it did not (it would always read 100). See its track record.">–</span> : r.strength}</td><td className="td tabular-nums max-md:hidden">{num(r.adx, 0)}</td>
+                    <td className="td tabular-nums max-md:hidden">{r.hour_utc ?? '–'}</td>
+                    <td className="td max-md:hidden">{r.mode === 'paper' ? <Badge tone="acc">paper</Badge> : <Badge tone="up">live</Badge>}</td>
                     <td className="td"><ResultBadge status={r.status} />{r.near_miss ? <span className="ml-1 text-[10px] text-warn" title="closed within 0.25 ATR of entry">near miss</span> : null}</td>
-                    <td className="td tabular-nums"><MtgCell m={r.mtg1} steps={1} /></td><td className="td tabular-nums"><MtgCell m={r.mtg2} steps={2} /></td>
-                    <td className="td tabular-nums note">{r.margin_atr == null ? '–' : signed(r.margin_atr, 2) + ' ATR'}</td>
+                    <td className="td tabular-nums max-md:hidden"><MtgCell m={r.mtg1} steps={1} /></td><td className="td tabular-nums max-md:hidden"><MtgCell m={r.mtg2} steps={2} /></td>
+                    <td className="td tabular-nums note max-md:hidden">{r.margin_atr == null ? '–' : signed(r.margin_atr, 2) + ' ATR'}</td>
                   </tr>
                 ))}
               </tbody>

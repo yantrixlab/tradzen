@@ -71,7 +71,7 @@ export default function Sessions() {
   const s = d.session;
   return (
     <>
-      {!compact && <div className="mb-4"><h1 className="text-2xl font-bold">Live sessions</h1>
+      {!compact && <div className="mb-4"><h1 className="text-xl font-bold sm:text-2xl">Live sessions</h1>
         <p className="mt-1 text-sm text-mut">When a session is live you see its chart, the signals with the candle and area marked, and the results. Nothing here is financial advice, and every result is counted, wins and losses.</p></div>}
       {toast && <div className="mb-3 rounded-lg border border-acc/60 bg-acc/15 px-4 py-2 text-sm font-semibold text-[#c4b5fd]" role="status">🔔 {toast}</div>}
       {!s ? (

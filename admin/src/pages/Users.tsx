@@ -129,9 +129,9 @@ export default function Users() {
         <p className="note mt-2">{ROLE_INFO[role][1]}</p>
       </Card>
 
-      <Card title={`Accounts (${users.data.length})`} className="mt-4">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+      <Card title={`Accounts (${users.data.length})`} className="mt-4 max-md:!border-0 max-md:!bg-transparent max-md:!p-0">
+        <div className="overflow-x-auto max-md:overflow-visible">
+          <table className="w-full stack text-sm">
             <thead><tr>{['User', 'Role', 'Plan', 'Status', 'Quotex account', 'Last sign-in', 'Sessions', 'Tokens', ''].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
             <tbody>{users.data.map((u) => {
               const self = u.id === me?.id;
@@ -139,12 +139,12 @@ export default function Users() {
               return (
                 <Fragment key={u.id}>
                 <tr>
-                  <td className="td whitespace-nowrap"><span className="font-medium">{u.username}</span>{u.env_admin && <span className="ml-2"><Badge tone="acc" title="Configured in the server's .env file">ENV</Badge></span>}{self && <span className="ml-2 note">(you)</span>}
+                  <td className="td stack-head whitespace-nowrap"><span className="font-medium">{u.username}</span>{u.env_admin && <span className="ml-2"><Badge tone="acc" title="Configured in the server's .env file">ENV</Badge></span>}{self && <span className="ml-2 note">(you)</span>}
                     {u.must_change_pw && <div className="note text-warn">must choose a password</div>}</td>
-                  <td className="td">
+                  <td className="td" data-label="Role">
                     <select aria-label={`Role of ${u.username}`} className="input !w-auto" value={u.role} disabled={locked || patch.isPending} onChange={(e) => patch.mutate({ id: u.id, body: { role: e.target.value } })}>
                       {(Object.keys(ROLE_INFO) as Role[]).map((r) => <option key={r} value={r}>{ROLE_INFO[r][0]}</option>)}</select></td>
-                  <td className="td">
+                  <td className="td" data-label="Plan">
                     {u.role === 'admin' ? <span className="note">everything</span> : (
                       <div className="flex flex-col gap-1">
                         <select aria-label={`Plan of ${u.username}`} className="input !w-auto" value={u.plan_id ?? ''} disabled={patch.isPending}
@@ -155,16 +155,17 @@ export default function Users() {
                           <input type="date" aria-label={`Plan end date of ${u.username}`} className="input !w-auto !py-0.5 text-xs" value={u.plan_until ? new Date(u.plan_until * 1000).toISOString().slice(0, 10) : ''}
                             onChange={(e) => patch.mutate({ id: u.id, body: { plan_until: e.target.value ? new Date(`${e.target.value}T23:59:59`).getTime() / 1000 : null } })} /></label>
                       </div>)}</td>
-                  <td className="td">{u.active ? <Badge tone="up">ACTIVE</Badge> : <Badge tone="down">OFF</Badge>}</td>
-                  <td className="td whitespace-nowrap">
+                  <td className="td" data-label="Status">{u.active ? <Badge tone="up">ACTIVE</Badge> : <Badge tone="down">OFF</Badge>}</td>
+                  <td className="td whitespace-nowrap" data-label="Quotex account">
                     {u.qx_linked ? (
+
                       <span className="inline-flex items-center gap-2"><span className="tabular-nums" title={u.qx_at ? `linked ${dateTime(u.qx_at)}` : ''}>···{u.qx_hint || '?'}</span>
                         <button className="btn btn-sm" title="Lets this user link a different Quotex account the next time their extension connects" onClick={() => { if (confirm(`Unlink the Quotex account of ${u.username}? Their next connection links whichever Quotex account it is then logged into.`)) unlink.mutate(u.id); }}>Unlink</button></span>
                     ) : <span className="note">not linked yet</span>}</td>
-                  <td className="td whitespace-nowrap text-mut" title={u.last_login ? dateTime(u.last_login) : ''}>{u.last_login ? ago(u.last_login) : 'never'}</td>
-                  <td className="td tabular-nums text-mut">{u.sessions}</td><td className="td tabular-nums text-mut">{u.tokens}</td>
-                  <td className="td whitespace-nowrap text-right">
-                    <div className="inline-flex flex-wrap justify-end gap-1.5">
+                  <td className="td whitespace-nowrap text-mut" data-label="Last sign-in" title={u.last_login ? dateTime(u.last_login) : ''}>{u.last_login ? ago(u.last_login) : 'never'}</td>
+                  <td className="td tabular-nums text-mut" data-label="Sessions">{u.sessions}</td><td className="td tabular-nums text-mut" data-label="Tokens">{u.tokens}</td>
+                  <td className="td stack-full whitespace-nowrap text-right">
+                    <div className="inline-flex flex-wrap justify-end gap-1.5 max-md:justify-start">
                       <button className="btn btn-sm" onClick={() => { if (confirm(`Reset the password of ${u.username}? They are signed out and get a new one.`)) patch.mutate({ id: u.id, body: { reset_password: true } }); }}>Reset password</button>
                       {u.role !== 'admin' && <button className="btn btn-sm" onClick={() => setOpen(open === u.id ? null : u.id)}>Features</button>}
                       <button className="btn btn-sm" onClick={() => signOut.mutate(u.id)} title="Ends every browser session and disconnects every extension of this user">Sign out everywhere</button>
@@ -172,7 +173,7 @@ export default function Users() {
                       <button className="btn btn-sm btn-danger" disabled={locked} onClick={() => { if (confirm(`Delete ${u.username}? This cannot be undone.`)) remove.mutate(u.id); }}>Delete</button>
                     </div></td>
                 </tr>
-                {open === u.id && cat.data && <tr><td className="td" colSpan={9}><Overrides user={u} features={cat.data.features} onClose={() => setOpen(null)} /></td></tr>}
+                {open === u.id && cat.data && <tr><td className="td stack-full" colSpan={9}><Overrides user={u} features={cat.data.features} onClose={() => setOpen(null)} /></td></tr>}
                 </Fragment>);
             })}</tbody>
           </table>

@@ -5,6 +5,7 @@ import { dateTime, pct, prettyPair } from '../format';
 import { usePersisted, useMoney } from '../hooks';
 import { Badge, Card, DirBadge, Empty, ErrorBox, PageTitle, Spinner, Stat } from '../components/ui';
 import TradeDetail from '../components/TradeDetail';
+import { useBoxWidth } from '../lib/useBoxWidth';
 import UndoToasts, { UndoItem } from '../components/UndoToasts';
 
 interface Sig { id: number; tier: string; mode: string; strategy: string; strategy_id: number }
@@ -41,15 +42,16 @@ const SRC: Record<string, [string, string]> = {
 
 function DailyChart({ days }: { days: Resp['daily'] }) {
   const money = useMoney();
+  const [box, measured] = useBoxWidth(720);
   if (!days.length) return <Empty>No settled trades in this range yet.</Empty>;
-  const W = 720, H = 190, pad = 28, n = days.length;
+  const W = Math.min(720, measured), H = 190, pad = 28, n = days.length;
   const max = Math.max(1, ...days.map((d) => Math.max(Math.abs(d.net), Math.abs(d.cum))));
   const y = (v: number) => H / 2 - (v / max) * (H / 2 - 14);
   const bw = Math.min(46, (W - pad * 2) / n - 6);
   const x = (i: number) => pad + ((i + 0.5) * (W - pad * 2)) / n;
   const line = days.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(d.cum).toFixed(1)}`).join(' ');
   return (
-    <svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label="Profit or loss per day with the running total">
+    <div ref={box}><svg viewBox={`0 0 ${W} ${H + 18}`} className="w-full" role="img" aria-label="Profit or loss per day with the running total">
       <line x1={pad} x2={W - pad} y1={H / 2} y2={H / 2} stroke="currentColor" className="text-line" />
       {days.map((d, i) => (
         <g key={d.date}>
@@ -62,7 +64,7 @@ function DailyChart({ days }: { days: Resp['daily'] }) {
       <path d={line} fill="none" strokeWidth={2} className="stroke-acc" />
       {days.map((d, i) => <circle key={d.date} cx={x(i)} cy={y(d.cum)} r={3} className="fill-acc"><title>{`Running total ${money(d.cum, true)}`}</title></circle>)}
       <text x={pad} y={10} className="fill-mut text-[10px]">bars: result per day · line: running total</text>
-    </svg>
+    </svg></div>
   );
 }
 
@@ -113,14 +115,14 @@ function MtgCard({ m, onOpen }: { m: Mtg; onOpen: (id: string) => void }) {
 function GroupTable({ rows, label }: { rows: (Group & { key: string; name: string; hint?: string })[]; label: string }) {
   const money = useMoney();
   return (
-    <table className="w-full text-sm">
+    <div className="overflow-x-auto"><table className="w-full text-sm">
       <thead><tr>{[label, 'Trades', 'Won', 'Win rate', 'Staked', 'Net'].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>
       <tbody>{rows.map((r) => (
         <tr key={r.key}><td className="td font-medium" title={r.hint}>{r.name}</td><td className="td tabular-nums">{r.n}</td>
           <td className="td tabular-nums">{r.wins}<span className="text-mut"> / {r.losses}</span></td><td className="td tabular-nums">{pct(r.win_rate)}</td>
           <td className="td tabular-nums">{money(r.staked)}</td>
           <td className={`td font-semibold tabular-nums ${tone(r.net) === 'up' ? 'text-up' : tone(r.net) === 'down' ? 'text-down' : ''}`}>{money(r.net, true)}</td></tr>))}</tbody>
-    </table>
+    </table></div>
   );
 }
 
@@ -217,25 +219,25 @@ export default function MyTrades() {
 
       <Card title={`Trades (${d.total})`} className="mt-4" right={<span className="note">Click a trade to see it on the chart</span>}>
           {d.trades.length === 0 ? <Empty>No trades in this range.{d.removed > 0 && <div className="mt-2 text-sm">{d.removed} removed trade{d.removed === 1 ? '' : 's'} hidden · <button className="underline hover:text-fg" onClick={() => restoreAll.mutate()}>Restore {d.removed === 1 ? 'it' : 'all'}</button></div>}</Empty> : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto max-md:overflow-visible">
+              <table className="w-full stack text-sm">
                 <thead><tr>{['Opened', 'Pair', 'Side', 'Stake', 'Price in → out', 'Result', 'P / L', 'Source', '', ''].map((h, i) => <th key={i} className="th">{h}</th>)}</tr></thead>
                 <tbody>{d.trades.map((t) => (
                   <tr key={t.id} className={`group cursor-pointer transition hover:bg-acc/5 focus-visible:bg-acc/10 focus-visible:outline-none ${sel === t.id ? 'bg-acc/10' : ''}`} tabIndex={0} role="button"
                     aria-label={`Open the ${t.symbol ? prettyPair(t.symbol) : ''} ${t.direction ?? ''} trade`} onClick={() => setSel(t.id)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSel(t.id); } }}>
-                    <td className="td whitespace-nowrap" style={{ boxShadow: `inset 3px 0 0 ${t.status === 'win' ? '#22c55e' : t.status === 'loss' ? '#ef4444' : t.status === 'open' ? '#f59e0b' : '#8a93b2'}` }}>{dateTime(t.open_t)}{t.is_demo ? <span className="ml-1"><Badge tone="warn">DEMO</Badge></span> : null}</td>
-                    <td className="td whitespace-nowrap font-medium">{t.symbol ? prettyPair(t.symbol) : '?'}</td>
-                    <td className="td whitespace-nowrap">{t.direction ? <DirBadge dir={t.direction} /> : '–'}{t.step ? <span className="ml-1"><Badge tone="acc" title="Martingale step after a loss on this pair">MTG</Badge></span> : null}</td>
-                    <td className="td tabular-nums">{money(t.amount)}</td>
-                    <td className="td whitespace-nowrap tabular-nums text-mut">{t.open_price ?? '–'} → {t.close_price ?? '–'}</td>
-                    <td className="td"><Badge tone={t.status === 'win' ? 'up' : t.status === 'loss' ? 'down' : t.status === 'open' ? 'warn' : 'mut'}>{t.status === 'open' ? 'RUNNING' : t.status.toUpperCase()}</Badge></td>
-                    <td className={`td font-semibold tabular-nums ${tone(t.profit) === 'up' ? 'text-up' : tone(t.profit) === 'down' ? 'text-down' : ''}`}>{money(t.profit, true)}</td>
-                    <td className="td whitespace-nowrap" title={SRC[t.source][1]}>
+                    <td className="td stack-head whitespace-nowrap" style={{ boxShadow: `inset 3px 0 0 ${t.status === 'win' ? '#22c55e' : t.status === 'loss' ? '#ef4444' : t.status === 'open' ? '#f59e0b' : '#8a93b2'}` }}>{dateTime(t.open_t)}{t.is_demo ? <span className="ml-1"><Badge tone="warn">DEMO</Badge></span> : null}</td>
+                    <td className="td whitespace-nowrap font-medium" data-label="Pair">{t.symbol ? prettyPair(t.symbol) : '?'}</td>
+                    <td className="td whitespace-nowrap" data-label="Side">{t.direction ? <DirBadge dir={t.direction} /> : '–'}{t.step ? <span className="ml-1"><Badge tone="acc" title="Martingale step after a loss on this pair">MTG</Badge></span> : null}</td>
+                    <td className="td tabular-nums" data-label="Stake">{money(t.amount)}</td>
+                    <td className="td whitespace-nowrap tabular-nums text-mut" data-label="Price in → out">{t.open_price ?? '–'} → {t.close_price ?? '–'}</td>
+                    <td className="td" data-label="Result"><Badge tone={t.status === 'win' ? 'up' : t.status === 'loss' ? 'down' : t.status === 'open' ? 'warn' : 'mut'}>{t.status === 'open' ? 'RUNNING' : t.status.toUpperCase()}</Badge></td>
+                    <td data-label="P / L" className={`td font-semibold tabular-nums ${tone(t.profit) === 'up' ? 'text-up' : tone(t.profit) === 'down' ? 'text-down' : ''}`}>{money(t.profit, true)}</td>
+                    <td className="td whitespace-nowrap" data-label="Source" title={SRC[t.source][1]}>
                       {t.source === 'followed' ? <Badge tone="acc">{t.signal ? `${t.signal.strategy} · ${t.signal.tier}` : 'signal'}</Badge> : t.source === 'against' ? <Badge tone="down">against signal</Badge> : <span className="text-mut">own call</span>}
                     </td>
-                    <td className="td"><button className="rounded p-1 text-mut hover:bg-down/10 hover:text-down" title="Remove this trade from the list (you can undo)" aria-label="Remove this trade from the list" onClick={(e) => { e.stopPropagation(); del.mutate(t); }}>✕</button></td>
-                    <td className="td w-6 text-mut transition group-hover:translate-x-0.5 group-hover:text-acc" aria-hidden="true">›</td>
+                    <td className="td stack-full"><button className="rounded p-1 text-mut hover:bg-down/10 hover:text-down max-md:!px-2 max-md:text-xs" title="Remove this trade from the list (you can undo)" aria-label="Remove this trade from the list" onClick={(e) => { e.stopPropagation(); del.mutate(t); }}>✕<span className="md:hidden"> Remove from list</span></button></td>
+                    <td className="td w-6 text-mut transition group-hover:translate-x-0.5 group-hover:text-acc max-md:hidden" aria-hidden="true">›</td>
                   </tr>))}</tbody>
               </table>
               {d.removed > 0 && <p className="note mt-3">{d.removed} removed trade{d.removed === 1 ? '' : 's'} hidden from this list · <button className="underline hover:text-fg" onClick={() => restoreAll.mutate()}>Restore {d.removed === 1 ? 'it' : 'all'}</button></p>}
