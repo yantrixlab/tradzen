@@ -8,6 +8,7 @@ import { CandleChart } from '../components/charts';
 import { PairMultiSelect, PairOption } from '../components/PairMultiSelect';
 import { TrackRecord } from '../components/TrackRecord';
 import { RiskChip, RiskReasons } from '../components/RiskChip';
+import { useLast } from '../lib/useLast';
 
 interface Detail {
   signal: Signal; features: Record<string, unknown> | null; candles: Candle[];
@@ -92,6 +93,7 @@ export function SignalHistory({ strategyId }: { strategyId?: number }) {
   const [pairs, setPairs] = useState<string[]>([]);                                          // picked pairs (none = all)
   const [offset, setOffset] = useState(0);
   const [open, setOpen] = useState<number | null>(null);
+  const last = useLast(open);          // the signal opened last stays marked after its panel is closed
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);        // null = the default: newest first
   const set = (k: string, v: string | boolean) => { setF({ ...f, [k]: v }); setOffset(0); };
   const pairOptions = useQuery({ queryKey: ['signal-pairs', strategyId ?? null], queryFn: () => api<PairOption[]>(`/api/signal-pairs${qs({ strategy_id: strategyId })}`), staleTime: 30_000, refetchInterval: 60_000 });
@@ -137,7 +139,7 @@ export function SignalHistory({ strategyId }: { strategyId?: number }) {
               })}</tr></thead>
               <tbody>
                 {q.data.rows.map((r) => (
-                  <tr key={r.id} className="cursor-pointer hover:bg-panel2" onClick={() => setOpen(r.id)}>
+                  <tr key={r.id} className={`cursor-pointer hover:bg-panel2 ${last === r.id ? 'row-picked' : ''}`} aria-current={last === r.id ? 'true' : undefined} onClick={() => setOpen(r.id)}>
                     <td className="td tabular-nums">{dateTime(r.target_t)}</td><td className="td">{prettyPair(r.symbol)}</td><td className="td">{tfName(r.tf)}</td>
                     {strategyId === undefined && <td className="td note">{strategyName(strategies.data, r.strategy_id)}</td>}<td className="td"><DirBadge dir={r.direction} /><RiskChip risk={r.risk} /></td>
                     <td className="td max-md:hidden">{r.tier || '–'}</td><td className="td tabular-nums max-md:hidden">{r.factors.length <= 1 ? <span className="note" title="A one-rule strategy has no strength: the rule matched or it did not (it would always read 100). See its track record.">–</span> : r.strength}</td><td className="td tabular-nums max-md:hidden">{num(r.adx, 0)}</td>

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { ago, pct } from '../format';
 import { Badge, Card, Empty, ErrorBox, PageTitle, Progress, Spinner, Stat } from '../components/ui';
+import { useLast } from '../lib/useLast';
 
 interface Fold { fold: number; train: number; test: number; auc: number; auc_control: number }
 interface Cell { dim: string; cell: string; n: number; win: number; z: number; p: number; win_first: number | null; win_second: number | null; flag: 'favour' | 'avoid' | null }
@@ -99,6 +100,7 @@ function RiskAdvisor() {
   const q = useQuery({ queryKey: ['risk-status'], queryFn: () => api<RiskStatus>('/api/risk'), refetchInterval: (s) => (s.state.data?.job.running ? 2000 : 15000) });
   const go = useMutation({ mutationFn: (id: number) => api(`/api/risk/${id}/analyze`, { body: {} }), onSuccess: () => qc.invalidateQueries({ queryKey: ['risk-status'] }) });
   const [open, setOpen] = useState<number | null>(null);
+  const last = useLast(open);
   const s = q.data;
   const rows = (s?.strategies ?? []).filter((x) => x.status !== 'archived').sort((a, b) => Number(b.status === 'live') - Number(a.status === 'live') || (b.analyzed ?? 0) - (a.analyzed ?? 0));
   return (
@@ -110,7 +112,7 @@ function RiskAdvisor() {
           <tbody>
             {rows.map((r) => (
               <>
-                <tr key={r.id} className="cursor-pointer border-t border-line hover:bg-panel2" onClick={() => setOpen(open === r.id ? null : r.id)}>
+                <tr key={r.id} className={`cursor-pointer border-t border-line hover:bg-panel2 ${last === r.id ? 'row-picked' : ''}`} aria-current={last === r.id ? 'true' : undefined} onClick={() => setOpen(open === r.id ? null : r.id)}>
                   <td className="py-1.5">{r.name} {r.status === 'live' && <Badge tone="up">live</Badge>}</td>
                   <td>{r.n == null ? '–' : r.n.toLocaleString()}</td><td>{r.base_win == null ? '–' : pct(r.base_win)}</td><td>{r.analyzed ? r.rules : '–'}</td>
                   <td>{!r.analyzed ? '–' : r.risk_model_used ? <Badge tone="up">used</Badge> : <span className="note">not used</span>}</td>

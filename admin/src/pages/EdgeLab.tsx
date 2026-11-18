@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { ago, pct } from '../format';
 import { Badge, Card, Empty, ErrorBox, PageTitle, Progress, Spinner, Stat } from '../components/ui';
+import { useLast } from '../lib/useLast';
 
 interface Seg { n: number; win: number | null; lo: number | null; hi: number | null; be: number }
 interface Battery {
@@ -59,6 +60,7 @@ export default function EdgeLab() {
   const done = () => { qc.invalidateQueries({ queryKey: ['edgelab'] }); qc.invalidateQueries({ queryKey: ['strategies'] }); qc.invalidateQueries({ queryKey: ['strategy-health'] }); };
   const apply = useMutation({ mutationFn: (v: { id: string; force: boolean }) => api(`/api/edgelab/runs/${v.id}/apply?force=${v.force}`, { body: {} }), onSuccess: done });
   const [open, setOpen] = useState<number | null>(null);
+  const last = useLast(open);
   const s = q.data;
   const r = s?.latest ?? null;
   const o = r ? OUT[r.outcome.status] : null;
@@ -116,7 +118,7 @@ export default function EdgeLab() {
                     <thead><tr className="text-left text-mut"><th className="py-1">Rule the AI built</th><th>Discovery</th><th>Confirmation</th><th>Unseen (newest 30%)</th><th>Verdict</th></tr></thead>
                     <tbody>{r.candidates.map((c) => (
                       <>
-                        <tr key={c.rank} className="cursor-pointer border-t border-line align-top hover:bg-panel2" onClick={() => setOpen(open === c.rank ? null : c.rank)}>
+                        <tr key={c.rank} className={`cursor-pointer border-t border-line align-top hover:bg-panel2 ${last === c.rank ? 'row-picked' : ''}`} aria-current={last === c.rank ? 'true' : undefined} onClick={() => setOpen(open === c.rank ? null : c.rank)}>
                           <td className="py-1.5 pr-2">{c.rule}{c.best_effort && <div className="note">best-effort: nothing survived confirmation, so the top rule was built and tested anyway</div>}</td>
                           <td className="tabular-nums">{pct(c.discovery.win, 1)} <span className="note">of {c.discovery.n.toLocaleString()}</span></td>
                           <td className="tabular-nums">{c.confirm.win == null ? '–' : pct(c.confirm.win, 1)} <span className="note">of {c.confirm.n.toLocaleString()}</span>{c.confirm.ok ? <div className="text-up text-xs">confirmed</div> : <div className="note">not confirmed</div>}</td>

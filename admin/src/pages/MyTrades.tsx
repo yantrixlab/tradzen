@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useLast } from '../lib/useLast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qs } from '../api';
 import { dateTime, pct, prettyPair } from '../format';
@@ -82,7 +83,7 @@ const CYCLE_VALUE = (c: Cyc, k: string): string | number | null => (k === 't' ? 
   : k === 'outcome' ? OUTCOME[c.outcome][1] : k === 'net' ? c.net : k === 'exposure' ? c.exposure : null);
 const CYCLE_COLS: [string, string | undefined][] = [['Opened', 't'], ['Pair', 'symbol'], ['Side', 'dir'], ['First trade', 'first'], ['MTG step', 'step'], ['Cycle result', 'outcome'], ['Cycle P / L', 'net'], ['Most at risk', 'exposure'], ['', undefined]];
 
-function MtgCard({ m, onOpen }: { m: Mtg; onOpen: (id: string) => void }) {
+function MtgCard({ m, onOpen, last }: { m: Mtg; onOpen: (id: string) => void; last: string | null }) {
   const money = useMoney();
   const [sort, toggle] = useSortState(null, FIRST_DESC);
   const cycles = useMemo(() => sortRows(m.list, sort, CYCLE_VALUE), [m.list, sort]);
@@ -107,7 +108,7 @@ function MtgCard({ m, onOpen }: { m: Mtg; onOpen: (id: string) => void }) {
         <table className="w-full text-sm">
           <thead><tr>{CYCLE_COLS.map(([h, k], i) => <SortTh key={i} label={h} k={k} sort={sort} onSort={toggle} title={k === 'first' || k === 'step' ? `Sort by the ${h.toLowerCase()} result` : undefined} />)}</tr></thead>
           <tbody>{cycles.slice(0, 30).map((c) => (
-            <tr key={c.t + c.symbol} className="group cursor-pointer transition hover:bg-acc/5 focus-visible:bg-acc/10 focus-visible:outline-none" tabIndex={0} role="button" aria-label={`Open the ${prettyPair(c.symbol)} cycle`}
+            <tr key={c.t + c.symbol} className={`group cursor-pointer transition hover:bg-acc/5 focus-visible:bg-acc/10 focus-visible:outline-none ${last === c.id ? 'row-picked' : ''}`} tabIndex={0} role="button" aria-current={last === c.id ? 'true' : undefined} aria-label={`Open the ${prettyPair(c.symbol)} cycle`}
               onClick={() => onOpen(c.id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(c.id); } }}>
               <td className="td whitespace-nowrap" style={{ boxShadow: `inset 3px 0 0 ${c.outcome === 'first' ? '#22c55e' : c.outcome === 'recovered' ? '#8b5cf6' : c.outcome === 'running' ? '#f59e0b' : c.outcome === 'draw' ? '#8a93b2' : '#ef4444'}` }}>{dateTime(c.t)}</td><td className="td whitespace-nowrap font-medium">{prettyPair(c.symbol)}</td><td className="td whitespace-nowrap"><DirBadge dir={c.dir} /></td>
               <td className="td whitespace-nowrap tabular-nums">{money(c.first.stake)} → <span className={cls(c.first.net)}>{c.first.status === 'open' ? 'running' : money(c.first.net, true)}</span></td>
@@ -151,8 +152,7 @@ export default function MyTrades() {
   const [shown, setShown] = useState(50);
   const [raw, setRaw] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
-  const [last, setLast] = useState<string | null>(null);          // the trade opened last: its row stays marked after the panel is closed, so you can see where you were
-  useEffect(() => { if (sel) setLast(sel); }, [sel]);
+  const last = useLast(sel);          // the trade opened last: its row stays marked after the panel is closed, so you can see where you were
   const tz = -new Date().getTimezoneOffset();
   const span = useMemo(() => {
     const c = custom.from && custom.to && custom.from > custom.to ? { from: custom.to, to: custom.from } : custom;          // dates picked in the wrong order are swapped
@@ -255,7 +255,7 @@ export default function MyTrades() {
         </Card>
       </div>
 
-      <MtgCard m={d.mtg} onOpen={setSel} />
+      <MtgCard m={d.mtg} onOpen={setSel} last={last} />
 
       <Card title={`Trades (${d.total})`} className="mt-4" right={<span className="flex flex-wrap items-center justify-end gap-2"><SortSelect options={TRADE_SORTS} sort={sort} onChange={setSort} /><span className="note">Click a trade to see it on the chart</span></span>}>
           {d.trades.length === 0 ? <Empty>No trades in this range ({describeRange(span)}).{d.removed > 0 && <div className="mt-2 text-sm">{d.removed} removed trade{d.removed === 1 ? '' : 's'} hidden · <button className="underline hover:text-fg" onClick={() => restoreAll.mutate()}>Restore {d.removed === 1 ? 'it' : 'all'}</button></div>}</Empty> : (
