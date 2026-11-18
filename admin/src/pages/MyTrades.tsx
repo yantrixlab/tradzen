@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qs } from '../api';
 import { dateTime, pct, prettyPair } from '../format';
@@ -151,6 +151,8 @@ export default function MyTrades() {
   const [shown, setShown] = useState(50);
   const [raw, setRaw] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
+  const [last, setLast] = useState<string | null>(null);          // the trade opened last: its row stays marked after the panel is closed, so you can see where you were
+  useEffect(() => { if (sel) setLast(sel); }, [sel]);
   const tz = -new Date().getTimezoneOffset();
   const span = useMemo(() => {
     const c = custom.from && custom.to && custom.from > custom.to ? { from: custom.to, to: custom.from } : custom;          // dates picked in the wrong order are swapped
@@ -262,7 +264,7 @@ export default function MyTrades() {
                 <thead><tr>{([['Opened', 't'], ['Pair', 'symbol'], ['Side', 'direction'], ['Stake', 'amount'], ['Price in → out', 'price'], ['Result', 'status'], ['P / L', 'profit'], ['Source', 'source'], ['', undefined], ['', undefined]] as [string, string | undefined][])
                   .map(([h, k], i) => <SortTh key={i} label={h} k={k} sort={sort} onSort={toggleSort} title={k === 'price' ? 'Sort by the entry price' : undefined} />)}</tr></thead>
                 <tbody>{d.trades.map((t) => (
-                  <tr key={t.id} className={`group cursor-pointer transition hover:bg-acc/5 focus-visible:bg-acc/10 focus-visible:outline-none ${sel === t.id ? 'bg-acc/10' : ''}`} tabIndex={0} role="button"
+                  <tr key={t.id} className={`group cursor-pointer transition hover:bg-acc/5 focus-visible:bg-acc/10 focus-visible:outline-none ${last === t.id ? 'row-picked' : ''}`} tabIndex={0} role="button" aria-current={last === t.id ? 'true' : undefined}
                     aria-label={`Open the ${t.symbol ? prettyPair(t.symbol) : ''} ${t.direction ?? ''} trade`} onClick={() => setSel(t.id)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSel(t.id); } }}>
                     <td className="td stack-head whitespace-nowrap" style={{ boxShadow: `inset 3px 0 0 ${t.status === 'win' ? '#22c55e' : t.status === 'loss' ? '#ef4444' : t.status === 'open' ? '#f59e0b' : '#8a93b2'}` }}>{dateTime(t.open_t)}{t.is_demo ? <span className="ml-1"><Badge tone="warn">DEMO</Badge></span> : null}</td>

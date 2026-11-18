@@ -61,6 +61,13 @@ img, svg, canvas, video { max-width: 100%; }
   :root:not(.qx-embed) table.stack td:empty { display: none; }
 }
 
+/* the row of a list the person opened last (stays marked after the details are closed) */
+tr.row-picked > td { background: rgba(139, 92, 246, 0.16); }
+@media (max-width: 767px) {
+  :root:not(.qx-embed) table.stack tr.row-picked { border-color: #8b5cf6; background: #1a1740; box-shadow: 0 0 0 1px #8b5cf6; }
+  :root:not(.qx-embed) table.stack tr.row-picked > td { background: transparent; }
+}
+
 /* a live session: a pulsing dot, a glowing menu row, and the dialogs that announce its start and end */
 @keyframes live-pulse { 0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.65); } 70% { box-shadow: 0 0 0 9px rgba(244, 63, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); } }
 @keyframes live-glow {
