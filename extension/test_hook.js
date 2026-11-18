@@ -154,6 +154,49 @@ assert.strictEqual(win.__qxs.drainFeed().filter((i) => i.k === 'a').length, 0, '
 text('451-["s_balance",{"_placeholder":true,"num":0}]'); bin({ uid: 555666, liveBalance: 1 });
 assert.strictEqual(JSON.stringify(win.__qxs.drainFeed().filter((i) => i.k === 'a')), '[{"k":"a","u":"555666"}]', 'the third sighting switches the account');
 
+// history answer = server-aggregated candles (they trail real time by a few minutes) + the raw ticks of those minutes: the newest candles are built from the ticks
+{
+  win.__qxs.drainFeed();
+  const T0 = 1700000040;                                          // a minute boundary (1700000040 % 60 === 0)
+  assert.strictEqual(T0 % 60, 0);
+  const aggregated = [[T0 - 120, 1.0, 1.1, 1.2, 0.9, 50, T0 - 61], [T0 - 60, 1.1, 1.12, 1.15, 1.08, 50, T0 - 1]];     // ... up to the candle before T0; T0, T0+60 are missing
+  const ticks = [];
+  for (let s = 0; s < 150; s += 2) ticks.push([T0 + s + 0.5, 1.12 + (s % 10) * 0.001]);                         // 2.5 minutes of ticks: T0 and T0+60 whole, T0+120 running
+  ticks.unshift([T0 - 30, 1.11], [T0 - 1, 1.12]);                                                                // ticks that belong to a candle the aggregate already has
+  text('451-["history/list/v2",{"_placeholder":true,"num":0}]');
+  bin({ asset: 'CHFJPY', period: 60, candles: aggregated, history: ticks });
+  const h = JSON.parse(JSON.stringify(win.__qxs.drainFeed())).filter((i) => i.k === 'h');
+  assert.strictEqual(h.length, 1);
+  const rows = h[0].rows;
+  assert.deepStrictEqual(rows.slice(0, 2), aggregated, 'the aggregated candles go out untouched');
+  assert.deepStrictEqual(rows.map((r) => r[0]), [T0 - 120, T0 - 60, T0, T0 + 60, T0 + 120], 'the minutes after the last aggregated candle are built from the ticks');
+  const built = rows[2];
+  assert.strictEqual(built[1], 1.12, 'open = the first tick of the minute');
+  assert.strictEqual(built[3], Math.max(...ticks.filter((t) => t[0] >= T0 && t[0] < T0 + 60).map((t) => t[1])), 'high');
+  assert.strictEqual(built[5], 30, 'tick count');
+  assert(built[6] >= T0 + 58 && built[6] < T0 + 60, 'lastTick');
+  assert(rows[4][6] > T0 + 120, 'the running minute carries its last tick time, so the server sees it as still forming');
+
+  // never invented: a minute that starts mid-way, one with a long silence and a finished one that stops early are not built
+  win.__qxs.drainFeed();
+  const sparse = [[T0 + 30, 1.0], [T0 + 31, 1.0], [T0 + 32, 1.1],                                  // starts 30 s into the minute: open unknown
+                  [T0 + 60, 1.0], [T0 + 61, 1.0], [T0 + 90, 1.2], [T0 + 118, 1.2],                  // 29 s of silence inside
+                  [T0 + 120, 1.0], [T0 + 121, 1.0], [T0 + 130, 1.1],                               // ends 50 s before the minute does ...
+                  [T0 + 180, 1.0], [T0 + 181, 1.0]];                                               // ... and the next minute has started
+  text('451-["history/list/v2",{"_placeholder":true,"num":0}]');
+  bin({ asset: 'CHFJPY', period: 60, history: sparse });
+  const h2 = JSON.parse(JSON.stringify(win.__qxs.drainFeed())).filter((i) => i.k === 'h');
+  assert.strictEqual(h2.length, 1);
+  assert.deepStrictEqual(h2[0].rows.map((r) => r[0]), [T0 + 180], 'only the minute that is whole (and the running one) is built');
+  // object-shaped ticks and the period read from the candles when the answer has none
+  win.__qxs.drainFeed();
+  text('451-["history/load",{"_placeholder":true,"num":0}]');
+  bin({ asset: 'CHFJPY', data: [{ time: T0 - 60, open: 1, close: 1, high: 1, low: 1, ticks: 5, last_tick: T0 - 1 }, { time: T0 - 120, open: 1, close: 1, high: 1, low: 1, ticks: 5, last_tick: T0 - 61 }],
+         history: [{ time: (T0 + 1) * 1000, price: 1.5 }, { time: (T0 + 30) * 1000, price: 1.6 }, { time: (T0 + 61) * 1000, price: 1.7 }, { time: (T0 + 62) * 1000, price: 1.71 }] });
+  const h3 = JSON.parse(JSON.stringify(win.__qxs.drainFeed())).filter((i) => i.k === 'h');
+  assert.deepStrictEqual(h3[0].rows.map((r) => r[0]), [T0 - 60, T0 - 120, T0 + 60], 'millisecond timestamps are read; the first minute ends 30 s early (a finished candle that stops early) so it is not built, the running one is');
+}
+
 // heartbeat with no sockets + worker tracking
 const w = new win.Worker('https://qxbroker.com/js/chart.worker.js?v=1');
 assert(w instanceof MockWorker && w.url.includes('?v=1'), 'worker must be created normally');

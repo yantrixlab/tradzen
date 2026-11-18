@@ -112,6 +112,54 @@
     if (feed.length < 5000) feed.push(item);
     if (!flushQueued) { flushQueued = true; Promise.resolve().then(flushFeed); }
   }
+  // A history answer ({asset, period, candles, history}) holds server-aggregated candles, which trail real time by a few minutes, AND `history`: the raw
+  // [time, price] ticks of those last minutes. Quotex's own chart builds its newest candles from them (the same way a live tick stream is turned into candles).
+  // Dropping them left a hole of 2-3 candles between the last aggregated candle and the first candle built from live ticks - right before the running one.
+  // Only the buckets NEWER than the last aggregated candle are built, and only from ticks that really cover them (the same rules as the server's live builder:
+  // the first tick within TICK_START_SLACK s of the open, no silence longer than TICK_GAP s, a finished candle's ticks run to its end). Nothing is invented.
+  const TICK_START_SLACK = 3, TICK_GAP = 20, TICK_MAX = 20000, PERIODS = [60, 300, 900];
+  function candlesFromTicks(raw, period, afterT) {
+    if (!Array.isArray(raw) || raw.length < 2 || PERIODS.indexOf(period) < 0) return [];
+    const pts = [];
+    for (const e of raw.length > TICK_MAX ? raw.slice(-TICK_MAX) : raw) {
+      let t, p;
+      if (Array.isArray(e)) { t = e[0]; p = e[1]; } else if (e && typeof e === 'object') { t = e.time !== undefined ? e.time : e.ts; p = e.price; } else continue;
+      if (typeof t !== 'number' || typeof p !== 'number' || !isFinite(t) || !isFinite(p)) continue;
+      pts.push([t > 1e11 ? t / 1000 : t, p]);
+    }
+    pts.sort((a, b) => a[0] - b[0]);
+    if (!pts.length) return [];
+    const newest = pts[pts.length - 1][0];
+    const groups = new Map();
+    for (const pt of pts) {
+      const b = Math.floor(pt[0] / period) * period;
+      if (b <= afterT) continue;
+      if (!groups.has(b)) groups.set(b, []);
+      groups.get(b).push(pt);
+    }
+    const out = [];
+    for (const b of [...groups.keys()].sort((x, y) => x - y)) {
+      const g = groups.get(b);
+      if (g[0][0] - b > TICK_START_SLACK) continue;                                   // the batch starts mid-candle: its open is unknown
+      let whole = true;
+      for (let i = 1; i < g.length; i++) if (g[i][0] - g[i - 1][0] > TICK_GAP) { whole = false; break; }
+      const last = g[g.length - 1][0];
+      if (b + period <= newest && b + period - last > TICK_GAP) whole = false;        // a finished candle must have ticks up to its end
+      if (!whole) continue;
+      let hi = -Infinity, lo = Infinity;
+      for (const pt of g) { if (pt[1] > hi) hi = pt[1]; if (pt[1] < lo) lo = pt[1]; }
+      out.push([b, g[0][1], g[g.length - 1][1], hi, lo, g.length, last]);              // time, open, close, high, low, ticks, lastTick
+    }
+    return out;
+  }
+  function periodOf(arg, rows) {
+    if (typeof arg.period === 'number') return arg.period;
+    const cnt = {};
+    let best = 0, bestN = 0;
+    for (let i = 1; i < rows.length; i++) { const d = Math.abs(rows[i][0] - rows[i - 1][0]); if (d > 0) { cnt[d] = (cnt[d] || 0) + 1; if (cnt[d] > bestN) { bestN = cnt[d]; best = d; } } }
+    return best;
+  }
+
   function forwardOther(name, arg) {
     if (arg && typeof arg === 'object' && !Array.isArray(arg) && typeof arg.asset === 'string') {
       let rows = null;
@@ -119,6 +167,12 @@
         rows = arg.candles.map((r) => [r[0], r[1], r[2], r[3], r[4], r[5], r[6]]);        // time, open, close, high, low, ticks, lastTick
       } else if (Array.isArray(arg.data) && arg.data.length && typeof arg.data[0] === 'object' && !Array.isArray(arg.data[0])) {
         rows = arg.data.map((d) => [d.time, d.open, d.close, d.high, d.low, d.ticks, d.last_tick]);
+      }
+      if (Array.isArray(arg.history) && arg.history.length) {
+        const have = rows || [];
+        const afterT = have.reduce((m, r) => (typeof r[0] === 'number' && r[0] > m ? r[0] : m), -Infinity);
+        const extra = candlesFromTicks(arg.history, periodOf(arg, have), afterT);
+        if (extra.length) rows = have.concat(extra);
       }
       if (rows) pushFeed({ k: 'h', asset: arg.asset, rows });
     } else if (name === 'depth/change' && Array.isArray(arg) && arg.length &&
