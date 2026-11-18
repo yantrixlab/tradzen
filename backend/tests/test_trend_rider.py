@@ -94,6 +94,24 @@ def test_a_clean_up_trend_still_buys_its_demand_zone():
     assert got and all(d == "CALL" for _, d in got) and got[-1][0] == len(cs) - 1, got
 
 
+def first_lower_low_chart():
+    cs = zigzag([6, 8, 7, 10], per=7) + zigzag([10, 12, 11, 14, 12.5, 16, 14.5, 18, 14.6], per=6)       # a long up-trend to 18
+    cs += [cd(14.6, 14.25), cd(14.2, 14.7)]                                   # red candle engulfed by green: demand zone ~14.2-14.65; its low (~14.17) is the FIRST lower low (< 14.5)
+    cs += [cd(14.7, 15.1), cd(15.1, 15.5), cd(15.5, 15.3), cd(15.3, 15.0), cd(15.0, 14.7), cd(14.7, 14.45), cd(14.45, 14.35)]
+    cs += [cd(14.3, 14.5)]                                                    # back in the demand zone: a green candle  <- bought, the up-trend is not over yet
+    cs += [cd(14.5, 14.8), cd(14.8, 15.0)]
+    return cs
+
+
+def test_the_first_lower_low_after_an_up_trend_does_not_turn_the_strategy_to_puts():
+    cs = first_lower_low_chart()
+    assert signals(SPEC, cs) == [(78, "CALL")]                               # no put until a candle closes below that lower low
+
+
+def test_the_mirror_first_higher_high_after_a_down_trend_does_not_turn_the_strategy_to_calls():
+    assert signals(SPEC, mirror(first_lower_low_chart())) == [(78, "PUT")]
+
+
 def test_backtest_and_live_agree_candle_by_candle_on_random_walks():
     rng = np.random.default_rng(21)
     p = np.cumsum(rng.normal(0, 0.15, 800)) + 50

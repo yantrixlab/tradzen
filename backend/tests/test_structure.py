@@ -181,6 +181,25 @@ def test_lead_is_dropped_when_the_swing_it_rests_on_breaks():
     assert structure.compute(frame(up_only), swing=3).lead.iloc[-1] == 1
 
 
+def test_lead_waits_for_a_close_through_the_first_lower_low_after_an_up_trend():
+    cs = zigzag([10, 12, 11, 14, 12.5, 16, 14.5, 18, 14.0, 15.6, 14.9, 15.3, 13.0, 13.8])    # HH (18), the first LOWER LOW (14.0 < 14.5), a bounce, then a close under 14.0
+    s = structure.compute(frame(cs), swing=3)
+    t = s.lead.tolist()
+    ll = next(i for i, x in enumerate(s.hl.tolist()) if x == -1)                           # the candle the first lower low is confirmed
+    broke = next(i for i, x in enumerate(cs) if i > ll and x[3] < 13.98)
+    assert all(t[i] == 1 for i in range(ll, broke)), t[ll:broke + 1]                         # still an up-trend: demand zones keep being bought
+    assert all(x == -1 for x in t[broke:])                                                  # the recent lower low is broken and closed below: now it reads down
+
+
+def test_lead_needs_two_higher_highs_after_a_down_trend_and_is_symmetric():
+    up = zigzag([10, 12, 11, 14, 12.5, 16, 14.5, 18, 14.0, 15.6, 14.9, 15.3, 13.0, 13.8])
+    mirror = [(40 - o, 40 - l, 40 - h, 40 - c) for o, h, l, c in up]                       # LL, then the first HIGHER high, then a close above it
+    a, b = structure.compute(frame(up), swing=3), structure.compute(frame(mirror), swing=3)
+    assert (a.lead.to_numpy() == -b.lead.to_numpy()).all()
+    ll = next(i for i, x in enumerate(b.hh.tolist()) if x == 1 and i > 40)                  # the first higher high after the down-move is confirmed
+    assert all(x == -1 for x in b.lead.tolist()[ll:69]) and b.lead.iloc[-1] == 1             # still down until a close above it (= the second higher high)
+
+
 def test_backtest_and_live_agree_candle_by_candle_on_random_walks():
     rng = np.random.default_rng(11)
     p = np.cumsum(rng.normal(0, 0.15, 900)) + 50
