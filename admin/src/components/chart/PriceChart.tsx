@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { pct, signed } from '../../format';
 import { usePref } from '../../prefs';
-import type { BtTrade, ChartCandle, ChartSwing, ChartZone, MtgLadder, MtgSummary, PriceChartProps, SeriesGroup } from './types';
+import type { BtTrade, ChartBreak, ChartCandle, ChartSwing, ChartZone, MtgLadder, MtgSummary, PriceChartProps, SeriesGroup } from './types';
 
 /**
  * THE chart of the app. Everything a trader expects, in one component used by every screen:
@@ -19,12 +19,17 @@ const RESULT: Record<string, { fill: string; text: string; label: string }> = {
 };
 const DEMAND = '#22c55e', SUPPLY = '#ef4444';                                  // zone colours: demand = green (buyers), supply = red (sellers)
 const zoneColor = (z: ChartZone) => (z.kind === 'demand' ? DEMAND : SUPPLY);
-const zoneName = (z: ChartZone) => `${z.kind === 'demand' ? 'Demand' : 'Supply'} zone${z.flip ? ' (flipped: it was the opposite kind before it broke)' : ''}`;
+const zoneName = (z: ChartZone) => `${z.kind === 'demand' ? 'Demand' : 'Supply'} zone${z.tag ? ` (${z.tag}${z.origin_of ? `, where the ${z.origin_of} started` : ''})` : ''}${z.flip ? ' (flipped: it was the opposite kind before it broke)' : ''}`;
 /** A zone lives until a candle CLOSES through it (above a supply zone, below a demand zone): that is `closed`. The strategy's own rules (used after one visit, expiry) only change the wording. */
 const zoneState = (z: ChartZone, closed: boolean) => (closed ? 'closed through'
   : z.tests === 0 ? 'fresh' : `${z.tests} touch${z.tests === 1 ? '' : 'es'}${z.src === 'engulf' && z.why === 'used' ? ' · used up' : ''}`);
 /** How strong a zone still is: a fresh one is at full strength and every touch (price coming back into it) wears it down: 100% → 80 → 60 → 40 → 25% (the floor). The chart fades it to match. */
-const zoneStrength = (z: ChartZone) => Math.max(0.25, 1 - 0.2 * Math.max(0, z.tests));
+const zoneStrength = (z: ChartZone) => Math.max(0.25, 1 - 0.2 * Math.max(0, z.tests)) * (z.score !== undefined ? 0.6 + 0.4 * (z.score / 100) : 1);       // (a zone the market read scored 0-100 is lighter when it looked weaker)
+/** The zone was made by candles that were ENGULFED (one candle, or a whole swing of one colour) by candles of the other colour. */
+const isEng = (z: ChartZone) => z.src === 'engulf' || z.src === 'swing_engulf';
+/** The tag on the base box (the candle(s) the zone is made of) and on the departure box (the candle(s) that left it). */
+const baseTag = (z: ChartZone, step: number) => (z.src === 'swing_engulf' ? (step > 11 ? 'SWING ENGULFED' : '') : z.src === 'engulf' ? (step > 11 ? 'ENGULFED' : '') : z.src === 'swing' ? (z.tag?.split(' · ')[0] ?? '') : 'BASE');
+const depTag = (z: ChartZone) => (isEng(z) ? (z.kind === 'demand' ? '▲ ENGULF' : '▼ ENGULF') : z.kind === 'demand' ? '▲ DEP' : '▼ DEP');
 const NO_HID: Record<string, boolean> = {};
 const NONE: never[] = [];                                                              // a stable empty list, so memoised layers are not rebuilt on every render
 const SWING_COLOR: Record<string, string> = { HH: '#4ade80', HL: '#4ade80', LH: '#f87171', LL: '#f87171', EH: '#94a3b8', EL: '#94a3b8', '': '#94a3b8' };
@@ -78,7 +83,7 @@ function Pill({ on, set, color, title, children }: { on: boolean; set: (v: boole
 const Seg = ({ children }: { children: React.ReactNode }) => <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-line bg-panel2 [&>button]:border-0 [&>button]:rounded-none [&>button+button]:border-l [&>button+button]:border-line">{children}</div>;
 
 export function PriceChart(props: PriceChartProps) {
-  const { candles, forming = null, lastPrice = null, overlays = [], panes = [], markers = [], bands = [], areas = [], boxes = [], zones = NONE as ChartZone[], swings = NONE as ChartSwing[], trades = [], payout = null, splitT = null, mtg = null,
+  const { candles, forming = null, lastPrice = null, overlays = [], panes = [], markers = [], bands = [], areas = [], boxes = [], zones = NONE as ChartZone[], swings = NONE as ChartSwing[], breaks = NONE as ChartBreak[], trades = [], payout = null, splitT = null, mtg = null,
     height = 320, initialCount = 150, compact = false, resetKey = '', toolbarLeft, toolbarRight, tooltipExtra, footer, emptyText = 'No candles to show yet.' } = props;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const root = useRef<HTMLDivElement>(null);
@@ -102,6 +107,8 @@ export function PriceChart(props: PriceChartProps) {
   const [showZones, setShowZones] = usePref('chart.zones', true);
   const [showBroken, setShowBroken] = usePref('chart.past-zones', true);   // zones a candle already closed through: drawn up to that candle (switch off to see only the standing ones)
   const [showSwings, setShowSwings] = usePref('chart.structure', true);
+  const [showMinor, setShowMinor] = usePref('chart.minor-swings', true);       // the swings of single candles (the small pull-backs inside a trend), next to the major ones
+  const [showBreaks, setShowBreaks] = usePref('chart.breaks', true);           // BOS / CHoCH lines: where a candle closed through a swing
   const [showZoneText, setShowZoneText] = usePref('chart.zone-text', true);   // "SUPPLY · fresh · 1.5 ATR"
   const [fade, setFade] = usePref('chart.zone-fade', true);              // zones fade with every touch: bold = fresh and strong, light = worn and weak
   const [showTags, setShowTags] = usePref('chart.candle-tags', true);       // ENGULFED / ENGULF / BASE / DEP on the candles that formed a zone
@@ -281,11 +288,12 @@ export function PriceChart(props: PriceChartProps) {
         let top = y(z.hi), bot = y(z.lo);
         if (bot - top < 7) { const mid = (top + bot) / 2; top = mid - 3.5; bot = mid + 3.5; }                // a one-candle zone can be a hair thin at this scale: keep it visible
         // strength fades the zone: fresh = bold, every touch makes it lighter (see zoneStrength); a zone a candle closed through is history: faint and dashed
-        const s = closed || !fade ? 1 : zoneStrength(z), weak = !closed && fade && s <= 0.4;
+        const s = closed || !fade ? 1 : zoneStrength(z), weak = !closed && fade && s <= 0.3;
         const fillOp = closed ? 0.045 : Math.max(0.04, 0.22 * s * s);
         const dash = closed || weak ? '3 4' : z.flip ? '6 4' : undefined, lineOp = closed ? 0.4 : 0.25 + 0.75 * s, lineW = closed ? 1.1 : 0.9 + 0.7 * s;
         const lx = Math.max(x0, PAD_L) + 6, room = x1 - Math.max(x0, PAD_L);
-        const label = `${z.kind === 'demand' ? 'DEMAND' : 'SUPPLY'}${z.flip ? ' ⟲' : ''} · ${zoneState(z, closed)} · ${z.move.toFixed(1)} ATR`;
+        const label = z.tag ? `${z.kind === 'demand' ? 'DEMAND' : 'SUPPLY'} · ${z.tag} · ${zoneState(z, closed)}${z.score !== undefined ? ` · ${z.score}` : ''}`
+          : `${z.kind === 'demand' ? 'DEMAND' : 'SUPPLY'}${z.flip ? ' ⟲' : ''} · ${zoneState(z, closed)} · ${z.move.toFixed(1)} ATR`;
         return (
           <g key={`z${k}`}>
             <rect x={x0} y={top} width={Math.max(2, x1 - x0)} height={bot - top} fill={col} opacity={fillOp} />
@@ -312,7 +320,12 @@ export function PriceChart(props: PriceChartProps) {
       return <g key={c.t} opacity={c.syn ? 0.4 : forming && i === n - 1 ? 0.65 : 1}><line x1={cx} x2={cx} y1={y(c.h)} y2={y(c.l)} stroke={col} strokeWidth={step > 6 ? 1.4 : 1} /><rect x={cx - bw / 2} y={top} width={bw} height={bh} fill={col} rx={step > 9 ? 1 : 0} /></g>;
     })}</g>), [all, i0, i1, step, view.start, hi, lo, mainH, dense, forming, n]);                              // eslint-disable-line react-hooks/exhaustive-deps
 
-  const swingPts = useMemo(() => (showSwings ? swings.map((s) => ({ s, i: idxOf.get(s.t) })).filter((p): p is { s: ChartSwing; i: number } => p.i !== undefined && p.i >= i0 - 1 && p.i <= i1 + 1) : []), [showSwings, swings, idxOf, i0, i1]);
+  const swingPts = useMemo(() => (showSwings ? swings.filter((s) => showMinor || s.major !== false).map((s) => ({ s, i: idxOf.get(s.t) })).filter((p): p is { s: ChartSwing; i: number } => p.i !== undefined && p.i >= i0 - 1 && p.i <= i1 + 1) : []), [showSwings, showMinor, swings, idxOf, i0, i1]);
+  // BOS / CHoCH: a line from the swing that was broken to the candle that closed through it
+  const breakPts = useMemo(() => (showBreaks ? breaks.flatMap((b) => {
+    const a = firstAtOrAfter(b.t0), e = idxOf.get(b.t1);
+    return e === undefined || a >= n || e < i0 - 1 || a > i1 + 1 ? [] : [{ b, a, e: Math.max(a, e) }];
+  }) : []), [showBreaks, breaks, idxOf, firstAtOrAfter, n, i0, i1]);
   const originLayer = useMemo(() => (
     <g>
       {/* the candles each zone was made from: BASE (dashed outline) and DEPARTURE (solid, tinted); a diamond where price came back to the zone */}
@@ -327,24 +340,35 @@ export function PriceChart(props: PriceChartProps) {
         return (
           <g key={`zb${k}`} opacity={closed ? 0.5 : fade ? 0.4 + 0.6 * zoneStrength(z) : 1}>
             {bs && <g><rect x={bs.bx} y={bs.top} width={bs.bw} height={bs.bot - bs.top} fill="none" stroke={col} strokeWidth={1.4} strokeDasharray="4 3" rx={3} />
-              {showTags && bs.bw > (z.src === 'engulf' ? 12 : 34) && <text x={bs.bx + bs.bw / 2} y={z.kind === 'demand' ? bs.bot + 11 : bs.top - 4} fontSize="9" fontWeight={800} textAnchor="middle" fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{z.src === 'engulf' ? (step > 11 ? 'ENGULFED' : '') : 'BASE'}</text>}</g>}
+              {showTags && bs.bw > (z.src === 'base' ? 34 : 12) && <text x={bs.bx + bs.bw / 2} y={z.kind === 'demand' ? bs.bot + 11 : bs.top - 4} fontSize="9" fontWeight={800} textAnchor="middle" fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{baseTag(z, step)}</text>}</g>}
             {ds && <g><rect x={ds.bx} y={ds.top} width={ds.bw} height={ds.bot - ds.top} fill={col} fillOpacity={0.14} stroke={col} strokeWidth={1.5} rx={3} />
-              {showTags && ds.bw > 14 && <text x={ds.bx + ds.bw / 2} y={z.kind === 'demand' ? ds.top - 4 : ds.bot + 11} fontSize="9" fontWeight={800} textAnchor="middle" fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{z.src === 'engulf' ? (z.kind === 'demand' ? '▲ ENGULF' : '▼ ENGULF') : z.kind === 'demand' ? '▲ DEP' : '▼ DEP'}</text>}</g>}
+              {showTags && ds.bw > 14 && <text x={ds.bx + ds.bw / 2} y={z.kind === 'demand' ? ds.top - 4 : ds.bot + 11} fontSize="9" fontWeight={800} textAnchor="middle" fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{depTag(z)}</text>}</g>}
             {z.touches.map((t) => { const i = idxOf.get(t); return i === undefined || i < i0 || i > i1 ? null
               : <path key={t} d={`M${x(i)},${y(z.kind === 'demand' ? z.hi : z.lo) - 5} l5,5 l-5,5 l-5,-5 z`} fill={BG} stroke={col} strokeWidth={1.6} />; })}
           </g>);
       })}
       {/* market-structure swings: HH / HL green, LH / LL red */}
       {swingPts.map(({ s, i }) => {
-        const col = SWING_COLOR[s.label] ?? '#94a3b8', up = s.kind === 'high';
+        const col = SWING_COLOR[s.label] ?? '#94a3b8', up = s.kind === 'high', minor = s.major === false;          // a minor swing = a single candle's turn (a small pull-back inside a move)
         return (
-          <g key={`sw${s.id}${s.t}${s.kind}`}>
-            <circle cx={x(i)} cy={y(s.price)} r={3} fill={col} stroke={BG} strokeWidth={1} />
-            {s.label && !dense && <text x={x(i)} y={up ? y(s.price) - 8 : y(s.price) + 16} fontSize="10" fontWeight={800} textAnchor="middle" fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{s.label}</text>}
+          <g key={`sw${s.id}${s.t}${s.kind}`} opacity={minor ? 0.85 : 1}>
+            <circle cx={x(i)} cy={y(s.price)} r={minor ? 2.2 : 3.4} fill={minor ? BG : col} stroke={col} strokeWidth={minor ? 1.4 : 1} />
+            {s.label && !dense && (!minor || step >= 8) && <text x={x(i)} y={up ? y(s.price) - (minor ? 6 : 8) : y(s.price) + (minor ? 13 : 16)} fontSize={minor ? 8.5 : 10} fontWeight={minor ? 700 : 800} textAnchor="middle" fill={col} stroke={BG} strokeWidth={3} paintOrder="stroke">{s.label}</text>}
+          </g>);
+      })}
+      {/* breaks of structure: BOS (the trend goes on) in blue-grey, CHoCH (the trend changes) bold; a tick means a strong, confirmed close */}
+      {breakPts.map(({ b, a, e }, k) => {
+        const col = b.dir > 0 ? '#4ade80' : '#f87171', yy = y(b.price), x0 = x(a), x1 = x(e), choch = b.type === 'CHoCH';
+        const txt = `${b.type} ${b.dir > 0 ? '▲' : '▼'}${b.strong ? ' ✓' : ''}`;
+        return (
+          <g key={`bk${k}`} opacity={b.strong ? 1 : 0.6}>
+            <line x1={x0} x2={x1} y1={yy} y2={yy} stroke={choch ? '#fbbf24' : col} strokeWidth={choch ? 1.6 : 1.1} strokeDasharray={choch ? '7 3' : '3 4'} />
+            <circle cx={x1} cy={yy} r={choch ? 3.6 : 2.6} fill={choch ? '#fbbf24' : col} stroke={BG} strokeWidth={1} />
+            {x1 - x0 > 34 && <text x={(Math.max(x0, PAD_L) + x1) / 2} y={b.dir > 0 ? yy - 4 : yy + 11} fontSize="9" fontWeight={800} textAnchor="middle" fill={choch ? '#fbbf24' : col} stroke={BG} strokeWidth={3} paintOrder="stroke">{txt}</text>}
           </g>);
       })}
     </g>
-  ), [zoneSpans, swingPts, step, view.start, hi, lo, mainH, all, i0, i1, n, dense, showTags, idxOf, fade]);        // eslint-disable-line react-hooks/exhaustive-deps
+  ), [zoneSpans, swingPts, breakPts, step, view.start, hi, lo, mainH, all, i0, i1, n, dense, showTags, idxOf, fade]);        // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- interaction (pointer moves are coalesced to one update per frame)
   const dragRef = useRef<{ x: number; start: number } | null>(null);
@@ -470,12 +494,15 @@ export function PriceChart(props: PriceChartProps) {
     if (px !== null && hover.i >= a && hover.i <= e && px >= z.lo - (z.hi - z.lo) * 0.2 && px <= z.hi + (z.hi - z.lo) * 0.2 && !(base && hover.i >= base.a && hover.i <= base.b) && !(dep && hover.i >= dep.a && hover.i <= dep.b)) {
       out.push({ z, closed, what: z.src === 'engulf' && z.why === 'used' ? 'inside this zone (the first visit already used it up for the strategy; it stands until a candle closes through it)' : 'inside this zone' });
     }
-    const eng = z.src === 'engulf';
-    if (base && hover.i >= base.a && hover.i <= base.b) out.push({ z, closed, what: eng ? `the ENGULFED ${z.kind === 'demand' ? 'red' : 'green'} candle: its full high-low range is the zone` : 'a BASE candle: the tight candles that built this zone' });
-    else if (dep && hover.i >= dep.a && hover.i <= dep.b) out.push({ z, closed, what: eng ? `the candle(s) that ENGULFED it (${z.run === 1 ? 'one candle' : `${z.run} candles`}): they closed beyond the zone` : 'the DEPARTURE candle: the strong move away that made it a zone' });
+    const eng = isEng(z), swingEng = z.src === 'swing_engulf';
+    const colour = z.kind === 'demand' ? 'red' : 'green';
+    if (base && hover.i >= base.a && hover.i <= base.b) out.push({ z, closed, what: swingEng ? `part of the swing of ${colour} candles that was engulfed: the whole swing's high-low range is the zone` : eng ? `the ENGULFED ${colour} candle: its full high-low range is the zone`
+      : z.src === 'swing' ? `the ${z.tag} swing candle: price left it fast, so its wick and body are the zone` : 'a BASE candle: the tight candles that built this zone' });
+    else if (dep && hover.i >= dep.a && hover.i <= dep.b) out.push({ z, closed, what: eng ? `the candle(s) that ENGULFED it (${z.run === 1 ? 'one candle' : `${z.run} candles`}): they closed beyond the ${swingEng ? 'whole swing' : 'zone'}` : 'the DEPARTURE candle: the strong move away that made it a zone' });
     return out;
   }) : [];
   const hSwing = hover ? swings.find((s) => idxOf.get(s.t) === hover.i) : undefined;
+  const hBreak = hover ? breaks.find((b) => idxOf.get(b.t1) === hover.i) : undefined;
 
   return (
     <div ref={root} className={fs ? 'fixed inset-0 z-[200] flex flex-col overflow-auto bg-bg p-4' : ''}>
@@ -497,12 +524,12 @@ export function PriceChart(props: PriceChartProps) {
               <button className="btn btn-sm" title="Centre the next trade" onClick={() => jump(1)}>Trade ⏭</button></Seg>}
             <div className="ml-auto flex flex-wrap items-center gap-2">
               {toolbarRight}
-              {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || hasMtg) && <button className="btn btn-sm sm:hidden" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)}>Layers {layersOpen ? '▴' : '▾'}</button>}
+              {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || breaks.length > 0 || hasMtg) && <button className="btn btn-sm sm:hidden" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)}>Layers {layersOpen ? '▴' : '▾'}</button>}
               <button className="btn btn-sm" title="Back to the newest candles at the default zoom (double-click the chart too)" onClick={reset}>Reset</button>
               <button className="btn btn-sm" title={fs ? 'Leave full screen (Esc)' : 'Full screen (F)'} onClick={toggleFs}>{fs ? '✕ Exit full screen' : '⛶ Full screen'}</button>
             </div>
           </div>
-          {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || hasMtg) && (
+          {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || breaks.length > 0 || hasMtg) && (
             <div className={`mt-2 flex-wrap items-center gap-1.5 border-t border-line/60 pt-2 sm:flex ${layersOpen ? 'flex' : 'hidden'}`}>
               <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-mut">Show</span>
               {anySignals && <><Pill on={showBuy} set={setShowBuy} color={UP}>▲ BUY</Pill><Pill on={showSell} set={setShowSell} color={DOWN}>▼ SELL</Pill></>}
@@ -515,6 +542,8 @@ export function PriceChart(props: PriceChartProps) {
                   <Pill on={showZoneText} set={setShowZoneText} color={SKY} title="The text on each zone: SUPPLY · fresh · 1.5 ATR">Zone text</Pill>
                   <Pill on={showTags} set={setShowTags} color={AMBER} title="The tags on the candles that formed a zone: ENGULFED, ENGULF, BASE, DEP">Candle tags</Pill></>}</>}
               {swings.length > 0 && <Pill on={showSwings} set={setShowSwings} color="#4ade80" title="Swing highs and lows labelled higher-high / lower-high / higher-low / lower-low">HH/HL · LH/LL structure</Pill>}
+              {showSwings && swings.some((s) => s.major === false) && <Pill on={showMinor} set={setShowMinor} color="#86efac" title="The small swings: a single candle that turns (a one-candle pull-back inside a move). Off = only the major swings (the extreme of 3 candles on each side)">Minor swings</Pill>}
+              {breaks.length > 0 && <Pill on={showBreaks} set={setShowBreaks} color="#fbbf24" title="BOS = a candle closed beyond the last swing: the trend goes on. CHoCH = it closed beyond the swing that protected the trend: the trend changed. ✓ = a strong, confirmed close; a faint line = a weak close, not confirmed">BOS / CHoCH</Pill>}
               {hasMtg && <Pill on={showMtg} set={setShowMtg} color={SKY} title="Martingale re-entries after a losing trade">MTG candles</Pill>}
             </div>)}
         </div>
@@ -689,7 +718,10 @@ export function PriceChart(props: PriceChartProps) {
               {[...overlays, ...panes].filter((g) => !hid[g.id]).map((g) => <div key={g.id} className="mt-0.5 flex justify-between gap-2"><span style={{ color: g.color }}>{g.label}</span><span className="font-mono">{groupValue(g, hover.i)}</span></div>)}
               {hZones.map(({ z, what, closed }, k) => <div key={`hz${k}`} className="mt-1 border-t border-line pt-1" style={{ color: zoneColor(z) }}>
                 <b>This is {what}.</b><div className="text-mut">{zoneName(z)} {fmt(z.lo, hi)} – {fmt(z.hi, hi)} · {zoneState(z, closed)}{!closed && ` · strength ${Math.round(zoneStrength(z) * 100)}%`} · departure {z.move.toFixed(1)} ATR</div></div>)}
-              {hSwing && <div className="mt-1 font-semibold" style={{ color: SWING_COLOR[hSwing.label] }}>Swing {hSwing.kind} {hSwing.label && `(${hSwing.label})`} at {fmt(hSwing.price, hi)}</div>}
+              {hSwing && <div className="mt-1 font-semibold" style={{ color: SWING_COLOR[hSwing.label] }}>{hSwing.major === false ? 'Minor swing' : 'Swing'} {hSwing.kind} {hSwing.label && `(${hSwing.label})`} at {fmt(hSwing.price, hi)}</div>}
+              {hBreak && <div className="mt-1 font-semibold" style={{ color: hBreak.type === 'CHoCH' ? '#fbbf24' : hBreak.dir > 0 ? '#4ade80' : '#f87171' }}>
+                {hBreak.type === 'CHoCH' ? `CHANGE of direction (CHoCH) ${hBreak.dir > 0 ? 'up' : 'down'}` : `Break of structure (BOS) ${hBreak.dir > 0 ? 'up' : 'down'}: the trend goes on`}: closed {hBreak.dir > 0 ? 'above' : 'below'} {fmt(hBreak.price, hi)}
+                <div className="font-normal text-mut">{hBreak.strong ? 'Confirmed: a strong close beyond the level.' : 'Not confirmed: a weak close beyond the level - it can still fail.'}</div></div>}
               {hMarker && <div className={`mt-1 font-bold ${hMarker.dir > 0 ? 'text-up' : 'text-down'}`}>{hMarker.tip ?? (hMarker.dir > 0 ? '▲ CALL signal' : '▼ PUT signal')}</div>}
               {hTrade && <div className="mt-1 border-t border-line pt-1">
                 <div className={`font-bold ${hTrade.dir > 0 ? 'text-up' : 'text-down'}`}>{hTrade.dir > 0 ? '▲ BUY (CALL)' : '▼ SELL (PUT)'} signal · tier {hTrade.tier} · strength {hTrade.strength}</div>

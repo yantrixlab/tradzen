@@ -13,13 +13,31 @@ export interface SeriesLine { values: (number | null)[]; style?: 'line' | 'dash'
 export interface ChartZone {
   id: string; kind: 'demand' | 'supply'; lo: number; hi: number; t0: number; t1: number; alive: boolean; broken: boolean; flip: boolean;
   move: number; tests: number; base: [number, number] | null; dep: [number, number] | null; touches: number[];
-  src?: 'engulf';                                  // an engulfing-candle zone: `base` = the engulfed candle, `dep` = the candle(s) that engulfed it, why = how it ended
+  // where the zone comes from. engulf / swing_engulf: `base` = the engulfed candle(s) (a whole swing of one colour for swing_engulf), `dep` = the candle(s) that engulfed it;
+  // swing: the candle of a HH / LH / HL / LL swing that price then left fast (tag = which); base: a strong base-and-departure zone
+  src?: 'engulf' | 'swing' | 'swing_engulf' | 'base';
   why?: 'used' | 'broken' | 'expired' | null;
   run?: number;
+  tag?: string;                                    // the zone's reason in a word: HL, LH ..., SWING ×3, ENGULF, BASE (several joined with " · " when more than one confirms it)
+  score?: number;                                  // 0-100: how strong it looked when it formed (size of the move away, with the trend, origin of a break of structure ...)
+  origin_of?: 'BOS' | 'CHoCH' | null;              // the zone the market left in a break of structure
 }
 
-/** A swing high / low of the market structure; label = HH / LH (high higher / lower than the swing before) or HL / LL ('' = first one seen). */
-export interface ChartSwing { id: string; t: number; kind: 'high' | 'low'; price: number; label: string }
+/** A swing high / low of the market structure; label = HH / LH (high higher / lower than the swing before) or HL / LL ('' = first one seen). `major` = also the extreme of 3 candles on each side (absent = not told). */
+export interface ChartSwing { id: string; t: number; kind: 'high' | 'low'; price: number; label: string; major?: boolean }
+
+/** A break of structure: a candle CLOSED beyond `price` (the level of the swing at t0) at t1. BOS = the trend continues, CHoCH = it changes; `strong` = confirmed by a real body / a clear close. */
+export interface ChartBreak { t0: number; t1: number; price: number; type: 'BOS' | 'CHoCH'; dir: 1 | -1; strong: boolean }
+
+/** Who is in control, read from the newest candles (server: marketread.summary). */
+export interface FlowReading {
+  t: number; score: number; buyers: number; sellers: number; tier: string; headline: string; side: 1 | 0 | -1; trend: 1 | 0 | -1; pullback: boolean; stretched: boolean; since: number;
+  protected: number | null;
+  last_break: { type: 'BOS' | 'CHoCH'; dir: 1 | -1; strong: boolean; t: number; ago: number; level: number } | null;
+  components: { key: string; name: string; value: number; weight: number }[];
+  reasons: string[];
+  accuracy: { sample: string; date: string; next_candle: number; after_5: number; after_10: number; strong_break_follow: number; weak_break_follow: number; stretched_follow: number } | null;
+}
 
 /** An indicator: drawn over the price (`overlays`) or in its own pane under it (`panes`). */
 export interface SeriesGroup {
@@ -67,6 +85,7 @@ export interface PriceChartProps {
   boxes?: ChartBox[];
   zones?: ChartZone[];
   swings?: ChartSwing[];
+  breaks?: ChartBreak[];
   trades?: BtTrade[];
   payout?: number | null;
   splitT?: number | null;                 // start of a backtest's validation period

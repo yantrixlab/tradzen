@@ -6,7 +6,7 @@ import { Card, ErrorBox } from './ui';
 import { STEP_COLORS } from '../lib/patterns';
 import { Hl, useBuilder } from './builderContext';
 import { PriceChart } from './chart/PriceChart';
-import type { ChartBand, ChartBox, ChartCandle, ChartMarker, ChartSwing, ChartZone, SeriesGroup } from './chart/types';
+import type { ChartBand, ChartBox, ChartBreak, ChartCandle, ChartMarker, ChartSwing, ChartZone, FlowReading, SeriesGroup } from './chart/types';
 
 export interface IndSeries {
   id: string; type: string; label: string; panel: 'price' | 'osc' | 'none';
@@ -19,7 +19,7 @@ export interface ChartData {
   marks: Record<string, { hits: boolean[]; error: string | null; spans?: Record<string, [number, number, number][]> }>;
   signals: { i: number; dir: 'CALL' | 'PUT'; strength: number }[];
   note: string | null; errors: string[]; need: number; have: number; symbol: string; tf: number;
-  zones?: ChartZone[]; swings?: ChartSwing[]; runs?: number;
+  zones?: ChartZone[]; swings?: ChartSwing[]; breaks?: ChartBreak[]; flow?: FlowReading | null; runs?: number;
 }
 
 /** How an indicator's server series become chart lines: the zone tracker's single "touched zone" lines are replaced by the real zone rectangles (when the server sent them),
@@ -29,7 +29,7 @@ export function indicatorGroup(d: IndSeries, k: number, data: Pick<ChartData, 'z
   if ((d.type === 'zones' || d.type === 'engulf') && data.zones?.length) return null;
   const color = indColor(k);
   return {
-    id: d.id, label: `${d.id} · ${d.label}`, color, levels: d.levels, range: d.range,
+    id: d.id, label: d.type === 'flow' ? d.label : `${d.id} · ${d.label}`, color, levels: d.levels, range: d.range,
     lines: d.series.map((s) => ({ values: s.values, style: d.type === 'structure' ? 'dash' : s.style, color: d.type === 'structure' ? (s.field === 'sh' ? '#f87171' : '#4ade80') : undefined })),
   };
 }

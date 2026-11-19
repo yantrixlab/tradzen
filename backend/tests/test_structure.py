@@ -115,8 +115,8 @@ def test_zones_and_structure_are_drawn_even_without_a_strategy():
     rows = rows_of(setup + [V_GREEN])
     plain = chartdata.build(rows, {}, count=len(rows))
     assert plain["zones"] == [] and plain["swings"] == []                          # a strategy-less request without the flag draws nothing extra
-    d = chartdata.build(rows, {}, count=len(rows), marks_always=True)              # the chart's own zones are the engulfing-candle zones
-    assert any(z["kind"] == "demand" and z["base"] and z.get("src") == "engulf" for z in d["zones"]) and d["swings"] and d["indicators"] == []
+    d = chartdata.build(rows, {}, count=len(rows), marks_always=True)              # the chart's own zones are the market read's (swing / engulf zones), plus its Buyers vs Sellers pane
+    assert any(z["kind"] == "demand" and z["base"] for z in d["zones"]) and d["swings"] and [i["id"] for i in d["indicators"]] == ["flow_auto"]
     own = chartdata.build(rows, {"indicators": [{"id": "zn", "type": "zones", "base_atr": 0.0001}], "factors": []}, count=len(rows), marks_always=True)
     assert own["zones"] == [] and own["swings"]                                    # a strategy's own zone settings win: only the missing structure is added
 

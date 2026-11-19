@@ -14,6 +14,7 @@ import pandas as pd
 
 from . import evaluator, expr, indreg, patterns, spec as spec_mod, vec
 from . import engulf as engulf_mod
+from . import marketread
 from . import structure as structure_mod
 from . import zones as zones_mod
 from .evaluator import SIDE_THRESHOLD
@@ -202,11 +203,34 @@ def _zone_and_swing_marks(inds: list[dict], df: pd.DataFrame, tail: int, limit: 
     return zones_out[-limit:], swings_out
 
 
+def _smart_marks(an: dict, df: pd.DataFrame, tail: int, limit: int, want_zones: bool, want_swings: bool) -> tuple[list[dict], list[dict], list[dict]]:
+    """The market read's zones, swings (every swing candle, down to single candles) and breaks of structure (BOS / CHoCH), as chart records (candle times, newest `tail` candles)."""
+    n, first = len(df), len(df) - tail
+    ts = df["t"].to_numpy().astype(np.int64)
+    at = lambda i: int(ts[min(max(i, 0), n - 1)])  # noqa: E731
+    zones: list[dict] = []
+    if want_zones:
+        for z in an["zones"]:
+            end = n - 1 if z["end"] is None else z["end"]
+            if z["end"] is not None and z["end"] < first:
+                continue
+            zones.append({
+                "id": "smart", "kind": z["kind"], "lo": z["lo"], "hi": z["hi"], "t0": at(max(z["start"], first)), "t1": at(end), "alive": z["end"] is None, "broken": z["end"] is not None,
+                "flip": False, "move": round(z["move"], 2), "tests": len(z["touches"]), "src": z["src"], "tag": z["tag"], "score": z["score"], "run": z["run"], "origin_of": z["origin_of"],
+                "why": None if z["end"] is None else "broken", "base": [at(z["base"][0]), at(z["base"][1])] if z["base"][1] >= first else None,
+                "dep": [at(z["dep"][0]), at(z["dep"][1])] if z["dep"][1] >= first else None, "touches": [at(i) for i in z["touches"] if i >= first][:12]})
+        zones.sort(key=lambda z: z["t0"])
+        zones = zones[-limit:]
+    swings = [{"id": "smart", "t": at(s["i"]), "kind": s["kind"], "price": s["price"], "label": s["label"], "major": s["major"]} for s in an["swings"] if s["i"] >= first] if want_swings else []
+    breaks = [{"t0": at(max(e["j"], first)), "t1": at(e["i"]), "price": e["level"], "type": e["type"], "dir": e["dir"], "strong": e["strong"]} for e in an["structure"]["events"] if e["i"] >= first]
+    return zones, swings, breaks
+
+
 def build_all(rows: list[dict], raw_spec: dict, tf: int, marks_always: bool = False, max_zones_total: int = 6000) -> dict:
     """Indicators, supply/demand zones and structure for EVERY loaded candle: the series is cut at data gaps (an indicator never spans one) and each uninterrupted
     stretch of 30+ candles is worked out on its own, then joined. Stretches shorter than that get nothing (and their candles are left out of `candles`)."""
     ts = np.array([r["t"] for r in rows], dtype=np.int64)
-    out: dict = {"candles": [], "marks": {}, "signals": [], "factors": {}, "note": None, "errors": [], "need": 60, "have": len(rows), "runs": 0, "zones": [], "swings": []}
+    out: dict = {"candles": [], "marks": {}, "signals": [], "factors": {}, "note": None, "errors": [], "need": 60, "have": len(rows), "runs": 0, "zones": [], "swings": [], "breaks": [], "flow": None}
     acc: dict[str, dict] = {}
     total = 0
     for a, b in vec.contiguous_runs(ts, tf):
@@ -226,6 +250,8 @@ def build_all(rows: list[dict], raw_spec: dict, tf: int, marks_always: bool = Fa
         out["candles"] += r["candles"]
         out["zones"] += r["zones"]
         out["swings"] += r["swings"]
+        out["breaks"] += r.get("breaks", [])
+        out["flow"] = r.get("flow") or out["flow"]                      # the reading of the newest stretch
         out["signals"] += [{**s, "i": s["i"] + total} for s in r["signals"]]
         out["errors"] += [e for e in r["errors"] if e not in out["errors"]]
         out["note"] = out["note"] or r["note"]
@@ -280,12 +306,31 @@ def build(rows: list[dict], raw_spec: dict, exprs: dict[str, str] | None = None,
         note = "Fix the validation errors to see signal markers."
 
     sub = df.iloc[-tail:]
-    zones_out, swings_out = _zone_and_swing_marks(_with_default_marks(inds) if marks_always else inds, df, tail, zone_limit)
+    an = None
+    if marks_always:
+        try:
+            an = marketread.analyze(df)
+        except Exception:  # noqa: BLE001 - a drawing aid must never fail the whole chart: fall back to the strategy indicators' own marks
+            an = None
+    breaks_out: list[dict] = []
+    flow_out = None
+    plots = [_plot_indicator(it, env, tail) for it in inds]
+    if an is None:
+        zones_out, swings_out = _zone_and_swing_marks(_with_default_marks(inds) if marks_always else inds, df, tail, zone_limit)
+    else:
+        have = {it["type"] for it in inds}
+        zones_out, swings_out = _zone_and_swing_marks(inds, df, tail, zone_limit)                    # what the strategy declared ...
+        sz, ss, breaks_out = _smart_marks(an, df, tail, zone_limit, not have & {"zones", "engulf"}, True)      # ... and the chart's own where it declared nothing; the swings are always the market read's (down to single candles)
+        zones_out = sz if not have & {"zones", "engulf"} else zones_out
+        swings_out = ss
+        flow_out = marketread.summary(an, df)
+        plots.append({"id": "flow_auto", "type": "flow", "label": "Buyers vs Sellers", "panel": "osc", "levels": [0], "range": [-100, 100],
+                      "series": [{"field": None, "panel": "osc", "style": "bars", "values": [round(float(v), 1) for v in an["flow"]["score"][-tail:]]}]})
     return {
-        "zones": zones_out, "swings": swings_out,
+        "zones": zones_out, "swings": swings_out, "breaks": breaks_out, "flow": flow_out,
         "candles": [{"t": int(r.t), "o": float(r.open), "h": float(r.high), "l": float(r.low), "c": float(r.close),
                      "syn": bool(rows[len(rows) - tail + k].get("syn"))} for k, r in enumerate(sub.itertuples())],
-        "indicators": [_plot_indicator(it, env, tail) for it in inds],
+        "indicators": plots,
         "marks": marks, "signals": signals, "factors": per_factor, "note": note, "errors": errors,
         "need": int(v["spec"]["gates"]["min_candles"]) if v["ok"] else 60, "have": len(rows),
     }

@@ -196,14 +196,15 @@ def test_backtest_and_live_agree_candle_by_candle():
     assert total > 0
 
 
-def test_the_chart_draws_the_engulf_zone_with_its_engulfed_candle():
+def test_the_chart_draws_the_market_reads_zones_by_default():
+    """The chart's own zones are no longer every engulfing candle: they are the market read's swing / swing-engulf / strong zones (see test_marketread.py)."""
     cs = setup + [V_GREEN, LEAVE]
     rows = rows_of(cs)
-    d = chartdata.build(rows, {}, count=len(rows), marks_always=True)                         # no strategy: the chart's own zones are the engulfing-candle zones
-    z = [x for x in d["zones"] if x["kind"] == "demand" and x.get("src") == "engulf" and x["base"] == [rows[R]["t"]] * 2]
-    assert z and z[0]["why"] == "used" and z[0]["dep"] == [rows[R + 1]["t"]] * 2 and z[0]["touches"] == [rows[len(setup)]["t"]] and z[0]["t1"] == rows[len(setup)]["t"]
+    d = chartdata.build(rows, {}, count=len(rows), marks_always=True)                         # no strategy: the chart's own zones
+    assert d["zones"] and {x["src"] for x in d["zones"]} <= {"swing", "swing_engulf", "engulf", "base"} and all(x["id"] == "smart" for x in d["zones"])
+    assert d["flow"] and d["flow"]["side"] in (-1, 0, 1) and d["breaks"] is not None
     own = chartdata.build(rows, {"indicators": [{"id": "zn", "type": "zones"}], "factors": []}, count=len(rows), marks_always=True)
-    assert not [x for x in own["zones"] if x.get("src") == "engulf"]                         # a strategy with its own zone indicator keeps its own
+    assert not [x for x in own["zones"] if x["id"] == "smart"]                               # a strategy with its own zone indicator keeps its own
 
 
 def test_a_long_history_draws_every_zone_not_only_the_newest_few():
@@ -213,11 +214,10 @@ def test_a_long_history_draws_every_zone_not_only_the_newest_few():
     cs = [(p[i - 1], max(p[i - 1], p[i]) + .06, min(p[i - 1], p[i]) - .06, p[i]) for i in range(1, 3000)]
     rows = rows_of(cs)
     d = chartdata.build_all(rows, {}, 60, marks_always=True)
-    z = [x for x in d["zones"] if x.get("src") == "engulf"]
+    z = [x for x in d["zones"] if x["id"] == "smart"]
     assert len(z) > 100                                                                       # many zones in 3000 candles ...
     early = [x for x in z if x["t0"] < rows[1000]["t"]]
     assert len(early) > 20, len(early)                                                         # ... including plenty in the oldest third
-    assert len(z) == len([r for r in engulf.lifecycle(frame(cs)) if r["end"] is None or r["end"] > 0])
 
 
 if __name__ == "__main__":

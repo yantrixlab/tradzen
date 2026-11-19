@@ -5,6 +5,7 @@ import { useStrategies } from '../../hooks';
 import { ChartData, indicatorGroup } from '../StrategyChart';
 import { ErrorBox } from '../ui';
 import { PriceChart } from './PriceChart';
+import { FlowPanel } from './FlowPanel';
 import { catalogItem, IndicatorMenu } from './IndicatorMenu';
 import { usePref } from '../../prefs';
 import type { BtTrade, ChartArea, ChartBand, ChartCandle, ChartMarker, MtgSummary, SeriesGroup } from './types';
@@ -139,9 +140,11 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
   if (!candles.length && q.isError) return <ErrorBox error={q.error} />;
 
   return (
+    <>
+    {!compact && ind.data?.flow && <FlowPanel flow={ind.data.flow} tf={tf} />}
     <PriceChart
       candles={candles} forming={forming} lastPrice={live?.lastPrice ?? null} tf={tf}
-      overlays={overlays} panes={panes} zones={ind.data?.zones} swings={ind.data?.swings} markers={overlay?.markers} bands={overlay?.bands} areas={overlay?.areas} trades={q.data?.trades ?? []} payout={q.data?.payout ?? null} splitT={q.data?.split_t ?? null} mtg={q.data?.mtg ?? null}
+      overlays={overlays} panes={panes} zones={ind.data?.zones} swings={ind.data?.swings} breaks={ind.data?.breaks} markers={overlay?.markers} bands={overlay?.bands} areas={overlay?.areas} trades={q.data?.trades ?? []} payout={q.data?.payout ?? null} splitT={q.data?.split_t ?? null} mtg={q.data?.mtg ?? null}
       height={height} initialCount={initialCount} compact={compact} resetKey={`${symbol}-${tf}`} toolbarLeft={toolbarLeft}
       emptyText="Not enough stored candles for this pair and timeframe yet."
       footer={<>
@@ -152,5 +155,6 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
         {(ind.data?.runs ?? 0) > 1 && <div className="mt-1 text-[11px] text-mut">Zones, structure and indicators are worked out separately for each of the {ind.data!.runs} uninterrupted stretches of candles (they never span a data gap).</div>}
       </>}
     />
+    </>
   );
 }
