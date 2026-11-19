@@ -19,3 +19,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .vscode/
+
+# Quotex spike: its own virtualenv, the library's saved login session and its reports
+.venv-spike/
+session.json
