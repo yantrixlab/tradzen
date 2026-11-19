@@ -177,7 +177,7 @@ assert.strictEqual(JSON.stringify(win.__qxs.drainFeed().filter((i) => i.k === 'a
   assert(built[6] >= T0 + 58 && built[6] < T0 + 60, 'lastTick');
   assert(rows[4][6] > T0 + 120, 'the running minute carries its last tick time, so the server sees it as still forming');
 
-  // never invented: a minute that starts mid-way, one with a long silence and a finished one that stops early are not built
+  // never invented: a minute that starts mid-way and a finished one that stops more than 45 s early are not built
   win.__qxs.drainFeed();
   const sparse = [[T0 + 30, 1.0], [T0 + 31, 1.0], [T0 + 32, 1.1],                                  // starts 30 s into the minute: open unknown
                   [T0 + 60, 1.0], [T0 + 61, 1.0], [T0 + 90, 1.2], [T0 + 118, 1.2],                  // 29 s of silence inside
@@ -187,14 +187,24 @@ assert.strictEqual(JSON.stringify(win.__qxs.drainFeed().filter((i) => i.k === 'a
   bin({ asset: 'CHFJPY', period: 60, history: sparse });
   const h2 = JSON.parse(JSON.stringify(win.__qxs.drainFeed())).filter((i) => i.k === 'h');
   assert.strictEqual(h2.length, 1);
-  assert.deepStrictEqual(h2[0].rows.map((r) => r[0]), [T0 + 180], 'only the minute that is whole (and the running one) is built');
+  assert.deepStrictEqual(h2[0].rows.map((r) => r[0]), [T0 + 60, T0 + 180], 'the first minute starts mid-way and one ends 50 s early: not built; one with 29 s of silence is built; the running one too');
+  // a stub of the running minute at the end of the aggregated list must not hide the minutes before it; a quiet market (a tick every 8-12 s) still has candles
+  win.__qxs.drainFeed();
+  const quiet = [];
+  for (let s = 0; s < 250; s += 10) quiet.push([T0 + s + 2, 1.3 + (s % 40) * 0.001]);            // ticks 10 s apart, the first 2 s into each minute
+  const stub = [[T0 - 60, 1.1, 1.12, 1.15, 1.08, 50, T0 - 1], [T0 + 120, 1.3, 1.3, 1.3, 1.3, 1, T0 + 121]];       // the aggregate ends with a one-tick stub of the running minute
+  text('451-["history/list/v2",{"_placeholder":true,"num":0}]');
+  bin({ asset: 'CHFJPY', period: 60, candles: stub, history: quiet });
+  const h4 = JSON.parse(JSON.stringify(win.__qxs.drainFeed())).filter((i) => i.k === 'h');
+  assert.deepStrictEqual(h4[0].rows.map((r) => r[0]).sort((a, b) => a - b), [T0 - 60, T0, T0 + 60, T0 + 120, T0 + 180, T0 + 240], 'the stub is replaced and the minutes before it are built');
+  assert(h4[0].rows.find((r) => r[0] === T0 + 120)[5] > 1, 'the stub of the running minute is replaced by the candle the ticks build');
   // object-shaped ticks and the period read from the candles when the answer has none
   win.__qxs.drainFeed();
   text('451-["history/load",{"_placeholder":true,"num":0}]');
   bin({ asset: 'CHFJPY', data: [{ time: T0 - 60, open: 1, close: 1, high: 1, low: 1, ticks: 5, last_tick: T0 - 1 }, { time: T0 - 120, open: 1, close: 1, high: 1, low: 1, ticks: 5, last_tick: T0 - 61 }],
          history: [{ time: (T0 + 1) * 1000, price: 1.5 }, { time: (T0 + 30) * 1000, price: 1.6 }, { time: (T0 + 61) * 1000, price: 1.7 }, { time: (T0 + 62) * 1000, price: 1.71 }] });
   const h3 = JSON.parse(JSON.stringify(win.__qxs.drainFeed())).filter((i) => i.k === 'h');
-  assert.deepStrictEqual(h3[0].rows.map((r) => r[0]), [T0 - 60, T0 - 120, T0 + 60], 'millisecond timestamps are read; the first minute ends 30 s early (a finished candle that stops early) so it is not built, the running one is');
+  assert.deepStrictEqual(h3[0].rows.map((r) => r[0]), [T0 - 60, T0 - 120, T0, T0 + 60], 'millisecond timestamps are read; a minute whose ticks stop 30 s early is still built (a quiet market), and the running one');
 }
 
 // heartbeat with no sockets + worker tracking

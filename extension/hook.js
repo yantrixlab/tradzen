@@ -23,6 +23,7 @@
     samples: {},         // event key -> first few redacted payloads
     workers: [],         // Worker/SharedWorker scripts the page starts (a socket inside a worker is invisible to us)
     tickRing: [],        // last raw ticks [symbol, serverTs, price, dir, recvMs]
+    histories: {},       // symbol -> what the last history answer held (counts and time range, no prices), to see why a minute could not be built
     instruments: null,   // {count, otc, live, list:[[symbol,name,payout,open]], sample}
     parseErrors: 0,
   });
@@ -115,9 +116,11 @@
   // A history answer ({asset, period, candles, history}) holds server-aggregated candles, which trail real time by a few minutes, AND `history`: the raw
   // [time, price] ticks of those last minutes. Quotex's own chart builds its newest candles from them (the same way a live tick stream is turned into candles).
   // Dropping them left a hole of 2-3 candles between the last aggregated candle and the first candle built from live ticks - right before the running one.
-  // Only the buckets NEWER than the last aggregated candle are built, and only from ticks that really cover them (the same rules as the server's live builder:
-  // the first tick within TICK_START_SLACK s of the open, no silence longer than TICK_GAP s, a finished candle's ticks run to its end). Nothing is invented.
-  const TICK_START_SLACK = 3, TICK_GAP = 20, TICK_MAX = 20000, PERIODS = [60, 300, 900];
+  // Only the buckets NEWER than the last aggregated candle are built, and only from ticks Quotex really sent (nothing is invented). Quotex draws these candles from the
+  // very same ticks, so the rules are loose on purpose - a quiet market sends a tick every few seconds and still has a candle on Quotex's chart: the only minute that
+  // cannot be built is the FIRST one of the batch when its ticks start mid-minute (its open is unknown, TICK_START_SLACK s); later minutes may open up to TICK_OPEN_SLACK s
+  // after their start, and a silence longer than TICK_GAP s inside a minute (or at the end of a finished one) still means ticks were lost, so that minute stays a hole.
+  const TICK_START_SLACK = 3, TICK_OPEN_SLACK = 20, TICK_GAP = 45, TICK_MAX = 20000, PERIODS = [60, 300, 900];
   function candlesFromTicks(raw, period, afterT) {
     if (!Array.isArray(raw) || raw.length < 2 || PERIODS.indexOf(period) < 0) return [];
     const pts = [];
@@ -138,9 +141,10 @@
       groups.get(b).push(pt);
     }
     const out = [];
+    const firstB = Math.floor(pts[0][0] / period) * period;                           // the minute the whole batch of ticks starts in
     for (const b of [...groups.keys()].sort((x, y) => x - y)) {
       const g = groups.get(b);
-      if (g[0][0] - b > TICK_START_SLACK) continue;                                   // the batch starts mid-candle: its open is unknown
+      if (g[0][0] - b > (b === firstB ? TICK_START_SLACK : TICK_OPEN_SLACK)) continue;   // the batch starts mid-candle: its open is unknown
       let whole = true;
       for (let i = 1; i < g.length; i++) if (g[i][0] - g[i - 1][0] > TICK_GAP) { whole = false; break; }
       const last = g[g.length - 1][0];
@@ -170,9 +174,18 @@
       }
       if (Array.isArray(arg.history) && arg.history.length) {
         const have = rows || [];
-        const afterT = have.reduce((m, r) => (typeof r[0] === 'number' && r[0] > m ? r[0] : m), -Infinity);
-        const extra = candlesFromTicks(arg.history, periodOf(arg, have), afterT);
-        if (extra.length) rows = have.concat(extra);
+        const period = periodOf(arg, have);
+        // The aggregated list may end with a stub of the minute that is running (one tick, last tick seconds after its open): it must not hide the minutes before it,
+        // so "the last aggregated candle" is the newest one that really ran to its end (no last-tick field = taken as whole).
+        const whole = (r) => typeof r[0] === 'number' && !(typeof r[6] === 'number' && period > 0 && r[6] < r[0] + period - TICK_GAP);
+        const afterT = have.reduce((m, r) => (whole(r) && r[0] > m ? r[0] : m), -Infinity);
+        const extra = candlesFromTicks(arg.history, period, afterT);
+        S.histories[arg.asset] = { at: Math.round(Date.now() / 1000), period, aggregated: have.length, aggFrom: have.length ? Math.min(...have.map((r) => r[0])) : null, aggTo: Number.isFinite(afterT) ? afterT : null,
+                                   ticks: arg.history.length, built: extra.map((r) => r[0]) };
+        if (extra.length) {
+          const built = new Set(extra.map((r) => r[0]));
+          rows = have.filter((r) => !built.has(r[0])).concat(extra);                  // a stub of a minute the ticks cover is replaced by the candle they build
+        }
       }
       if (rows) pushFeed({ k: 'h', asset: arg.asset, rows });
     } else if (name === 'depth/change' && Array.isArray(arg) && arg.length &&
@@ -393,7 +406,7 @@
       version: 1, page: root.location ? root.location.origin + root.location.pathname : '',
       isTop: root.top === root, startedAt: S.started, installedAt, now: Date.now(), workers: S.workers,
       sockets: S.sockets.slice(-10), frames: S.frames, bytes: S.bytes, events: S.events, assets,
-      instruments: S.instruments, samples: S.samples, tickRing: S.tickRing.slice(-100), parseErrors: S.parseErrors,
+      instruments: S.instruments, samples: S.samples, tickRing: S.tickRing.slice(-100), histories: S.histories, parseErrors: S.parseErrors,
       account: { known: uid.cur !== null, hint: uid.cur ? uid.cur.slice(-3) : null, sources: uid.sources },      // event NAMES the account number was seen in (never the number)
     };
   }
