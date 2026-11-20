@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import backup, expr, extpack, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_sessions
+from . import backup, candleadmin, expr, extpack, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_sessions
 from .auth import COOKIE as COOKIE_NAME, from_env
 from .strategy_access import Access, is_staff
 from .feature_flags import Features
@@ -1105,6 +1105,59 @@ async def data_market_refresh() -> dict:
 @app.get("/api/data/gaps")
 async def data_gaps(symbol: str, tf: int = 60, limit: int = 200) -> dict:
     return engine.gaps(symbol, tf, max(1, min(limit, 2000)))
+
+
+class CandleDeleteIn(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=40)            # a pair, or * for every pair (then another filter is required)
+    tf: int | None = None
+    kind: str | None = None                                          # tick | history | contrib | yahoo | derived | other
+    since: int | None = None
+    until: int | None = None
+    with_derived: bool = True
+    dry_run: bool = True                                             # the default only counts
+    confirm: str = ""                                                # a real removal needs the pair's name (or DELETE for *) typed here
+
+
+@app.get("/api/data/inventory")
+async def data_inventory() -> list[dict]:
+    """Admin: what the candle store holds per pair, timeframe and kind of source (live feed, Quotex history, shared, real-market, derived), with the flat-candle share."""
+    return candleadmin.inventory(engine)
+
+
+@app.get("/api/data/check")
+async def data_check(symbol: str, tf: int = 60, kind: str | None = None) -> dict:
+    """Admin: one series examined candle by candle (broken shapes, spikes, jumps, flat candles) with the worst examples."""
+    try:
+        return candleadmin.check(engine, symbol, tf, kind)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/data/delete")
+async def data_delete(body: CandleDeleteIn, request: Request) -> dict:
+    """Admin: count (dry_run, the default) or remove stored candles. A real removal needs `confirm` = the pair's name (DELETE for pair *), saves what it removes to
+    data/deleted/ as a gzip CSV first, and is written to the audit log."""
+    if not body.dry_run and body.confirm != (body.symbol if body.symbol != "*" else "DELETE"):
+        raise HTTPException(400, "type the pair's name (or DELETE for every pair) in `confirm` to remove candles")
+    try:
+        res = candleadmin.delete(engine, DB_PATH.parent / "deleted", body.symbol, body.tf, body.kind, body.since, body.until, body.with_derived, body.dry_run)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not body.dry_run:
+        auth.audit(request.state.user["username"], "candles-delete", body.symbol,
+                   {"tf": body.tf, "kind": body.kind, "since": body.since, "until": body.until, "removed": res.get("removed", 0), "archive": res.get("archive")})
+    return res
+
+
+@app.get("/api/data/deleted/{name}")
+async def data_deleted_file(name: str):
+    """Admin: download a file written by a removal (the candles it took out)."""
+    from fastapi.responses import FileResponse
+    folder = (DB_PATH.parent / "deleted").resolve()
+    path = (folder / name).resolve()
+    if path.parent != folder or not path.is_file() or not name.endswith(".csv.gz"):
+        raise HTTPException(404, "no such file")
+    return FileResponse(path, filename=name)
 
 
 @app.get("/api/data/export")

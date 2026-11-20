@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import { ago, dateTime, pct, prettyPair, tfName } from '../format';
 import { useCoverage, useGaps, useLiveState, useMe, usePersisted, usePlan } from '../hooks';
 import { Badge, Card, Empty, Field, PageTitle, Spinner, Stat, Tabs } from '../components/ui';
+import { CandleManager } from '../components/CandleManager';
 import { ContribPanel } from '../components/ContribPanel';
 import { FeedPanel } from '../components/FeedPanel';
 import { SentimentPanel } from '../components/SentimentPanel';
@@ -81,9 +82,10 @@ export default function DataPage() {
       <PageTitle title="Data" sub={`${totalCandles.toLocaleString()} candles stored across ${new Set((cov.data ?? []).map((c) => c.symbol)).size} pairs. Backtests and the clinic can only be as good as this history - scroll a Quotex chart back to load older candles.`}
         right={<div className="flex items-center gap-2"><input className="input !w-56" placeholder="Filter pairs…" value={q} onChange={(e) => setQ(e.target.value)} /><a className="btn btn-sm" href="/api/data/export?fmt=csv" download title="Every stored candle of every pair, as one CSV">Export all CSV</a></div>} />
       <Tabs tabs={[{ key: 'plan', label: 'Collection plan' }, { key: 'sentiment', label: 'Sentiment' }, { key: 'coverage', label: 'Candle coverage' }, { key: 'instruments', label: `Instruments (${live.data.symbols.length})` }, { key: 'history', label: 'History imports' },
-        ...(isAdmin ? [{ key: 'shared', label: 'Shared candles' }, { key: 'feed', label: 'Live feed' }] : [])]} value={tab} onChange={setTab} />
+        ...(isAdmin ? [{ key: 'manage', label: 'Manage candles' }, { key: 'shared', label: 'Shared candles' }, { key: 'feed', label: 'Live feed' }] : [])]} value={tab} onChange={setTab} />
 
       {tab === 'plan' && <PlanTab now={now} />}
+      {tab === 'manage' && isAdmin && <CandleManager filter={q} now={now} />}
       {tab === 'shared' && isAdmin && <ContribPanel now={now} />}
       {tab === 'feed' && isAdmin && <FeedPanel now={now} />}
       {tab === 'sentiment' && <SentimentPanel now={now} />}
