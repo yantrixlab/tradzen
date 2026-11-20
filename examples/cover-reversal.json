@@ -1,0 +1,48 @@
+{
+  "engine": "spec/1",
+  "kind": "factors",
+  "timeframes": [
+    60,
+    300,
+    900
+  ],
+  "indicators": [
+    {
+      "id": "a",
+      "type": "atr",
+      "n": 14
+    }
+  ],
+  "factors": [
+    {
+      "id": "setup",
+      "name": "Hammer at a bottom / star at a top",
+      "weight": 34,
+      "kind": "expr",
+      "call": "lower_wick[2] >= 0.4 * range[2] and lower_wick[2] >= upper_wick[2] and abs(body[2]) <= 0.4 * range[2] and range[2] >= 0.3 * a[2] and low[2] <= lowest(low, 10)[2] + 0.25 * a[2]",
+      "put": "upper_wick[2] >= 0.4 * range[2] and upper_wick[2] >= lower_wick[2] and abs(body[2]) <= 0.4 * range[2] and range[2] >= 0.3 * a[2] and high[2] >= highest(high, 10)[2] - 0.25 * a[2]"
+    },
+    {
+      "id": "cover",
+      "name": "Covered by a candle of the opposite colour (at least half the setup)",
+      "weight": 33,
+      "kind": "expr",
+      "call": "red[1] and min(high[1], high[2]) - max(low[1], low[2]) >= 0.5 * range[2]",
+      "put": "green[1] and min(high[1], high[2]) - max(low[1], low[2]) >= 0.5 * range[2]"
+    },
+    {
+      "id": "trigger",
+      "name": "Decisive candle back the other way, closing past the covering candle's open",
+      "weight": 33,
+      "kind": "expr",
+      "call": "green and body >= 0.5 * a and body >= abs(body[1]) and close > open[1]",
+      "put": "red and body <= -0.5 * a and -body >= abs(body[1]) and close < open[1]"
+    }
+  ],
+  "gates": {
+    "min_candles": 60,
+    "min_agree": 3
+  },
+  "filters": [],
+  "expiry_candles": 1
+}

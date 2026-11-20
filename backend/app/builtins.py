@@ -13,6 +13,25 @@ def _single(indicators: list[dict], call: str | None, put: str | None, name: str
             "factors": [{"id": "signal", "name": name, "weight": 100, "kind": "expr", "call": call, "put": put}],
             "gates": {"min_candles": min_candles, "min_agree": 1}, "filters": filters or [], "expiry_candles": 1}
 
+def _cover_reversal() -> dict:
+    """Hammer / star, a candle that covers it, then a decisive candle back the other way (the signal is on the candle that closes it). Three conditions that must ALL hold on the
+    candle that just closed (min_agree 3); everything is measured in ATR or as a share of the candle's own range, so it needs no per-pair number. [2] = the setup candle,
+    [1] = the covering candle, no index = the trigger candle that just closed. LEVEL = the setup's extreme is within 0.25 ATR of the lowest low (highest high) of the last 10 candles."""
+    ind = [{"id": "a", "type": "atr", "n": 14}]
+    setup_call = "lower_wick[2] >= 0.4 * range[2] and lower_wick[2] >= upper_wick[2] and abs(body[2]) <= 0.4 * range[2] and range[2] >= 0.3 * a[2] and low[2] <= lowest(low, 10)[2] + 0.25 * a[2]"
+    setup_put = "upper_wick[2] >= 0.4 * range[2] and upper_wick[2] >= lower_wick[2] and abs(body[2]) <= 0.4 * range[2] and range[2] >= 0.3 * a[2] and high[2] >= highest(high, 10)[2] - 0.25 * a[2]"
+    cover = "min(high[1], high[2]) - max(low[1], low[2]) >= 0.5 * range[2]"
+    trig_call = "green and body >= 0.5 * a and body >= abs(body[1]) and close > open[1]"
+    trig_put = "red and body <= -0.5 * a and -body >= abs(body[1]) and close < open[1]"
+    return {"engine": "spec/1", "kind": "factors", "timeframes": ALL_TFS, "indicators": ind,
+            "factors": [
+                {"id": "setup", "name": "Hammer at a bottom / star at a top", "weight": 34, "kind": "expr", "call": setup_call, "put": setup_put},
+                {"id": "cover", "name": "Covered by a candle of the opposite colour (at least half the setup)", "weight": 33, "kind": "expr",
+                 "call": "red[1] and " + cover, "put": "green[1] and " + cover},
+                {"id": "trigger", "name": "Decisive candle back the other way, closing past the covering candle's open", "weight": 33, "kind": "expr",
+                 "call": trig_call, "put": trig_put}],
+            "gates": {"min_candles": 60, "min_agree": 3}, "filters": [], "expiry_candles": 1}
+
 
 BUILTINS: list[dict] = [
     {"key": DEFAULT_KEY, "name": "Confluence 5-Factor", "status": "live", "tags": ["confluence", "reversal"],
@@ -109,6 +128,11 @@ BUILTINS: list[dict] = [
                     "situation (tested on unseen candles) and signals follow / fade. Its signals are produced by app/momentum_ai.py - the placeholder rule below never fires. "
                     "Grade C = its own test found no edge: this is recorded to MEASURE it, not as a recommendation.",
      "spec": {**_single([], "0 > 1", "0 > 1", "AI-built rule (see app/momentum_ai.py)"), "timeframes": [60]}},
+
+    {"key": "cover-reversal", "name": "Hammer / Star Cover Reversal", "status": "paper", "tags": ["price action", "reversal"],
+     "description": "A hammer (small body, long lower wick) at the bottom of the last 10 candles, a red candle covering at least half of it, then a decisive green candle closing above "
+                    "the red candle's open = CALL on that close. The mirror (a star at the top, a green cover, a decisive red candle) = PUT. Sizes are in ATR, so it fits any pair and timeframe.",
+     "spec": _cover_reversal()},
 
     {"key": "consensus-3", "name": "Consensus (3 strategies agree)", "status": "paper", "tags": ["meta"],
      "description": "Signals only when at least 3 active strategies point the same way on the same candle and none disagree.",
