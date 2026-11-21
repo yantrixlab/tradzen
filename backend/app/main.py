@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import backup, candleadmin, expr, extpack, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_pay, routes_sessions, payments as payments_mod
+from . import backup, candleadmin, expr, extpack, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_markets, routes_pay, routes_sessions, payments as payments_mod, markets as markets_mod
 from .auth import COOKIE as COOKIE_NAME, from_env
 from .strategy_access import Access, is_staff
 from .feature_flags import Features
@@ -106,6 +106,7 @@ print(f"Tradzen: {'PRODUCTION' if auth.production else 'development'} mode, sign
 access = Access(engine)                                          # who may see / change / receive which strategy (app/strategy_access.py)
 features = Features(engine.db)                                   # menus / capabilities, plans and per-user overrides (see app/feature_flags.py)
 pay = payments_mod.Payments(engine.db, DB_PATH.parent / "pay", features.plan, features.plans)       # plans bought with manual payments: methods, QR, orders, approval (app/payments.py)
+markets = markets_mod.Markets(engine, features, auth)                      # the public chart platform: pair locks, market list, sign-up (app/markets.py)
 _env_admin = engine.db.execute("SELECT id FROM users WHERE env_admin=1").fetchone()
 if _env_admin:
     engine.set_primary(_env_admin[0])                          # the data that existed before accounts (the main database) belongs to the admin from the .env file
@@ -155,9 +156,10 @@ if auth.production:
 app.include_router(auth_router)
 
 
-app.include_router(routes_pay.bind(engine, auth, pay))               # plan payments (payments.py)
+app.include_router(routes_pay.bind(engine, auth, pay))
+app.include_router(routes_markets.bind(engine, auth, markets, pay))   # markets, sign-up, pricing (markets.py)               # plan payments (payments.py)
 app.include_router(routes_sessions.bind(engine, auth, features))   # live sessions (live_session.py)
-app.include_router(routes_control.bind(engine))      # settings, bulk strategy control, presets, signal board
+app.include_router(routes_control.bind(engine, lambda request, symbol: _pair_guard(request, symbol)))      # settings, bulk strategy control, presets, signal board
 
 
 class NoteIn(BaseModel):
@@ -469,6 +471,7 @@ class BtChartIn(BaseModel):
 @app.post("/api/backtests/chart")
 async def backtest_chart(body: BtChartIn, request: Request) -> dict:
     """Candles + the strategy trades for one pair (one pair replays in well under a second, so it runs on the loop like the other reads)."""
+    _pair_guard(request, body.symbol)
     if body.strategy_id is not None and not access.can_edit(_user(request), body.strategy_id):
         raise HTTPException(404, "strategy not found")
     if body.run_id is not None:
@@ -845,9 +848,23 @@ async def put_prefs(request: Request, body: PrefsIn) -> dict:
         raise HTTPException(400, str(e))
 
 
+def _pair_guard(request: Request, symbol: str | None, own_ok: bool = False) -> None:
+    """A paid pair stays closed to a free account on EVERY route that returns its candles (markets.py). own_ok: the pair open on the caller's own Quotex tab is theirs to see."""
+    u = request.state.user
+    if symbol and own_ok:
+        mine = engine.user_sel.get(int(u["id"])) if u.get("id") is not None else None
+        if mine and mine.get("symbol") == symbol:
+            return
+    try:
+        markets.require(u, symbol)
+    except markets_mod.Locked as e:
+        raise HTTPException(403, str(e))
+
+
 @app.get("/api/mychart")
 async def mychart(request: Request, symbol: str | None = None, tf: int | None = None) -> dict:
     """The chart of the pair open on the caller's own Quotex tab (or of the pair asked for): every account sees its own."""
+    _pair_guard(request, symbol, own_ok=True)
     return engine.mychart(request.state.user["id"], symbol, tf)
 
 

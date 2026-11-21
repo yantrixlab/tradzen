@@ -4,6 +4,7 @@ import { api, qs } from '../api';
 import { ago, dateTime } from '../format';
 import { Badge, Card, Empty, ErrorBox, Field, PageTitle, Spinner, Stat, Tabs } from '../components/ui';
 import { STATUS_TONE, money, readImage, type Order, type PayMethod } from '../lib/pay';
+import { PairMultiSelect } from '../components/PairMultiSelect';
 
 interface Stats { pending: number; month: { currency: string; orders: number; amount: number }[]; all_time: { currency: string; orders: number; amount: number }[] }
 interface Overview { methods: PayMethod[]; prices: { plan_id: number; method_id: number; amount: number; days: number }[]; stats: Stats; plans: { id: number; name: string }[] }
@@ -129,6 +130,45 @@ function PriceGrid({ o, onDone }: { o: Overview; onDone: () => void }) {
   );
 }
 
+
+interface Platform { lock: boolean; free_pairs: string[]; signup_open: boolean; pairs: { symbol: string; name: string; market: string | null }[] }
+
+/** The chart platform's switches: lock markets behind a paid plan (and which ones stay free) and let visitors create their own account. */
+function PlatformSettings() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['platform-admin'], queryFn: () => api<Platform>('/api/platform-admin/settings') });
+  const [draft, setDraft] = useState<{ lock: boolean; free: string[]; signup: boolean } | null>(null);
+  const save = useMutation({
+    mutationFn: (d: { lock: boolean; free: string[]; signup: boolean }) => api('/api/platform-admin/settings', { method: 'PUT', body: { lock: d.lock, free_pairs: d.free, signup_open: d.signup } }),
+    onSuccess: () => { setDraft(null); qc.invalidateQueries({ queryKey: ['platform-admin'] }); qc.invalidateQueries({ queryKey: ['markets'] }); qc.invalidateQueries({ queryKey: ['auth-config'] }); },
+  });
+  if (q.isError) return <ErrorBox error={q.error} />;
+  if (!q.data) return <Spinner />;
+  const cur = draft ?? { lock: q.data.lock, free: q.data.free_pairs, signup: q.data.signup_open };
+  const set = (p: Partial<typeof cur>) => setDraft({ ...cur, ...p });
+  return (
+    <div className="space-y-4">
+      <Card title="Markets: free and paid">
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={cur.lock} onChange={(e) => set({ lock: e.target.checked })} />
+          <span><b>Lock markets behind a paid plan.</b> While this is off, every signed-in user opens every market (how it works today). When it is on, a user without a plan that has <i>Open every pair</i> (Features page) opens only the free markets below. Admins and editors always open everything.</span></label>
+        {cur.lock && (
+          <div className="mt-3 max-w-md">
+            <div className="label">Free markets</div>
+            <PairMultiSelect unit="markets" options={q.data.pairs.map((p) => ({ symbol: p.symbol, n: 0, payout: null }))} value={cur.free} onChange={(v) => set({ free: v })} />
+            <p className="note mt-1">{cur.free.length === 0 ? 'No free market: everything is locked for accounts without a paid plan.' : `${cur.free.length} free market${cur.free.length === 1 ? '' : 's'}.`}</p>
+          </div>)}
+        <p className="note mt-3">The lock is applied on the server to the market list, the live chart and every other place that returns a pair's candles, so it cannot be bypassed from the page. Create a paid plan on the Features page, switch on <i>Open every pair</i> in it, give it a price under Methods &amp; prices.</p>
+      </Card>
+      <Card title="Sign-up">
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={cur.signup} onChange={(e) => set({ signup: e.target.checked })} />
+          <span><b>Let visitors create their own account.</b> A "Create account" tab appears on the sign-in page. New accounts are traders on the default plan, never staff. At most 5 sign-ups an hour per address and 40 an hour in total; every one is in the audit log. There is no e-mail check, so it does not stop one person making several accounts.</span></label>
+      </Card>
+      {save.isError && <ErrorBox error={save.error} />}
+      <div className="flex items-center gap-2"><button className="btn btn-primary" disabled={!draft || save.isPending} onClick={() => draft && save.mutate(draft)}>{save.isPending ? 'Saving…' : 'Save'}</button>{draft && <button className="btn" onClick={() => setDraft(null)}>Discard</button>}</div>
+    </div>
+  );
+}
+
 /** The admin's side of plan payments: review what users sent, keep the payment methods and the prices. */
 export default function Payments() {
   const qc = useQueryClient();
@@ -153,7 +193,7 @@ export default function Payments() {
         <Stat label="Approved this month" value={sums(st.month)} sub={st.month.map((r) => `${r.orders} order${r.orders === 1 ? '' : 's'}`).join(' · ') || 'none yet'} />
         <Stat label="Approved in total" value={sums(st.all_time)} sub={st.all_time.map((r) => `${r.orders} order${r.orders === 1 ? '' : 's'}`).join(' · ') || 'none yet'} />
       </div>
-      <Tabs tabs={[{ key: 'review', label: `To review (${st.pending})` }, { key: 'all', label: 'All orders' }, { key: 'setup', label: 'Methods & prices' }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ key: 'review', label: `To review (${st.pending})` }, { key: 'all', label: 'All orders' }, { key: 'setup', label: 'Methods & prices' }, { key: 'platform', label: 'Markets & sign-up' }]} value={tab} onChange={setTab} />
 
       {tab === 'review' && (pending.length === 0 ? <Card><Empty>Nothing is waiting for review.</Empty></Card> : <div className="space-y-3">{pending.map((x) => <OrderCard key={x.id} o={x} onDone={refresh} />)}</div>)}
 
@@ -162,6 +202,8 @@ export default function Payments() {
           <input className="input !w-56" placeholder="Search user or reference…" value={q} onChange={(e) => setQ(e.target.value)} /></div>}>
           {!allQ.data ? <Spinner /> : allQ.data.orders.length === 0 ? <Empty>No orders match.</Empty> : <div className="space-y-3">{allQ.data.orders.map((x) => <OrderCard key={x.id} o={x} onDone={refresh} />)}</div>}
         </Card>)}
+
+      {tab === 'platform' && <PlatformSettings />}
 
       {tab === 'setup' && (
         <div className="space-y-4">

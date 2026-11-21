@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from . import chartdata, control, generator
@@ -12,9 +12,10 @@ router = APIRouter(prefix="/api")
 _engine = None
 
 
-def bind(engine) -> APIRouter:
-    global _engine
+def bind(engine, pair_guard=None) -> APIRouter:
+    global _engine, _pair_guard
     _engine = engine
+    _pair_guard = pair_guard
     return router
 
 
@@ -143,8 +144,10 @@ class ChartIn(BaseModel):
 
 
 @router.post("/strategies/chart")
-async def strategy_chart(body: ChartIn) -> dict:
+async def strategy_chart(body: ChartIn, request: Request) -> dict:
     """Candles + the draft strategy's indicator lines + where each condition is true, for the builder's chart."""
+    if _pair_guard is not None:
+        _pair_guard(request, body.symbol)                     # a paid pair stays closed to a free account (markets.py)
     if body.tf not in (60, 300, 900):
         raise HTTPException(400, "tf must be 60, 300 or 900")
     try:

@@ -101,6 +101,9 @@ _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile
     (r"^/api/auth/panel-session$", {"POST"}, "public", None),             # the side panel trades its one-time ticket for a limited session (the ticket is the credential)
     (r"^/api/auth/extension-login$", {"POST"}, "public", None),          # the extension popup signs in with username + password and gets its own revocable token
     (r"^/ingest$", {"POST"}, "ingest", None),
+    (r"^/api/auth/config$", {"GET"}, "public", None),                    # the sign-in page asks whether sign-up is open
+    (r"^/api/auth/register$", {"POST"}, "public", None),                 # self sign-up (closed until the admin opens it: markets.py)
+    (r"^/api/public/plans$", {"GET"}, "public", None),                   # the plans and prices, visible before signing in
     (r"^/api/auth/", None, "any", None),
     (r"^/api/me$", None, "any", None),
     (r"^/api/prefs$", {"GET", "PUT"}, "any", None),                      # the caller's own display preferences (chart switches ...)
@@ -109,6 +112,7 @@ _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile
     (r"^/api/events$", {"GET"}, "any", None),
     (r"^/api/livefeed/mine$", {"GET"}, "any", None),                   # the live-price leases of the caller; everything else under /api/livefeed is admin-only
     (r"^/api/contrib/mine$", {"GET"}, "any", None),                  # the shared-candle contributions of the caller; everything else under /api/contrib is admin-only
+    (r"^/api/markets(/[A-Za-z0-9_.\-]+/live)?$", {"GET"}, "any", "menu.markets"),          # the market list and a pair's live answer (pairs may be locked per plan: markets.py)
     (r"^/api/pay/(plans|orders)$", None, "any", None),           # buying a plan: the catalogue, my orders and submitting one (everything under /api/pay-admin is admin-only)
     (r"^/api/pay/orders/\d+/cancel$", {"POST"}, "any", None),
     (r"^/api/pay/qr/[0-9a-f]{20}\.(png|jpg|webp)$", {"GET"}, "any", None),

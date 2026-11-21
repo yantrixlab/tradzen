@@ -41,7 +41,7 @@ Goal: a person picks a plan, pays by UPI or USDT outside the app, submits the re
 - USDT can be verified automatically later (look the hash up on a public chain explorer: right address, amount, confirmations). UPI cannot, without a payment gateway (Razorpay / Cashfree / PhonePe) that confirms the payment itself. The manual flow is built so a gateway or the chain check can be added as an "auto-approve" step without changing the tables.
 - Receiving money makes this a business: terms of service, a refund policy, and the local rules for what you sell (see the last section).
 
-## Phase 3 - The public chart platform (about 4-6 days for the UI on the current feed)
+## Phase 3 - The public chart platform (about 4-6 days for the UI on the current feed) - BUILT in the signed-in app (Markets page, server-side locks, open sign-up switch, plans on the sign-in page); NOT built: a pushed (WebSocket / SSE) stream - the page polls once a second -, e-mail verification, a device limit per account, public chart pages without sign-in
 The reference site: header with pair, timeframe, a live countdown to the candle close and a LIVE badge; a market sidebar with OTC and live groups where locked pairs show a padlock; a pricing modal.
 
 - **Public site section** (same app, routes `/charts/...`, a landing / pricing page, sign-up and sign-in): reuses `PriceChart` for the candles, the countdown, the zoom and pan, and the market-read panel; no admin menus.

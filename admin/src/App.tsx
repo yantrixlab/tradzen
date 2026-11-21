@@ -23,6 +23,7 @@ import AI from './pages/AI';
 import EdgeLab from './pages/EdgeLab';
 import DataPage from './pages/DataPage';
 import Plans from './pages/Plans';
+import Markets from './pages/Markets';
 import Payments from './pages/Payments';
 import Alerts from './pages/Alerts';
 import System from './pages/System';
@@ -46,7 +47,7 @@ type Role = Me['user']['role'];
 /** [path, label, icon, lowest role that may open it]. The server enforces the same rules on every API call (see backend/app/auth.py): hiding a menu is only a courtesy. */
 // [path, label, icon, lowest role, feature key]. The feature key is the switch on the Features page (backend/app/features.py).
 const NAV: [string, string, string, 'trader' | 'editor' | 'admin', string][] = [
-  ['/', 'Overview', '◈', 'editor', 'menu.overview'], ['/sessions', 'Live sessions', '◉', 'trader', 'menu.sessions'], ['/session', 'Session console', '▶', 'admin', 'menu.sessionconsole'], ['/chart', 'Live chart', '◔', 'trader', 'menu.chart'], ['/live', 'Quotex Signal', '⚡', 'admin', 'menu.live'], ['/generate', 'Trade generator', '✦', 'admin', 'menu.generate'],
+  ['/', 'Overview', '◈', 'editor', 'menu.overview'], ['/markets', 'Markets', '◫', 'trader', 'menu.markets'], ['/sessions', 'Live sessions', '◉', 'trader', 'menu.sessions'], ['/session', 'Session console', '▶', 'admin', 'menu.sessionconsole'], ['/chart', 'Live chart', '◔', 'trader', 'menu.chart'], ['/live', 'Quotex Signal', '⚡', 'admin', 'menu.live'], ['/generate', 'Trade generator', '✦', 'admin', 'menu.generate'],
   ['/trades', 'My trades', '$', 'trader', 'menu.trades'], ['/guard', 'Trading guard', '🛡', 'trader', 'menu.guard'], ['/style', 'My style', '✎', 'trader', 'menu.style'],
   ['/signals', 'Signal history', '≣', 'trader', 'menu.signals'], ['/library', 'Strategy library', '❖', 'trader', 'menu.library'], ['/strategies', 'Strategies', '⚙', 'trader', 'menu.strategies'],
   ['/backtests', 'Backtest lab', '↺', 'trader', 'menu.backtests'],
@@ -189,6 +190,7 @@ function Shell({ me }: { me: Me }) {
             <Route path="/system" element={gate('admin', <System />)} />
             <Route path="/users" element={gate('admin', <Users />)} />
             <Route path="/features" element={gate('admin', <Features />)} />
+            <Route path="/markets" element={gate('trader', <Markets />)} />
             <Route path="/plans" element={gate('trader', <Plans />)} />
             <Route path="/payments" element={gate('admin', <Payments />)} />
             <Route path="/account" element={<Account />} />
@@ -212,7 +214,8 @@ export default function App() {
     return () => window.removeEventListener('qxs-unauth', out);
   }, [qc]);
   if (loc.pathname === '/embed-chart' && me.data) return <EmbedChart />;
-  if (me.isLoading) return <div className="grid h-full place-items-center"><Spinner label="Loading…" /></div>;
+  // only the very first load shows the spinner: a later refetch of a failed sign-in check (a window gaining focus ...) must not unmount the sign-in form and wipe what is typed in it
+  if (me.isLoading && !me.errorUpdatedAt) return <div className="grid h-full place-items-center"><Spinner label="Loading…" /></div>;
   if (me.isError) {
     if (me.error instanceof ApiError && me.error.status === 401) return <Login />;
     return <div className="p-6"><ErrorBox error={me.error} /></div>;
