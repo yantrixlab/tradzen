@@ -24,12 +24,79 @@ FILTERS = {                      # type -> default params
     "one_per_run": {"gap": 1},
 }
 RUN_GAP_MAX = 5
+PLACEHOLDER_RE = re.compile(r"\{([a-z][a-z0-9_]*)(?:\.([a-z_]+))?\}")
+HEADS_UP_TEXT_MAX = 400
 TREND_VALUES = ("with", "against", "not_against", "not_with")
 GATE_DEFAULTS = {"min_candles": 60, "min_agree": 1, "max_opposing_weight": 100, "min_strength": 0, "tier_a": None}
 
 
 def _num(x) -> bool:
     return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _field_ok(known: dict, nm: str, attr: str | None) -> str | None:
+    """None when `nm` / `nm.attr` can be read, else why not."""
+    if nm not in known:
+        return f"unknown name '{nm}' (declare it under indicators)"
+    flds = known[nm]
+    if flds is None and attr:
+        return f"'{nm}' is a single series, it has no field '{attr}'"
+    if flds is not None and (attr is None or attr not in flds):
+        return f"'{nm}' needs one of its fields: {nm}.{{{', '.join(flds)}}}"
+    return None
+
+
+def _heads_up(raw, known: dict, errors: list[str]) -> dict | None:
+    """The optional early alert: {"call": cond, "put": cond, "level": {"call": "wk.lo_lvl", "put": "wk.hi_lvl"}, "text": {"call": "...", "put": "..."}, "title": "..."}.
+    A condition is evaluated on every closed candle exactly like a factor condition; when it turns true the engine sends a "get ready" alert (once per level). In `text`,
+    {wk.hi_lvl} / {close} style placeholders are filled with the values on that candle."""
+    if raw in (None, {}, False):
+        return None
+    if not isinstance(raw, dict):
+        errors.append("heads_up must be an object")
+        return None
+    bad = [k for k in raw if k not in ("call", "put", "level", "text", "title")]
+    if bad:
+        errors.append(f"heads_up: unknown key(s) {bad}")
+    out: dict = {"call": None, "put": None, "level": {"call": None, "put": None}, "text": {"call": "", "put": ""}, "title": ""}
+    for side in ("call", "put"):
+        cond = raw.get(side)
+        if cond:
+            try:
+                for nm, attr in expr.names_used(cond):
+                    why = _field_ok(known, nm, attr)
+                    if why:
+                        raise expr.ExprError(why)
+                out[side] = cond
+            except expr.ExprError as e:
+                errors.append(f"heads_up.{side}: {e}")
+        lv = (raw.get("level") or {}).get(side) if isinstance(raw.get("level"), dict) else None
+        if lv:
+            m = PLACEHOLDER_RE.fullmatch("{" + str(lv) + "}")
+            why = _field_ok(known, m.group(1), m.group(2)) if m else "must be a name or name.field"
+            if why:
+                errors.append(f"heads_up.level.{side}: {why}")
+            else:
+                out["level"][side] = str(lv)
+        tx = (raw.get("text") or {}).get(side) if isinstance(raw.get("text"), dict) else None
+        if tx:
+            if not isinstance(tx, str) or len(tx) > HEADS_UP_TEXT_MAX:
+                errors.append(f"heads_up.text.{side} must be text of at most {HEADS_UP_TEXT_MAX} characters")
+            else:
+                for nm, attr in PLACEHOLDER_RE.findall(tx):
+                    why = _field_ok(known, nm, attr or None)
+                    if why:
+                        errors.append(f"heads_up.text.{side}: {why}")
+                out["text"][side] = tx
+    if not out["call"] and not out["put"]:
+        errors.append("heads_up needs a 'call' and/or 'put' condition")
+        return None
+    t = raw.get("title") or ""
+    if not isinstance(t, str) or len(t) > 80:
+        errors.append("heads_up.title must be text of at most 80 characters")
+    else:
+        out["title"] = t
+    return out
 
 
 def validate_spec(raw) -> dict:
@@ -198,6 +265,11 @@ def validate_spec(raw) -> dict:
         errors.append("gates.min_agree is larger than the number of factors")
     if len(out["factors"]) == 1 and gates["min_agree"] > 1:
         errors.append("a single-factor strategy needs min_agree = 1")
+
+    # ---- heads-up (an early "get ready" alert, before the signal itself)
+    hu = _heads_up(raw.get("heads_up"), known, errors)
+    if hu:
+        out["heads_up"] = hu
 
     # ---- filters
     fl = raw.get("filters") or []

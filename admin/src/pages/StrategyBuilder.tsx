@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../api';
 import { Catalog, useCatalog, useCoverage, usePersisted } from '../hooks';
-import { blankFactor, blankForm, FactorForm, FilterForm, formToSpec, IndicatorForm, SpecForm, specToForm } from '../lib/specModel';
+import { blankFactor, blankForm, blankHeadsUp, FactorForm, FilterForm, formToSpec, HeadsUpForm, IndicatorForm, SpecForm, specToForm } from '../lib/specModel';
 import { Badge, Card, ErrorBox, Field, PageTitle, Spinner, Tabs } from '../components/ui';
 import { prettyPair, tfName } from '../format';
 import { BuilderChart, indColor, useChartQuery } from '../components/StrategyChart';
@@ -230,6 +230,7 @@ export default function StrategyBuilder({ mode }: { mode: 'new' | 'edit' | 'clon
                   <FactorsEditor form={form} cat={cat} upd={upd} onExprs={onExprs} onRecipe={applyRecipe} onPattern={onPattern} onPatternRecipe={applyPatternRecipe} active={active} setActive={setActive} />
                   <GatesEditor form={form} upd={upd} />
                   <FiltersEditor form={form} cat={cat} upd={upd} />
+                  <HeadsUpEditor form={form} upd={upd} />
                 </>
               )}
             </div>
@@ -398,6 +399,28 @@ function GatesEditor({ form, upd }: { form: SpecForm; upd: Upd }) {
       <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={g.tierA} onChange={(e) => set({ tierA: e.target.checked })} /> Split into tiers: Tier A when</label>
       {g.tierA && <div className="mt-2 flex items-end gap-3"><div className="w-28"><Field label="≥ factors"><NumInput value={g.tier_a_agree} onChange={(n) => set({ tier_a_agree: n })} /></Field></div>
         <div className="w-28"><Field label="and strength ≥"><NumInput value={g.tier_a_strength} onChange={(n) => set({ tier_a_strength: n })} /></Field></div><span className="note pb-2">otherwise Tier B</span></div>}
+    </Card>
+  );
+}
+
+function HeadsUpEditor({ form, upd }: { form: SpecForm; upd: Upd }) {
+  const h = form.headsUp, on = !!h;
+  const set = (p: Partial<HeadsUpForm>) => upd({ headsUp: { ...(h ?? blankHeadsUp()), ...p } });
+  return (
+    <Card title="Early alert (get ready)" right={<label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={on} onChange={(e) => upd({ headsUp: e.target.checked ? blankHeadsUp() : null })} />send one before the signal</label>}>
+      {!h && <div className="note">Off. When on, a live strategy sends a "Get ready" alert (pair, expected direction, level and your sentence) as soon as the condition below is true on a closed candle - once per setup - and the real signal follows only if the strategy's own conditions complete. The conditions use the same names as the factors.</div>}
+      {h && (
+        <div className="space-y-3">
+          <Grid>
+            <Field label="CALL warning when" hint="e.g. wk.lo_lvl > 0 and wk.lo_run >= 1 and red"><input className="input font-mono" value={h.call} onChange={(e) => set({ call: e.target.value })} /></Field>
+            <Field label="PUT warning when" hint="e.g. wk.hi_lvl > 0 and wk.hi_run >= 1 and green"><input className="input font-mono" value={h.put} onChange={(e) => set({ put: e.target.value })} /></Field>
+            <Field label="CALL level to show" hint="a name.field, e.g. wk.lo_lvl"><input className="input font-mono" value={h.levelCall} onChange={(e) => set({ levelCall: e.target.value })} /></Field>
+            <Field label="PUT level to show" hint="e.g. wk.hi_lvl"><input className="input font-mono" value={h.levelPut} onChange={(e) => set({ levelPut: e.target.value })} /></Field>
+            <Field label="CALL sentence" hint="{name.field} is replaced by its value"><textarea className="input" rows={3} value={h.textCall} onChange={(e) => set({ textCall: e.target.value })} /></Field>
+            <Field label="PUT sentence"><textarea className="input" rows={3} value={h.textPut} onChange={(e) => set({ textPut: e.target.value })} /></Field>
+          </Grid>
+          <Field label="Title tail (optional)"><input className="input" maxLength={80} value={h.title} onChange={(e) => set({ title: e.target.value })} /></Field>
+        </div>)}
     </Card>
   );
 }

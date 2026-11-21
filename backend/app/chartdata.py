@@ -31,6 +31,7 @@ PLOTS: dict[str, list[tuple[str | None, str, str]]] = {
     "supertrend": [("line", "price", "line")], "psar": [("sar", "price", "dots")],
     "zones": [("dz_hi", "price", "dash"), ("dz_lo", "price", "dash"), ("sz_hi", "price", "dash"), ("sz_lo", "price", "dash")],   # the zone price just touched
     "engulf": [("dz_hi", "price", "dash"), ("dz_lo", "price", "dash"), ("sz_hi", "price", "dash"), ("sz_lo", "price", "dash")],     # (replaced by the drawn zones)
+    "weak": [("hi_lvl", "price", "dash"), ("lo_lvl", "price", "dash")],                                 # the armed weak high / weak low of a star / hammer
     "structure": [("sh", "price", "dash"), ("sl", "price", "dash")],                                  # the newest swing high / low
     "rsi": [(None, "osc", "line")], "cci": [(None, "osc", "line")], "williams": [(None, "osc", "line")],
     "roc": [(None, "osc", "line")], "atr": [(None, "osc", "line")],

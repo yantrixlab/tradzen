@@ -255,6 +255,7 @@ async function doForward(items, tabId) {
 
 // ------------------------------------------------------------------ alerts
 function soundFor(ev) {
+  if (ev.kind === 'headsup') return ev.sound === false ? null : (ev.sound || 'shead');                  // a strategy's early "get ready" before its signal
   if (ev.kind === 'session') return ev.sound === false ? null : (ev.sound || 'ginfo');            // live session: started / get ready / cancelled / ended
   if (ev.kind === 'guard') return ev.sound === false ? null : ({ success: 'gwin', info: 'ginfo', warn: 'gwarn', danger: 'gstop' }[ev.level] || 'gwarn');
   if (ev.kind === 'signal') return (ev.direction === 'CALL' ? 'call' : 'put') + (ev.tier === 'B' ? 'B' : '');
@@ -268,7 +269,7 @@ async function handleEvents(events, tabId, cfg) {
     if ((ev.kind === 'session' || ev.session_id != null) && cfg.sessions === false) continue;      // live-session alerts switched off in the popup
     if (ev.tier === 'B' && cfg.tiers === 'A') continue;
     const age = now - ev.t;
-    if ((ev.kind === 'signal' && age > 20) || (ev.kind === 'result' && age > 90) || (ev.kind === 'guard' && age > 180) || (ev.kind === 'session' && age > 60)) continue;   // stale (worker was asleep)
+    if ((ev.kind === 'signal' && age > 20) || (ev.kind === 'result' && age > 90) || (ev.kind === 'guard' && age > 180) || (ev.kind === 'session' && age > 60) || (ev.kind === 'headsup' && age > 60)) continue;   // stale (worker was asleep)
     await deliver(ev, tabId, cfg);
   }
 }
@@ -276,13 +277,13 @@ async function handleEvents(events, tabId, cfg) {
 let clockSkew = null;                       // seconds the server's clock is ahead of this computer's (null until the first answer)
 async function deliver(ev, tabId, cfg) {
   const sound = soundFor(ev);
-  const wantSound = sound && cfg.sound && (ev.kind === 'signal' || ev.kind === 'guard' || ev.kind === 'session' || cfg.resultSound);
+  const wantSound = sound && cfg.sound && (ev.kind === 'signal' || ev.kind === 'guard' || ev.kind === 'session' || ev.kind === 'headsup' || cfg.resultSound);
   const playedHere = wantSound ? await playSound(sound, cfg.volume) : true;
   if (tabId != null) {
     chrome.tabs.sendMessage(tabId, { __qxsNotify: ev, settings: cfg, sound, playHere: wantSound && !playedHere, skew: clockSkew }, { frameId: 0 }).catch(() => {});
   }
   if (cfg.desktop && ev.kind === 'signal') desktopNotify(ev, tabId);
-  if (cfg.desktop && (ev.kind === 'guard' || ev.kind === 'session')) guardNotify(ev, tabId);
+  if (cfg.desktop && (ev.kind === 'guard' || ev.kind === 'session' || ev.kind === 'headsup')) guardNotify(ev, tabId);
 }
 
 let creating = null;

@@ -23,6 +23,16 @@ describe('specModel', () => {
     expect(back.filters).toEqual(spec.filters);
   });
 
+  it('keeps the early alert (heads_up) through the form and drops it when both conditions are empty', () => {
+    const hu = { title: 'weak level ahead', put: 'wk.hi_lvl > 0', call: 'wk.lo_lvl > 0', level: { call: 'wk.lo_lvl', put: 'wk.hi_lvl' }, text: { put: 'Star at {wk.hi_lvl}', call: 'Hammer at {wk.lo_lvl}' } };
+    const form = specToForm({ ...spec, heads_up: hu });
+    expect(form.headsUp?.levelPut).toBe('wk.hi_lvl');
+    expect(formToSpec(form).heads_up).toEqual(hu);
+    form.headsUp = { ...form.headsUp!, call: '', put: '' };
+    expect(formToSpec(form).heads_up).toBeUndefined();
+    expect(formToSpec(specToForm(spec)).heads_up).toBeUndefined();
+  });
+
   it('omits empty conditions and unused tier rule', () => {
     const f = blankForm();
     f.factors[0].call = 'close > open';

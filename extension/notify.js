@@ -296,7 +296,7 @@
     el.className = 'card g-' + (GL[ev.level] ? ev.level : 'warn');
     el.setAttribute('role', 'alert');
     el.innerHTML = `<div class="accent"></div><div class="pad">
-      <div class="top"><span class="brand">${ev.kind === 'session' ? '⚡ LIVE SESSION' : '🛡 TRADING GUARD'}</span><span class="lvl">${esc(ev.kind === 'session' && ev.stage ? ({ started: 'LIVE', headsup: 'GET READY', cancelled: 'CANCELLED', ended: 'ENDED' }[ev.stage] || label) : label)}</span><span class="live"></span><button class="x" title="Dismiss" aria-label="Dismiss">×</button></div>
+      <div class="top"><span class="brand">${ev.kind === 'session' ? '⚡ LIVE SESSION' : ev.kind === 'headsup' ? '🎯 STRATEGY' : '🛡 TRADING GUARD'}</span><span class="lvl">${esc(ev.kind === 'headsup' ? 'GET READY' : ev.kind === 'session' && ev.stage ? ({ started: 'LIVE', headsup: 'GET READY', cancelled: 'CANCELLED', ended: 'ENDED' }[ev.stage] || label) : label)}</span><span class="live"></span><button class="x" title="Dismiss" aria-label="Dismiss">×</button></div>
       <div class="gmain"><div class="gicon">${icon}</div><div><div class="gtitle">${esc(ev.title)}</div><div class="gmsg">${esc(ev.message)}</div></div></div>
       ${chips ? `<div class="gchips">${chips}</div>` : ''}${prog}</div><div class="life"></div>`;
     el.querySelector('.x').addEventListener('click', () => dismiss(key));
@@ -376,6 +376,6 @@
     if (msg.playHere && window.QXSound && settings.sound !== false) window.QXSound.play(msg.sound || 'call', settings.volume);
     if (settings.alerts === false) return;
     const ev = msg.__qxsNotify;
-    if (ev.kind === 'signal') addSignal(ev); else if (ev.kind === 'result') addResult(ev); else if (ev.kind === 'guard' && settings.guard !== false) addGuard(ev); else if (ev.kind === 'session' && settings.sessions !== false) { if (ev.stage === 'started' || ev.stage === 'ended') addSessionDialog(ev); else addGuard(ev); }
+    if (ev.kind === 'signal') addSignal(ev); else if (ev.kind === 'result') addResult(ev); else if (ev.kind === 'guard' && settings.guard !== false) addGuard(ev); else if (ev.kind === 'headsup') addGuard(ev); else if (ev.kind === 'session' && settings.sessions !== false) { if (ev.stage === 'started' || ev.stage === 'ended') addSessionDialog(ev); else addGuard(ev); }
   });
 })();

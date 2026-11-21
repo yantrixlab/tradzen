@@ -126,6 +126,7 @@ class Engine:
         self.strategy_id = 0
         self.strategy_version = 0
         self._alerted: set[int] = set()               # signal ids that produced an alert card (their result is announced too)
+        self._headsup_seen: dict[tuple, tuple] = {}   # (strategy, pair, timeframe, direction) -> (level, candle) of the last "get ready" alert, so one setup warns once
         self._mute_state: dict[int, bool] = {}
         self.eval_counts: dict[int, int] = {}
         self._fkey, self._fbase = None, None          # per-candle shared feature snapshot
@@ -722,6 +723,54 @@ class Engine:
             if sig and sig["direction"] != "SKIP":
                 issued.append(sig)
         self._alert(issued)
+        if not syn:
+            self._heads_up(defs, results, sym, tf, row, rows)
+
+    def _heads_up(self, defs: list[dict], results: dict, sym: str, tf: int, row: dict, rows: list[dict]) -> None:
+        """The early "get ready" alert of strategies that define one (spec `heads_up`): sent once per setup, only by live un-muted strategies, one candle or more
+        before the signal can come, and never for a direction the strategy is signalling right now."""
+        if not self.alerts_enabled:
+            return
+        cache: dict = {}
+        for d in defs:
+            if d["spec"].get("heads_up") is None or d["status"] != "live" or d["spec"]["kind"] == "meta" or self.is_muted(d["id"]):
+                continue
+            try:
+                found = evaluator.heads_up(d["spec"], evaluator.tail_for(d["spec"], rows), cache)
+            except Exception as e:                          # an early alert must never get in the way of the signals
+                self._log("strategy-error", f"{d['key']} heads-up {sym} tf={tf}: {e}")
+                continue
+            res = results.get(d["key"], (None, None))[1]
+            for h in found:
+                if res is not None and res.direction == h["direction"]:
+                    continue                                # the real signal is going out this candle
+                key = (d["id"], sym, tf, h["direction"])
+                seen = self._headsup_seen.get(key)
+                if seen and (seen[0] == h["level"] if h["level"] is not None else row["t"] - seen[1] <= 5 * tf):
+                    continue                                # this setup has been announced
+                self._headsup_seen[key] = (h["level"], row["t"])
+                self._emit_headsup(d, sym, tf, row, h)
+        for k in [k for k, v in self._headsup_seen.items() if row["t"] - v[1] > 200 * tf and k[2] == tf]:
+            del self._headsup_seen[k]                       # the memory stays small
+
+    def _emit_headsup(self, d: dict, sym: str, tf: int, row: dict, h: dict) -> dict:
+        inst = self.instruments.get(sym, {})
+        name = inst.get("name", sym)
+        arrow = "CALL ▲" if h["direction"] == "CALL" else "PUT ▼"
+        tfl = f"{tf // 60}m"
+        chips = [{"l": "Pair", "v": name}, {"l": "Expect", "v": arrow}, {"l": "Timeframe", "v": tfl}]
+        if h["level"] is not None:
+            chips.append({"l": "Level", "v": evaluator.fmt_number(h["level"])})
+        self.seq += 1
+        ev = {"seq": self.seq, "kind": "headsup", **self._aud(d["id"]), "t": time.time(), "id": f"h{self.seq}", "symbol": sym, "name": name, "market": inst.get("market", ""),
+              "tf": tf, "direction": h["direction"], "level": "warn", "lvl": h["level"], "strategy": self.names.get(d["id"], "?"), "strategy_id": d["id"],
+              "title": f"Get ready: {arrow} on {name} ({tfl})" + (f" · {h['title']}" if h["title"] else ""),
+              "message": (h["text"] or f"The conditions for a {h['direction']} signal are forming.") + f" Strategy: {self.names.get(d['id'], '?')}. This is a warning, not a signal: a signal follows only if the trigger candle closes.",
+              "chips": chips, "basis_t": row["t"], "entry_t": row["t"] + tf, "sound": "shead"}
+        self.notify_log.append(ev)
+        del self.notify_log[:-200]
+        self._log("headsup", f"{d['key']} {sym} tf={tf} {h['direction']} level={h['level']}")
+        return ev
 
     def _record(self, d: dict, res: strategy.Result, sym: str, tf: int, row: dict, rows: list[dict]) -> dict | None:
         if res.reason.startswith("warming up"):

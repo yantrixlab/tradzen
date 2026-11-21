@@ -5,6 +5,7 @@ evaluated on the same candle; ctx = engine facts (payout, ...). consensus(spec, 
 """
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 
 import numpy as np
@@ -235,3 +236,51 @@ def consensus(spec: dict, results: dict[str, tuple[str, Result]]) -> Result:
     strength = int(round(sum(results[m][1].strength for m in side) / len(side)))
     score = round(sum(results[m][1].score for m in side) / len(side), 1)
     return Result("CALL" if side is calls else "PUT", score, strength, len(side), facs, "", "A")
+
+
+# ----------------------------------------------------------------------------------------------- heads-up (the early "get ready" alert)
+def _value(env: dict, ref: str) -> float | None:
+    """The value of 'name' or 'name.field' on the last candle (None when unknown or not a number)."""
+    nm, _, attr = ref.partition(".")
+    obj = env.get(nm)
+    ser = getattr(obj, attr, None) if attr and isinstance(obj, SimpleNamespace) else obj
+    if not isinstance(ser, pd.Series) or not len(ser):
+        return None
+    v = ser.iloc[-1]
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if np.isnan(v) else v
+
+
+def fmt_number(v: float | None) -> str:
+    if v is None:
+        return "-"
+    if abs(v) >= 1000:
+        return f"{v:,.2f}"
+    return str(int(v)) if float(v).is_integer() else f"{v:.6g}"
+
+
+def heads_up(spec: dict, rows: list[dict], cache: dict | None = None) -> list[dict]:
+    """The early alerts that hold on the LAST closed candle of `rows`: [{direction, level, text, title}]. A strategy opts in with a `heads_up` block (spec.py); it is
+    evaluated like a factor condition, so the same candles that make the signal can warn about it one candle earlier. `text` has its {name.field} placeholders filled."""
+    hu = spec.get("heads_up")
+    if not hu or len(rows) < int(spec["gates"]["min_candles"]):
+        return []
+    df = build_df(rows)
+    env = _ind_env(spec, df, {} if cache is None else cache)
+    out = []
+    for side, direction in (("call", "CALL"), ("put", "PUT")):
+        cond = hu.get(side)
+        if not cond:
+            continue
+        try:
+            if not bool(expr.evaluate(cond, env, df.index).iloc[-1]):
+                continue
+        except Exception:  # noqa: BLE001 - an unreadable condition abstains, like a broken factor
+            continue
+        ref = hu["level"].get(side)
+        text = re.sub(r"\{([a-z][a-z0-9_]*(?:\.[a-z_]+)?)\}", lambda m: fmt_number(_value(env, m.group(1))), hu["text"].get(side) or "")
+        out.append({"direction": direction, "level": _value(env, ref) if ref else None, "text": text, "title": hu.get("title") or ""})
+    return out

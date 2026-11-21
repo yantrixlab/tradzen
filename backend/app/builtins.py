@@ -14,23 +14,39 @@ def _single(indicators: list[dict], call: str | None, put: str | None, name: str
             "gates": {"min_candles": min_candles, "min_agree": 1}, "filters": filters or [], "expiry_candles": 1}
 
 def _cover_reversal() -> dict:
-    """Hammer / star, a candle that covers it, then a decisive candle back the other way (the signal is on the candle that closes it). Three conditions that must ALL hold on the
-    candle that just closed (min_agree 3); everything is measured in ATR or as a share of the candle's own range, so it needs no per-pair number. [2] = the setup candle,
-    [1] = the covering candle, no index = the trigger candle that just closed. LEVEL = the setup's extreme is within 0.25 ATR of the lowest low (highest high) of the last 10 candles."""
-    ind = [{"id": "a", "type": "atr", "n": 14}]
-    setup_call = "lower_wick[2] >= 0.4 * range[2] and lower_wick[2] >= upper_wick[2] and abs(body[2]) <= 0.4 * range[2] and range[2] >= 0.3 * a[2] and low[2] <= lowest(low, 10)[2] + 0.25 * a[2]"
-    setup_put = "upper_wick[2] >= 0.4 * range[2] and upper_wick[2] >= lower_wick[2] and abs(body[2]) <= 0.4 * range[2] and range[2] >= 0.3 * a[2] and high[2] >= highest(high, 10)[2] - 0.25 * a[2]"
-    cover = "min(high[1], high[2]) - max(low[1], low[2]) >= 0.5 * range[2]"
-    trig_call = "green and body >= 0.5 * a and body >= abs(body[1]) and close > open[1]"
-    trig_put = "red and body <= -0.5 * a and -body >= abs(body[1]) and close < open[1]"
+    """Hammer / shooting star -> a weak level -> a run toward it -> a decisive candle back. The weak high (a star's high) / weak low (a hammer's low) and everything price does
+    on its way back to it is tracked by the `weak` indicator (weaklevels.py: wk.hi_* / wk.lo_*); the colour of the setup candle does not matter. A signal needs ALL three factors on the
+    candle that just closed (min_agree 3); [1] = the candle before it (the last candle of the run). Distances are in ATR, so it needs no per-pair number.
+      1. SETUP  a star (hammer) at a top (bottom) armed a weak level and at least one candle has followed it.
+      2. RUN    the last candle before the trigger ran toward the level (green for a star, red for a hammer) AND either price has not closed beyond the level (it stopped short or
+                only wicked into it) OR it broke through and kept closing beyond it, at least 2 closes in a row.
+      3. TRIGGER a decisive candle back the other way (at least half an ATR) that closes past the previous candle's open.
+    Early alert (`heads_up`): one candle or more before the signal, when the setup is armed and price runs toward the level (within 1 ATR) or has broken it with 2+ closes."""
+    ind = [{"id": "a", "type": "atr", "n": 14}, {"id": "wk", "type": "weak"}]
+    star = {"setup": "wk.hi_lvl[1] > 0 and wk.hi_run[1] >= 1",
+            "run": "green[1] and (wk.hi_closes[1] == 0 or wk.hi_closes[1] >= 2)",
+            "trig": "red and -body >= 0.5 * a and close < open[1]"}
+    ham = {"setup": "wk.lo_lvl[1] > 0 and wk.lo_run[1] >= 1",
+           "run": "red[1] and (wk.lo_closes[1] == 0 or wk.lo_closes[1] >= 2)",
+           "trig": "green and body >= 0.5 * a and close > open[1]"}
     return {"engine": "spec/1", "kind": "factors", "timeframes": ALL_TFS, "indicators": ind,
             "factors": [
-                {"id": "setup", "name": "Hammer at a bottom / star at a top", "weight": 34, "kind": "expr", "call": setup_call, "put": setup_put},
-                {"id": "cover", "name": "Covered by a candle of the opposite colour (at least half the setup)", "weight": 33, "kind": "expr",
-                 "call": "red[1] and " + cover, "put": "green[1] and " + cover},
-                {"id": "trigger", "name": "Decisive candle back the other way, closing past the covering candle's open", "weight": 33, "kind": "expr",
-                 "call": trig_call, "put": trig_put}],
-            "gates": {"min_candles": 60, "min_agree": 3}, "filters": [], "expiry_candles": 1}
+                {"id": "setup", "name": "Shooting star at a top / hammer at a bottom left a weak level", "weight": 34, "kind": "expr", "call": ham["setup"], "put": star["setup"]},
+                {"id": "run", "name": "Price ran toward the level and stopped short of it, or broke it and kept closing beyond it", "weight": 33, "kind": "expr",
+                 "call": ham["run"], "put": star["run"]},
+                {"id": "trigger", "name": "Decisive candle back the other way, closing past the previous candle's open", "weight": 33, "kind": "expr",
+                 "call": ham["trig"], "put": star["trig"]}],
+            "gates": {"min_candles": 60, "min_agree": 3}, "filters": [], "expiry_candles": 1,
+            "heads_up": {
+                "title": "weak level ahead",
+                "call": "wk.lo_lvl > 0 and wk.lo_run >= 1 and red and ((wk.lo_closes == 0 and wk.lo_dist <= 1) or wk.lo_closes >= 2)",
+                "put": "wk.hi_lvl > 0 and wk.hi_run >= 1 and green and ((wk.hi_closes == 0 and wk.hi_dist <= 1) or wk.hi_closes >= 2)",
+                "level": {"call": "wk.lo_lvl", "put": "wk.hi_lvl"},
+                "text": {
+                    "put": "A shooting star formed a weak high at {wk.hi_lvl} ({wk.hi_run} candles ago). Price is {wk.hi_dist} ATR under it (negative = above it) and has closed above it {wk.hi_closes} time(s) in a row. "
+                           "If a decisive red candle now closes below the previous candle's open, the PUT signal follows.",
+                    "call": "A hammer formed a weak low at {wk.lo_lvl} ({wk.lo_run} candles ago). Price is {wk.lo_dist} ATR over it (negative = below it) and has closed below it {wk.lo_closes} time(s) in a row. "
+                            "If a decisive green candle now closes above the previous candle's open, the CALL signal follows."}}}
 
 
 BUILTINS: list[dict] = [
@@ -130,8 +146,9 @@ BUILTINS: list[dict] = [
      "spec": {**_single([], "0 > 1", "0 > 1", "AI-built rule (see app/momentum_ai.py)"), "timeframes": [60]}},
 
     {"key": "cover-reversal", "name": "Hammer / Star Cover Reversal", "status": "paper", "tags": ["price action", "reversal"],
-     "description": "A hammer (small body, long lower wick) at the bottom of the last 10 candles, a red candle covering at least half of it, then a decisive green candle closing above "
-                    "the red candle's open = CALL on that close. The mirror (a star at the top, a green cover, a decisive red candle) = PUT. Sizes are in ATR, so it fits any pair and timeframe.",
+     "description": "A shooting star (long upper wick, any colour) leaves a weak high; price runs up toward it - stopping short of it, or breaking it and closing above it again and again - "
+                    "and then a decisive red candle closes back = PUT on that close. The mirror with a hammer (long lower wick) and its weak low = CALL. Before the signal, a 'get ready' alert "
+                    "names the pair, the expected direction and the level as soon as price runs toward the level. Sizes are in ATR, so it fits any pair and timeframe.",
      "spec": _cover_reversal()},
 
     {"key": "consensus-3", "name": "Consensus (3 strategies agree)", "status": "paper", "tags": ["meta"],

@@ -232,6 +232,17 @@ const kinds = (req) => req.body.items.map((i) => i.k);
   await h.until(1);
   await new Promise((r) => setTimeout(r, 60));
   assert.strictEqual(h.delivered.length, 0, 'with live session alerts switched off nothing is shown');
+  // ---- a strategy's early "get ready" (kind headsup): reaches the tab with the get-ready sound, is dropped when it is a minute old, and is not tied to the live-session switch
+  const huEvents = [
+    { seq: 1, kind: 'headsup', aud: 'everyone', strategy_id: 7, level: 'warn', title: 'Get ready: PUT on EUR/USD', message: 'A star formed', chips: [], sound: 'shead', id: 'h1', t: Date.now() / 1000 },
+    { seq: 2, kind: 'headsup', aud: 'everyone', strategy_id: 7, level: 'warn', title: 'old', message: 'x', chips: [], sound: 'shead', id: 'h2', t: Date.now() / 1000 - 300 },
+  ];
+  h = boot(() => ({ ok: true, seq: 9, events: huEvents, feeder: false, qx: { state: 'ok', hint: '234' } }));
+  await h.local.set({ sessions: false });
+  h.send([{ k: 'a', u: '4711234' }]);
+  await h.until(1);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.deepStrictEqual(h.delivered.map((m) => m.__qxsNotify.kind + ':' + (m.sound || '')), ['headsup:shead'], 'the fresh heads-up is shown even with live-session alerts off; the five-minute-old one is dropped');
   // ---- the "Join the session" button of the on-page dialog opens the side panel of that tab (only for a message that comes from a tab)
   h = boot(() => ({ ok: true, seq: 1, events: [], feeder: false }));
   h.message({ __qxsOpenPanel: true }, 12);

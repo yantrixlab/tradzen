@@ -4,6 +4,9 @@ import type { PatternForm } from './patterns';
 export interface IndicatorForm { id: string; type: string; params: Record<string, number> }
 export interface FactorForm { id: string; name: string; weight: number; kind: 'expr' | 'fn' | 'pattern'; call: string; put: string; vote: number; fn: string; params: Record<string, number>; callPat: PatternForm | null; putPat: PatternForm | null }
 export interface FilterForm { type: string; [k: string]: unknown }
+/** The early "get ready" alert (spec.heads_up): a condition per side, the level to show and the sentence to send. Empty = none. */
+export interface HeadsUpForm { title: string; call: string; put: string; levelCall: string; levelPut: string; textCall: string; textPut: string }
+export const blankHeadsUp = (): HeadsUpForm => ({ title: '', call: '', put: '', levelCall: '', levelPut: '', textCall: '', textPut: '' });
 export interface SpecForm {
   kind: 'factors' | 'meta';
   timeframes: number[];
@@ -13,6 +16,7 @@ export interface SpecForm {
   factors: FactorForm[];
   gates: { min_candles: number; min_agree: number; max_opposing_weight: number; min_strength: number; tierA: boolean; tier_a_agree: number; tier_a_strength: number };
   filters: FilterForm[];
+  headsUp: HeadsUpForm | null;
   consensus: { members: string; min_agree: number };
 }
 
@@ -21,7 +25,7 @@ export const blankFactor = (n = 1): FactorForm => ({ id: `factor${n}`, name: `Fa
 export const blankForm = (): SpecForm => ({
   kind: 'factors', timeframes: [60, 300, 900], market: '', symbols: '', indicators: [], factors: [blankFactor()],
   gates: { min_candles: 60, min_agree: 1, max_opposing_weight: 100, min_strength: 0, tierA: false, tier_a_agree: 3, tier_a_strength: 40 },
-  filters: [], consensus: { members: 'all_active', min_agree: 3 },
+  filters: [], headsUp: null, consensus: { members: 'all_active', min_agree: 3 },
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -50,6 +54,10 @@ export function specToForm(spec: Json): SpecForm {
     tierA: !!g.tier_a, tier_a_agree: g.tier_a?.agree ?? 3, tier_a_strength: g.tier_a?.strength ?? 40,
   };
   f.filters = (spec.filters ?? []).map((x: Json) => ({ ...x }));
+  if (spec.heads_up) {
+    const h = spec.heads_up;
+    f.headsUp = { title: h.title ?? '', call: h.call ?? '', put: h.put ?? '', levelCall: h.level?.call ?? '', levelPut: h.level?.put ?? '', textCall: h.text?.call ?? '', textPut: h.text?.put ?? '' };
+  }
   if (spec.consensus) f.consensus = { members: spec.consensus.members === 'all_active' ? 'all_active' : (spec.consensus.members ?? []).join(', '), min_agree: spec.consensus.min_agree ?? 3 };
   return f;
 }
@@ -87,5 +95,21 @@ export function formToSpec(f: SpecForm): Json {
       return out;
     }),
     filters: f.filters.map((x) => ({ ...x })),
+    ...(f.headsUp && (f.headsUp.call.trim() || f.headsUp.put.trim()) ? { heads_up: headsUpToSpec(f.headsUp) } : {}),
   };
+}
+
+function headsUpToSpec(h: HeadsUpForm): Json {
+  const out: Json = {};
+  if (h.title.trim()) out.title = h.title.trim();
+  if (h.call.trim()) out.call = h.call.trim();
+  if (h.put.trim()) out.put = h.put.trim();
+  const level: Json = {}, text: Json = {};
+  if (h.levelCall.trim()) level.call = h.levelCall.trim();
+  if (h.levelPut.trim()) level.put = h.levelPut.trim();
+  if (h.textCall.trim()) text.call = h.textCall.trim();
+  if (h.textPut.trim()) text.put = h.textPut.trim();
+  if (Object.keys(level).length) out.level = level;
+  if (Object.keys(text).length) out.text = text;
+  return out;
 }

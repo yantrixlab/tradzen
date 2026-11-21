@@ -11,38 +11,68 @@
       "id": "a",
       "type": "atr",
       "n": 14
+    },
+    {
+      "id": "wk",
+      "type": "weak",
+      "atr_n": 14,
+      "wick": 0.4,
+      "body": 0.4,
+      "min_atr": 0.3,
+      "loc_n": 10,
+      "loc_atr": 0.25,
+      "max_wait": 6
     }
   ],
   "factors": [
     {
       "id": "setup",
-      "name": "Hammer at a bottom / star at a top",
+      "name": "Shooting star at a top / hammer at a bottom left a weak leve",
       "weight": 34,
       "kind": "expr",
-      "call": "lower_wick[2] >= 0.4 * range[2] and lower_wick[2] >= upper_wick[2] and abs(body[2]) <= 0.4 * range[2] and range[2] >= 0.3 * a[2] and low[2] <= lowest(low, 10)[2] + 0.25 * a[2]",
-      "put": "upper_wick[2] >= 0.4 * range[2] and upper_wick[2] >= lower_wick[2] and abs(body[2]) <= 0.4 * range[2] and range[2] >= 0.3 * a[2] and high[2] >= highest(high, 10)[2] - 0.25 * a[2]"
+      "call": "wk.lo_lvl[1] > 0 and wk.lo_run[1] >= 1",
+      "put": "wk.hi_lvl[1] > 0 and wk.hi_run[1] >= 1",
+      "vote": 1
     },
     {
-      "id": "cover",
-      "name": "Covered by a candle of the opposite colour (at least half the setup)",
+      "id": "run",
+      "name": "Price ran toward the level and stopped short of it, or broke",
       "weight": 33,
       "kind": "expr",
-      "call": "red[1] and min(high[1], high[2]) - max(low[1], low[2]) >= 0.5 * range[2]",
-      "put": "green[1] and min(high[1], high[2]) - max(low[1], low[2]) >= 0.5 * range[2]"
+      "call": "red[1] and (wk.lo_closes[1] == 0 or wk.lo_closes[1] >= 2)",
+      "put": "green[1] and (wk.hi_closes[1] == 0 or wk.hi_closes[1] >= 2)",
+      "vote": 1
     },
     {
       "id": "trigger",
-      "name": "Decisive candle back the other way, closing past the covering candle's open",
+      "name": "Decisive candle back the other way, closing past the previou",
       "weight": 33,
       "kind": "expr",
-      "call": "green and body >= 0.5 * a and body >= abs(body[1]) and close > open[1]",
-      "put": "red and body <= -0.5 * a and -body >= abs(body[1]) and close < open[1]"
+      "call": "green and body >= 0.5 * a and close > open[1]",
+      "put": "red and -body >= 0.5 * a and close < open[1]",
+      "vote": 1
     }
   ],
   "gates": {
     "min_candles": 60,
-    "min_agree": 3
+    "min_agree": 3,
+    "max_opposing_weight": 100,
+    "min_strength": 0,
+    "tier_a": null
   },
   "filters": [],
-  "expiry_candles": 1
+  "expiry_candles": 1,
+  "heads_up": {
+    "call": "wk.lo_lvl > 0 and wk.lo_run >= 1 and red and ((wk.lo_closes == 0 and wk.lo_dist <= 1) or wk.lo_closes >= 2)",
+    "put": "wk.hi_lvl > 0 and wk.hi_run >= 1 and green and ((wk.hi_closes == 0 and wk.hi_dist <= 1) or wk.hi_closes >= 2)",
+    "level": {
+      "call": "wk.lo_lvl",
+      "put": "wk.hi_lvl"
+    },
+    "text": {
+      "call": "A hammer formed a weak low at {wk.lo_lvl} ({wk.lo_run} candles ago). Price is {wk.lo_dist} ATR over it (negative = below it) and has closed below it {wk.lo_closes} time(s) in a row. If a decisive green candle now closes above the previous candle's open, the CALL signal follows.",
+      "put": "A shooting star formed a weak high at {wk.hi_lvl} ({wk.hi_run} candles ago). Price is {wk.hi_dist} ATR under it (negative = above it) and has closed above it {wk.hi_closes} time(s) in a row. If a decisive red candle now closes below the previous candle's open, the PUT signal follows."
+    },
+    "title": "weak level ahead"
+  }
 }

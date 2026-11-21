@@ -13,6 +13,7 @@ import pandas as pd
 from . import indicators as ind
 from . import engulf as engulf_mod
 from . import structure as structure_mod
+from . import weaklevels as weaklevels_mod
 from . import zones as zones_mod
 
 
@@ -115,6 +116,8 @@ REGISTRY = {
               zones_mod.FIELDS),
     # market structure: swing highs/lows -> up-trend (HH+HL), down-trend (LH+LL), structure shift - see structure.py
     "structure": (structure_mod.compute, {"swing": 3, "max_age": 120}, structure_mod.FIELDS),
+    # weak high / weak low left by a shooting star / hammer and what price does on its way back to it - see weaklevels.py
+    "weak": (weaklevels_mod.compute, weaklevels_mod.DEFAULTS, weaklevels_mod.FIELDS),
     # engulfing-candle supply/demand zones, used once, in the direction of the structure - see engulf.py
     "engulf": (engulf_mod.compute, {"swing": 3, "trend_age": 120, "max_age": 120, "min_body": 0.5, "max_run": 3, "visits": 1, "brk_atr": 0.3, "atr_n": 14}, engulf_mod.FIELDS),
 }
