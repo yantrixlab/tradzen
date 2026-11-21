@@ -22,7 +22,7 @@
       "loc_n": 10,
       "loc_atr": 1000.0,
       "max_wait": 10,
-      "wick_x": 2.0,
+      "wick_x": 1.5,
       "opp": 0.5,
       "min_body": 0.01,
       "turn": 0.3

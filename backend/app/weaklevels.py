@@ -2,7 +2,7 @@
 price does on its way back to that level, candle by candle. Colour of the setup candle does not matter. The expression language can only look a fixed number of candles back,
 so the memory of "the last star and where it is now" lives here and the strategy reads it through fields.
 
-A STAR (mirror for a hammer) is a PIN BAR, nothing looser: the upper wick is at least `wick_x` times the body (default 2, "more than double"), at least `wick` of the range, and the
+A STAR (mirror for a hammer) is a PIN BAR, nothing looser: the upper wick is at least `wick_x` times the body (default 1.5; it was 2), at least `wick` of the range, and the
 lower wick is at most `opp` of the upper wick (default half, so the other side is clearly shorter); the body is between `min_body` (default 1 % of the range: only a perfectly flat
 candle is left out) and `body` (40 %) of the range. A tiny body with ONE long wick (a gravestone-style star) counts; a doji with long wicks on both sides never passes `opp`; the range is at least `min_atr` ATR. WHERE it forms does not matter by default (`loc_atr` 1000 = no location rule: a star on a pullback inside a down-swing counts just like one
 at a top); set `loc_atr` small (0.25) to demand its high be within that many ATR of the highest high of the last `loc_n` candles. It arms the level = its high. The setup stays
@@ -37,7 +37,7 @@ from . import indicators as ind
 
 SIDE_FIELDS = ["lvl", "new", "run", "touch", "closes", "broke", "back", "dist", "ran", "ret", "ext"]
 FIELDS = [f"{side}_{f}" for side in ("hi", "lo") for f in SIDE_FIELDS]
-DEFAULTS = {"atr_n": 14, "wick": 0.4, "body": 0.4, "min_atr": 0.3, "loc_n": 10, "loc_atr": 1000.0, "max_wait": 10, "wick_x": 2.0, "opp": 0.5, "min_body": 0.01, "turn": 0.3}
+DEFAULTS = {"atr_n": 14, "wick": 0.4, "body": 0.4, "min_atr": 0.3, "loc_n": 10, "loc_atr": 1000.0, "max_wait": 10, "wick_x": 1.5, "opp": 0.5, "min_body": 0.01, "turn": 0.3}
 
 
 def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndarray, p: dict) -> dict:
@@ -97,7 +97,7 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
 
 
 def compute(df: pd.DataFrame, atr_n: int = 14, wick: float = 0.4, body: float = 0.4, min_atr: float = 0.3, loc_n: int = 10, loc_atr: float = 1000.0,
-            max_wait: int = 10, wick_x: float = 2.0, opp: float = 0.5, min_body: float = 0.01, turn: float = 0.3) -> SimpleNamespace:
+            max_wait: int = 10, wick_x: float = 1.5, opp: float = 0.5, min_body: float = 0.01, turn: float = 0.3) -> SimpleNamespace:
     p = {"wick": wick, "body": body, "min_atr": min_atr, "loc_n": loc_n, "loc_atr": loc_atr, "max_wait": max_wait, "wick_x": wick_x, "opp": opp, "min_body": min_body, "turn": turn}
     O, H, L, C = (df[k].to_numpy(float) for k in ("open", "high", "low", "close"))
     A = ind.atr(df["high"], df["low"], df["close"], int(atr_n)).to_numpy(float)

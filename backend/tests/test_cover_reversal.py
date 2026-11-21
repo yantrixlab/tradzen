@@ -86,12 +86,14 @@ def test_a_hammer_arms_a_weak_low_and_follows_price_toward_it():
 
 
 def test_only_real_pin_bars_arm_a_level():
-    """The setup must be a hammer / shooting star in the strict sense: a wick more than double the body, a clearly shorter wick on the other side, and no doji."""
+    """The setup must be a hammer / shooting star: a wick at least 1.5x the body, a clearly shorter wick on the other side, and no doji with long wicks on both sides."""
     def arms(c):
         w = weaklevels.compute(evaluator.build_df(seq(c, SWEEP)))
         return w.lo_lvl.iloc[-2] == c[2]
     assert arms(HAMMER) and arms((100.35, 100.4, 99.4, 100.2)), "green or red body, both fine"
-    assert not arms((100.0, 100.4, 99.5, 100.3)), "lower wick 0.5 against a body of 0.3: not double (a looser rule took it)"
+    assert not arms((100.0, 100.4, 99.6, 100.3)), "lower wick 0.4 against a body of 0.3: only 1.33x, under the 1.5x rule"
+    assert arms((100.0, 100.4, 99.5, 100.3)), "lower wick 0.5 against a body of 0.3: 1.67x, over the 1.5x rule"
+    assert arms((99.72, 100.34, 98.99, 100.2)), "the user's candle: wick about 1.5x the body (0.73 against 0.48), a small wick (0.14) on the other side"
     assert not arms((100.2, 100.8, 99.4, 100.3)), "a long wick on both sides is a spinning top, not a pin bar"
     assert arms((100.25, 100.45, 99.45, 100.27)), "a tiny body with ONE long wick (gravestone / dragonfly style) is a real pin bar"
     assert not arms((100.25, 100.8, 99.7, 100.27)), "a doji with long wicks on BOTH sides is avoided"
@@ -246,7 +248,7 @@ def test_no_alert_for_a_candle_that_ends_the_setup_or_runs_the_wrong_way():
 
 
 # ------------------------------------------------------------------------------------------------ break, bounce (the user's two screenshots)
-PAUSE = [(100.35, 100.5, 100.2, 100.3), (100.3, 100.45, 100.1, 100.35), (100.35, 100.5, 100.2, 100.25)]   # crosses that stay above the weak low
+PAUSE = [(100.35, 100.5, 100.2, 100.3), (100.3, 100.45, 100.15, 100.35), (100.35, 100.45, 100.2, 100.25)]   # crosses that stay above the weak low
 BIG_RED = (100.25, 100.3, 98.7, 98.9)                # the break of structure: closes under the weak low 99.4
 G1 = (98.9, 99.3, 98.8, 99.15)                       # first green: closes under the level, body half the range
 
