@@ -1,40 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { ago, dateTime } from '../format';
-import { Badge, Card, Empty, ErrorBox, Field, PageTitle, Spinner } from '../components/ui';
-import { AcceptTerms } from '../components/LegalText';
-import { NETWORKS, STATUS_TONE, daysLeft, money, readImage, refProblem, type Catalog, type Order, type PayMethod } from '../lib/pay';
+import { Badge, Card, Empty, ErrorBox, PageTitle, Spinner } from '../components/ui';
+import CheckoutModal from '../components/CheckoutModal';
+import { STATUS_TONE, daysLeft, money, type Catalog, type Order } from '../lib/pay';
 
-function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
-  const [done, setDone] = useState(false);
-  return <button type="button" className="btn btn-sm" onClick={async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500); } catch { /* clipboard blocked */ } }}>{done ? 'Copied' : label}</button>;
-}
+const kindTone = (label: string) => (/usdt|crypto|btc|eth/i.test(label) ? 'bg-amber-500/15 text-amber-300' : /upi|inr|bank/i.test(label) ? 'bg-sky-500/15 text-sky-300' : 'bg-slate-500/20 text-slate-300');
 
-/** Buy a plan: pick the plan and how you pay, pay outside the app (UPI / USDT ...), then enter the payment's reference (a UPI UTR or a transaction hash). The admin checks it and switches the plan on. */
+/** Buy a plan: the plan cards show what each costs with each way of paying; "Get ..." opens the checkout window (components/CheckoutModal.tsx), where the person pays outside the app
+ *  (UPI, USDT ...) and sends the payment's reference. The admin checks it and switches the plan on. */
 export default function Plans() {
   const qc = useQueryClient();
   const cat = useQuery({ queryKey: ['pay-plans'], queryFn: () => api<Catalog>('/api/pay/plans') });
   const orders = useQuery({ queryKey: ['pay-orders'], queryFn: () => api<Order[]>('/api/pay/orders'), refetchInterval: 15000 });
   const [planId, setPlanId] = useState<number | null>(null);
-  const [methodId, setMethodId] = useState<number | null>(null);
-  const [network, setNetwork] = useState<string>('TRC20');
-  const [ref, setRef] = useState('');
-  const [note, setNote] = useState('');
-  const [proof, setProof] = useState<string | null>(null);
-  const [proofName, setProofName] = useState('');
-  const [fileErr, setFileErr] = useState<string | null>(null);
-  const [touched, setTouched] = useState(false);
-  const [accept, setAccept] = useState(false);
-  const [sent, setSent] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(false);
-  const form = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setPlanId(null), []);
 
   const plans = cat.data?.plans ?? [];
   const plan = plans.find((p) => p.id === planId) ?? null;
-  const methods: PayMethod[] = useMemo(() => (cat.data && plan ? cat.data.methods.filter((m) => plan.prices.some((p) => p.method_id === m.id)) : []), [cat.data, plan]);
-  const method = methods.find((m) => m.id === methodId) ?? methods[0] ?? null;
-  const price = plan && method ? plan.prices.find((p) => p.method_id === method.id) ?? null : null;
   const pending = (orders.data ?? []).find((o) => o.status === 'pending') ?? null;
   const approved = (orders.data ?? []).filter((o) => o.status === 'approved').length;
   const lastApproved = useRef<number | null>(null);
@@ -42,109 +26,68 @@ export default function Plans() {
     if (lastApproved.current !== null && approved > lastApproved.current) { qc.invalidateQueries({ queryKey: ['me'] }); qc.invalidateQueries({ queryKey: ['pay-plans'] }); }
     lastApproved.current = approved;
   }, [approved, qc]);
-
-  const problem = method ? refProblem(method.kind, method.kind === 'usdt' ? network : null, ref) : null;
-  const submit = useMutation({
-    mutationFn: () => api<Order>('/api/pay/orders', { body: { plan_id: plan!.id, method_id: method!.id, reference: ref, network: method!.kind === 'usdt' ? network : null, note, proof, accept_terms: accept } }),
-    onSuccess: () => {
-      setSent('Submitted. Your plan switches on as soon as the payment has been checked.');
-      setRef(''); setNote(''); setProof(null); setProofName(''); setTouched(false);
-      qc.invalidateQueries({ queryKey: ['pay-orders'] });
-    },
-  });
-  const cancel = useMutation({ mutationFn: (id: number) => api(`/api/pay/orders/${id}/cancel`, { method: 'POST' }), onSuccess: () => { setSent(null); qc.invalidateQueries({ queryKey: ['pay-orders'] }); } });
+  const cancel = useMutation({ mutationFn: (id: number) => api(`/api/pay/orders/${id}/cancel`, { method: 'POST' }), onSuccess: () => { qc.invalidateQueries({ queryKey: ['pay-orders'] }); } });
 
   if (cat.isError) return <ErrorBox error={cat.error} />;
   if (!cat.data) return <Spinner />;
   const cur = cat.data.current;
   const left = daysLeft(cur.until);
-
-  const choose = (id: number) => {
-    setPlanId(id); setMethodId(null); setSent(null); setTouched(false);
-    setTimeout(() => form.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
-  };
+  const methodOf = (id: number) => cat.data!.methods.find((m) => m.id === id);
 
   return (
     <>
-      <PageTitle title="Plans" sub="Pay for a plan with UPI or crypto, send us the payment's reference, and your plan is switched on once the payment has been checked." />
+      <PageTitle title="Plans" sub="Pick a plan, pay with UPI or crypto, and send us the payment's reference. Your plan is switched on once the payment has been checked." />
 
-      <Card className="mb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-mut">Your plan now</div>
-            <div className="text-xl font-extrabold">{cur.name} {cur.paid ? <Badge tone="up">PAID</Badge> : <Badge>FREE</Badge>}</div>
-            <div className="note">{cur.paid && cur.until ? `Active until ${dateTime(cur.until)} · ${left} day${left === 1 ? '' : 's'} left. Paying again adds the days to the end of this period.` : 'Not a paid plan. Pick one below to unlock more.'}</div>
+      {/* your plan now */}
+      <section className="relative mb-6 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-r from-[#1b2540] via-[#10172e] to-[#0a0f20] p-5 sm:p-6">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-amber-400/10 blur-3xl" />
+        <div className="relative flex flex-wrap items-center gap-4">
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-amber-300 to-orange-500 text-white shadow-[0_10px_28px_rgba(249,115,22,.4),inset_0_1px_0_rgba(255,255,255,.5)]">
+            <svg viewBox="0 0 24 24" className="h-7 w-7" fill="currentColor" aria-hidden="true"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 10H5L3 8zm2.6 12h12.8v2H5.6z" /></svg></div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-bold uppercase tracking-[.14em] text-slate-400">Your plan now</div>
+            <div className="flex flex-wrap items-center gap-2"><span className="text-2xl font-extrabold tracking-tight text-white">{cur.name}</span>{cur.paid ? <Badge tone="up">PAID</Badge> : <Badge>FREE</Badge>}</div>
+            <div className="mt-0.5 text-sm text-slate-400">{cur.paid && cur.until ? `Active until ${dateTime(cur.until)} · ${left} day${left === 1 ? '' : 's'} left. Paying again adds the days to the end of this period.` : 'Not a paid plan. Pick one below to unlock more.'}</div>
+            {cur.paid && left !== null && <div className="mt-3 h-1.5 max-w-sm overflow-hidden rounded-full bg-white/10" role="presentation"><div className="h-full rounded-full bg-gradient-to-r from-amber-300 to-orange-500" style={{ width: `${Math.max(4, Math.min(100, (left / 30) * 100))}%` }} /></div>}
           </div>
-          {pending && <div className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">A payment of {money(pending.amount, pending.currency)} is waiting for review ({ago(pending.created)}).</div>}
+          {pending && <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 text-sm text-amber-200">A payment of <b>{money(pending.amount, pending.currency)}</b> is waiting to be checked ({ago(pending.created)}).</div>}
         </div>
-      </Card>
+      </section>
 
+      {/* the plans */}
+      <h2 className="mb-3 text-sm font-bold uppercase tracking-[.14em] text-slate-400">Choose a plan</h2>
       {plans.length === 0 ? <Card><Empty>No plans are on sale yet. Ask the administrator.</Empty></Card> : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {plans.map((p) => (
-            <section key={p.id} className={`card flex flex-col ${planId === p.id ? '!border-acc' : ''}`}>
-              <div className="flex items-start justify-between gap-2"><h2 className="text-lg font-bold">{p.name}</h2>{cur.plan_id === p.id && cur.paid && <Badge tone="up">YOURS</Badge>}</div>
-              {p.description && <p className="mt-1 text-sm text-mut">{p.description}</p>}
-              <ul className="mt-3 space-y-1 text-sm">{p.prices.map((x) => { const m = cat.data!.methods.find((mm) => mm.id === x.method_id); return m ? <li key={x.method_id} className="flex justify-between gap-2"><span className="text-mut">{m.label}</span><b className="tabular-nums">{money(x.amount, m.currency)} <span className="font-normal text-mut">/ {x.days} days</span></b></li> : null; })}</ul>
-              <button className="btn btn-primary mt-4" onClick={() => choose(p.id)}>{cur.plan_id === p.id && cur.paid ? 'Renew' : 'Buy'} {p.name}</button>
-            </section>))}
-        </div>)}
-
-      {plan && method && price && (
-        <div ref={form} className="scroll-mt-4">
-          <Card title={`Pay for ${plan.name}`} className="mt-4">
-            {methods.length > 1 && (
-              <div className="mb-4 flex flex-wrap gap-1" role="group" aria-label="Payment method">
-                {methods.map((m) => <button key={m.id} className={`btn btn-sm ${method.id === m.id ? 'btn-primary' : ''}`} aria-pressed={method.id === m.id} onClick={() => { setMethodId(m.id); setTouched(false); setSent(null); }}>{m.label}</button>)}
-              </div>)}
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,260px)_1fr]">
-              <div>
-                {method.qr ? (
-                  <button type="button" className="block w-full max-w-[260px] rounded-xl bg-white p-2" onClick={() => setZoom(!zoom)} title="Click to enlarge" aria-label="Payment QR code, click to enlarge">
-                    <img src={`/api/pay/qr/${method.qr}`} alt={`${method.label} QR code`} className={`mx-auto ${zoom ? 'w-[min(80vw,420px)]' : 'w-full'}`} />
-                  </button>) : <div className="grid h-40 place-items-center rounded-xl border border-dashed border-line text-sm text-mut">No QR code for this method</div>}
-                <div className="mt-3 text-sm">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-mut">Amount to pay</div>
-                  <div className="text-2xl font-extrabold tabular-nums">{money(price.amount, method.currency)}</div>
-                  <div className="note">for {price.days} days of {plan.name}</div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {plans.map((p) => {
+            const yours = cur.plan_id === p.id && cur.paid;
+            return (
+              <section key={p.id} className={`group relative flex flex-col overflow-hidden rounded-[22px] border bg-gradient-to-b from-[#151d38] to-[#0a1020] p-5 transition hover:-translate-y-0.5 hover:shadow-[0_18px_50px_rgba(6,182,212,.12)] ${yours ? 'border-emerald-400/50' : 'border-white/10 hover:border-cyan-400/50'}`}>
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/[.05] to-transparent" />
+                <div className="relative flex items-start justify-between gap-2">
+                  <h3 className="text-xl font-extrabold tracking-tight text-white">{p.name}</h3>
+                  {yours && <Badge tone="up">YOURS</Badge>}
                 </div>
-                {method.address && <div className="mt-3 text-sm"><div className="text-[10px] font-semibold uppercase tracking-wider text-mut">{method.kind === 'upi' ? 'UPI ID' : 'Address'}</div><div className="break-all font-mono text-xs">{method.address}</div><div className="mt-1"><CopyButton text={method.address} /></div></div>}
-              </div>
-
-              <div>
-                {method.instructions && <div className="mb-4 whitespace-pre-line rounded-lg border border-line bg-panel2/60 p-3 text-sm">{method.instructions}</div>}
-                <ol className="mb-4 list-decimal space-y-1 pl-5 text-sm text-mut"><li>Pay exactly <b className="text-fg">{money(price.amount, method.currency)}</b> using the QR code or the {method.kind === 'upi' ? 'UPI ID' : 'address'} above.</li>
-                  <li>Copy the payment's reference: {method.kind === 'upi' ? 'the 12-digit UTR / reference number from your UPI app' : 'the transaction hash (TXID) from your wallet or exchange'}.</li>
-                  <li>Paste it below and send it. Each reference can be used once.</li></ol>
-                {sent && <div className="mb-3 rounded-lg border border-up/40 bg-up/10 p-3 text-sm text-up">{sent}</div>}
-                {pending ? <div className="rounded-lg border border-warn/40 bg-warn/10 p-3 text-sm text-warn">You already have a payment waiting for review. You can send another one after it has been checked, or cancel it in the list below.</div> : (
-                  <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); setTouched(true); setSent(null); if (!problem && accept) submit.mutate(); }}>
-                    {method.kind === 'usdt' && <Field label="Network"><select className="input" value={network} onChange={(e) => setNetwork(e.target.value)}>{NETWORKS.map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>}
-                    <Field label={method.kind === 'upi' ? 'UTR / reference number' : 'Transaction hash (TXID)'} hint={touched && problem ? undefined : method.kind === 'upi' ? '12 digits, shown in your UPI app after the payment' : 'Copy it from the wallet or the exchange withdrawal details'}>
-                      <input className="input font-mono" value={ref} onChange={(e) => setRef(e.target.value)} onBlur={() => setTouched(true)} autoComplete="off" spellCheck={false} inputMode={method.kind === 'upi' ? 'numeric' : 'text'} aria-invalid={touched && !!problem} />
-                      {touched && problem && <span className="mt-1 block text-xs text-down">{problem}</span>}
-                    </Field>
-                    <Field label="Screenshot of the payment (optional)" hint="PNG, JPEG or WEBP, up to 1 MB. It helps the check go faster.">
-                      <input className="input" type="file" accept="image/png,image/jpeg,image/webp" onChange={async (e) => {
-                        const f = e.target.files?.[0]; setFileErr(null);
-                        if (!f) { setProof(null); setProofName(''); return; }
-                        const r = await readImage(f, 1_000_000);
-                        if ('error' in r) { setFileErr(r.error); setProof(null); setProofName(''); e.target.value = ''; } else { setProof(r.url); setProofName(f.name); }
-                      }} />
-                      {fileErr && <span className="mt-1 block text-xs text-down">{fileErr}</span>}{proofName && <span className="note mt-1 block">{proofName}</span>}
-                    </Field>
-                    <Field label="Note (optional)"><input className="input" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="Anything that helps us find the payment" /></Field>
-                    <AcceptTerms id="acc-pay" checked={accept} onChange={setAccept} />
-                    {touched && !accept && <span className="block text-xs text-down">Tick the box to accept the terms before sending.</span>}
-                    {submit.isError && <ErrorBox error={submit.error} />}
-                    <button className="btn btn-primary" type="submit" disabled={submit.isPending || !!fileErr}>{submit.isPending ? 'Sending…' : 'Send the payment reference'}</button>
-                  </form>)}
-              </div>
-            </div>
-          </Card>
+                {p.description && <p className="relative mt-1 text-sm text-slate-400">{p.description}</p>}
+                <div className="relative mt-4 grid gap-2.5">
+                  {p.prices.map((x) => {
+                    const m = methodOf(x.method_id);
+                    return m ? (
+                      <div key={x.method_id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[.03] px-4 py-3">
+                        <span className={`rounded-lg px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider ${kindTone(m.label + ' ' + m.kind)}`}>{m.label}</span>
+                        <span className="text-right"><span className="text-2xl font-extrabold tabular-nums tracking-tight text-white">{money(x.amount, m.currency).replace(' USDT', '')}</span><span className="ml-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">/ {x.days} days</span></span>
+                      </div>) : null;
+                  })}
+                </div>
+                <button type="button" onClick={() => setPlanId(p.id)}
+                  className="relative mt-5 inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 px-5 text-sm font-extrabold uppercase tracking-wider text-white shadow-[0_12px_30px_rgba(14,116,230,.35),inset_0_1px_0_rgba(255,255,255,.3)] transition hover:brightness-110">
+                  {yours ? 'Renew' : 'Get'} {p.name}</button>
+              </section>);
+          })}
         </div>)}
 
-      <Card title="My payments" className="mt-4">
+      {plan && <CheckoutModal plan={plan} cat={cat.data} pending={pending} onClose={close} />}
+
+      <Card title="My payments" className="mt-6">
         {!orders.data ? <Spinner /> : orders.data.length === 0 ? <Empty>No payments yet.</Empty> : (
           <div className="overflow-x-auto"><table className="w-full">
             <thead><tr>{['Sent', 'Plan', 'Method', 'Amount', 'Reference', 'Status', ''].map((h) => <th key={h} className="th">{h}</th>)}</tr></thead>

@@ -75,7 +75,7 @@ accuracy. **MTG-1 acc.** is each strategy's win rate on its own real settled sig
 Every run in the lab's Runs table also shows **With MTG-1** (win rate if each losing trade gets one re-entry on the next candle, stake x2.2, with the net result under it)
 and **Won by MTG-1** (how many trades the re-entry won); older runs are filled in automatically in the background. A one-step MTG always lifts the win rate (a 50 %
 strategy reads 75 %) while a lost ladder costs 3.2 units, so judge it by the net figure, not the percentage.
-The Backtest lab draws one zoomable, scrollable candlestick chart per selected pair (wheel = zoom, drag = move, overview strip, trade-to-trade
+The Backtest lab draws one zoomable, scrollable candlestick chart per selected pair (wheel = zoom, drag = move, vertical stretch (Alt+wheel, the wheel or a drag on the price axis, up / down arrows or the ↕ buttons; Auto or a double-click on the axis fits the candles again), overview strip, trade-to-trade
 jump) with the strategy's BUY/SELL signals and each trade's win/loss; **MTG** (martingale: off / 1-3 steps, stake multiple, default 2 steps x2.2) boxes the
 re-entry candles after a losing trade (M1 / M2 with a win/loss mark) and a panel shows what the ladder really did - rescue rate, ladders lost, net result vs flat,
 worst ladder, deepest drawdown, biggest stake; a signal that fires while a ladder is running cannot be taken and is left out (`backend/app/mtg.py`, `tests/test_mtg.py`); the same charts appear on a finished run's page with its validation period shaded.

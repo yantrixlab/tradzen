@@ -5,7 +5,8 @@ import type { BtTrade, ChartBreak, ChartCandle, ChartSwing, ChartZone, MtgLadder
 
 /**
  * THE chart of the app. Everything a trader expects, in one component used by every screen:
- *  - TradingView-style navigation: wheel = zoom at the cursor, drag = move, shift+wheel / arrows = scroll, +/- keys, range buttons, overview strip, double-click = reset
+ *  - TradingView-style navigation: wheel = zoom at the cursor, drag = move, shift+wheel / arrows = scroll, +/- keys, range buttons, overview strip, double-click = reset;
+ *    vertical stretch: Alt+wheel, the wheel or a drag on the price axis, up/down arrows, the ↕ buttons; "Auto" (A, double-click the axis) fits the visible candles again
  *  - indicator overlays on the price and oscillator panes under it (legend chips hide / show each one), signal arrows, shaded condition columns, pattern boxes
  *  - backtest trades with win / loss tint, the validation period, the martingale re-entry candles and their summary
  *  - the live forming candle with a last-price line, a crosshair with price tag, a hover tooltip, and a full-screen view
@@ -98,6 +99,7 @@ export function PriceChart(props: PriceChartProps) {
   const [view, setView] = useState<View>(() => ({ start: Math.max(0, n - Math.min(n, initialCount)), count: Math.max(1, Math.min(n, initialCount)) }));
   const [hover, setHover] = useState<{ i: number; y: number } | null>(null);
   const [drag, setDrag] = useState(false);
+  const [yr, setYr] = useState<{ lo: number; hi: number } | null>(null);   // a price range the person set by hand (stretch / move up and down); null = fit the visible candles
   const [layersOpen, setLayersOpen] = useState(false);                    // phones: the layer switches fold away (they are always shown from the sm width up)
   // every switch is saved on the account (see prefs.ts): the next visit, on any browser, opens the chart the way this person left it
   const [showBuy, setShowBuy] = usePref('chart.buy', true);
@@ -163,7 +165,16 @@ export function PriceChart(props: PriceChartProps) {
     const maxStart = n - c + Math.max(2, c * 0.06);                    // a little empty room on the right, like a trading terminal
     return { count: Math.max(1, c), start: Math.max(0, Math.min(v.start, maxStart)) };
   }, [n]);
-  const reset = useCallback(() => setView(clamp({ start: n - initialCount, count: initialCount })), [clamp, n, initialCount]);
+  const reset = useCallback(() => { setYr(null); setView(clamp({ start: n - initialCount, count: initialCount })); }, [clamp, n, initialCount]);
+  // vertical scale: `py` = the pointer's y in the svg; the price under it stays where it is (no `py` = about the middle). Limits keep the range between 3 % and 40 times the fitted one.
+  const ctl = useRef({ hi: 1, lo: 0, mainH: 300, w: 900, autoSpan: 1 });
+  const zoomY = useCallback((factor: number, py?: number) => {
+    const { hi: h, lo: l, mainH: mh, autoSpan } = ctl.current;
+    const span = h - l, next = Math.min(autoSpan * 40, Math.max(autoSpan * 0.03, span * factor));
+    const frac = py === undefined ? 0.5 : Math.min(1, Math.max(0, (py - 8) / (mh - 16)));
+    const top = h - frac * span + frac * next;                       // the price at `frac` of the height keeps its place
+    setYr({ hi: top, lo: top - next });
+  }, []);
 
   // follow the newest candle while the user is looking at it; keep their place when they have scrolled back; start over when the pair / timeframe changes
   const prevN = useRef(n);
@@ -197,6 +208,7 @@ export function PriceChart(props: PriceChartProps) {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const g = geom.current, rect = el.getBoundingClientRect();
+      if ((e.altKey || e.clientX - rect.left > ctl.current.w - PAD_R) && e.clientY - rect.top <= ctl.current.mainH) { zoomY(Math.exp(e.deltaY * 0.0016), e.clientY - rect.top); return; }   // Alt+wheel, or the wheel over the price axis: stretch vertically
       setView((v) => {
         const step = g.innerW / v.count;
         if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return clamp({ ...v, start: v.start + (e.deltaX || e.deltaY) / Math.max(step, 0.5) });
@@ -207,7 +219,7 @@ export function PriceChart(props: PriceChartProps) {
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [clamp, n, n === 0]);
+  }, [clamp, zoomY, n, n === 0]);
 
   // ---- derived data
   const tf = useMemo(() => {
@@ -242,13 +254,15 @@ export function PriceChart(props: PriceChartProps) {
   const step = innerW / Math.max(1, view.count);
   const i0 = Math.max(0, Math.floor(view.start)), i1 = Math.min(n - 1, Math.ceil(view.start + view.count));
   const x = (i: number) => PAD_L + (i - view.start + 0.5) * step;
-  const { hi, lo } = useMemo(() => {
+  const auto = useMemo(() => {
     let h = -Infinity, l = Infinity;
     for (let i = i0; i <= i1; i++) { if (!all[i]) continue; h = Math.max(h, all[i].h); l = Math.min(l, all[i].l); }
     if (!Number.isFinite(h)) { h = 1; l = 0; }
     const pad = (h - l) * 0.12 || 1e-5;
     return { hi: h + pad, lo: l - pad };
   }, [all, i0, i1]);
+  const { hi, lo } = yr ?? auto;
+  ctl.current = { hi, lo, mainH, w, autoSpan: auto.hi - auto.lo };
   const y = (p: number) => 8 + ((hi - p) / (hi - lo)) * (mainH - 16);
   const yInv = (py: number) => hi - ((py - 8) / (mainH - 16)) * (hi - lo);
 
@@ -371,7 +385,9 @@ export function PriceChart(props: PriceChartProps) {
   ), [zoneSpans, swingPts, breakPts, step, view.start, hi, lo, mainH, all, i0, i1, n, dense, showTags, idxOf, fade]);        // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- interaction (pointer moves are coalesced to one update per frame)
-  const dragRef = useRef<{ x: number; start: number } | null>(null);
+  const dragRef = useRef<{ x: number; start: number; y?: number; yr?: { hi: number; lo: number } | null } | null>(null);
+  const axisRef = useRef<{ y0: number; hi: number; lo: number } | null>(null);        // dragging the price axis: up = stretch, down = squash
+  const inAxis = (e: { clientX: number; clientY: number }, r: DOMRect) => e.clientX - r.left > w - PAD_R && e.clientY - r.top <= mainH;
   const moveRef = useRef<{ cx: number; cy: number; left: number; top: number } | null>(null);
   const frame = useRef(0);
   useEffect(() => () => { if (frame.current) cancelAnimationFrame(frame.current); }, []);
@@ -384,8 +400,11 @@ export function PriceChart(props: PriceChartProps) {
       const [a, b] = [...ptrs.current.values()];
       pinch.current = { d: Math.max(20, Math.abs(a - b)), count: view.count, start: view.start, mid: (a + b) / 2 };
       dragRef.current = null; setHover(null);
+    } else if (ptrs.current.size === 1 && inAxis(e, e.currentTarget.getBoundingClientRect())) {
+      axisRef.current = { y0: e.clientY, hi, lo };                       // the price axis: a vertical drag stretches the candles
+      dragRef.current = null;
     } else if (ptrs.current.size === 1) {
-      dragRef.current = { x: e.clientX, start: view.start };
+      dragRef.current = { x: e.clientX, start: view.start, y: e.clientY, yr: yr ? { hi, lo } : null };
       if (e.pointerType !== 'mouse') {                                    // a tap on a touch screen shows the readout of the candle under the finger
         const r = e.currentTarget.getBoundingClientRect();
         const i = Math.floor((e.clientX - r.left - PAD_L) / step + view.start);
@@ -411,8 +430,18 @@ export function PriceChart(props: PriceChartProps) {
       frame.current = 0;
       const m = moveRef.current;
       if (!m) return;
-      const d = dragRef.current;
-      if (d) { setView((v) => clamp({ ...v, start: d.start - (m.cx - d.x) / step })); return; }
+      const d = dragRef.current, ax = axisRef.current;
+      if (ax) {
+        const span = ax.hi - ax.lo, next = Math.min(ctl.current.autoSpan * 40, Math.max(ctl.current.autoSpan * 0.03, span * Math.exp((m.cy - ax.y0) * 0.006)));
+        const mid = (ax.hi + ax.lo) / 2;
+        setYr({ hi: mid + next / 2, lo: mid - next / 2 });
+        return;
+      }
+      if (d) {
+        setView((v) => clamp({ ...v, start: d.start - (m.cx - d.x) / step }));
+        if (d.yr && d.y !== undefined) { const dp = ((m.cy - d.y) / (mainH - 16)) * (d.yr.hi - d.yr.lo); setYr({ hi: d.yr.hi + dp, lo: d.yr.lo + dp }); }     // a hand-set range also follows the vertical drag
+        return;
+      }
       const i = Math.floor((m.cx - m.left - PAD_L) / step + view.start);
       setHover(i >= 0 && i < n && m.cx - m.left >= PAD_L && m.cx - m.left <= PAD_L + innerW ? { i, y: m.cy - m.top } : null);
     });
@@ -422,7 +451,7 @@ export function PriceChart(props: PriceChartProps) {
     ptrs.current.delete(e.pointerId);
     if (ptrs.current.size < 2) pinch.current = null;
     if (ptrs.current.size === 1) { dragRef.current = { x: [...ptrs.current.values()][0], start: view.start }; return; }
-    dragRef.current = null; setDrag(false);
+    dragRef.current = null; axisRef.current = null; setDrag(false);
   };
   const onKey = (e: React.KeyboardEvent) => {
     const k = e.key;
@@ -430,6 +459,9 @@ export function PriceChart(props: PriceChartProps) {
     else if (k === 'ArrowRight') pan(Math.max(1, view.count / 10));
     else if (k === '+' || k === '=') zoom(0.8);
     else if (k === '-' || k === '_') zoom(1.25);
+    else if (k === 'ArrowUp') zoomY(0.8);                                // stretch the candles taller
+    else if (k === 'ArrowDown') zoomY(1.25);                             // squash them
+    else if (k === 'a' || k === 'A') setYr(null);                        // auto-fit the price range again
     else if (k === 'Home') setView((v) => clamp({ ...v, start: 0 }));
     else if (k === 'End') show(view.count);
     else if (k === 'f' || k === 'F') toggleFs();
@@ -517,6 +549,11 @@ export function PriceChart(props: PriceChartProps) {
               <button className="btn btn-sm !px-2.5" title="Scroll back (←)" onClick={() => pan(-Math.max(1, view.count / 3))}>◀</button>
               <button className="btn btn-sm !px-2.5" title="Scroll forward (→)" onClick={() => pan(Math.max(1, view.count / 3))}>▶</button>
             </Seg>
+            <Seg>
+              <button className="btn btn-sm !px-2.5" title="Stretch the candles taller (↑, Alt+wheel, or drag the price axis up)" onClick={() => zoomY(0.74)}>↕ +</button>
+              <button className="btn btn-sm !px-2.5" title="Squash the candles (↓, Alt+wheel, or drag the price axis down)" onClick={() => zoomY(1.35)}>↕ −</button>
+              <button className={`btn btn-sm !px-2.5 ${yr ? '' : '!bg-acc/25 text-[#c4b5fd]'}`} title="Fit the price range to the visible candles again (A, or double-click the price axis)" onClick={() => setYr(null)}>Auto</button>
+            </Seg>
             {!compact && <Seg>{rangeBtn('50', 50)}{rangeBtn('100', 100)}{rangeBtn('250', 250)}{rangeBtn('500', 500)}{rangeBtn('All', n)}</Seg>}
             <button className="btn btn-sm" title="Jump to the newest candles" onClick={() => show(Math.min(view.count, n))}>Latest</button>
             {anyTrades && <Seg>
@@ -551,7 +588,7 @@ export function PriceChart(props: PriceChartProps) {
 
         <div className="relative">
           <svg ref={svg} width={w} height={H} className={`block select-none rounded-xl border border-line/70 ${drag ? 'cursor-grabbing' : 'cursor-crosshair'}`} style={{ touchAction: 'pan-y', background: `linear-gradient(180deg, #0e1530 0%, ${BG} 100%)` }}
-            onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onMouseLeave={onLeave} onDoubleClick={reset}>
+            onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onMouseLeave={onLeave} onDoubleClick={(e) => { if (inAxis(e, e.currentTarget.getBoundingClientRect())) setYr(null); else reset(); }}>
             <defs>
               <clipPath id={`${clipId}-main`}><rect x={PAD_L} y={0} width={innerW} height={mainH} /></clipPath>
               <clipPath id={`${clipId}-all`}><rect x={PAD_L} y={0} width={innerW} height={H - AXIS_H} /></clipPath>
@@ -692,6 +729,7 @@ export function PriceChart(props: PriceChartProps) {
             {/* axes */}
             {ticks.map((i) => { const newDay = i > 0 && dayOf(all[i].t) !== dayOf(all[i - 1].t); return <text key={i} x={x(i)} y={H - AXIS_H + 15} fontSize="10" textAnchor="middle" fill={newDay ? '#cbd5e1' : MUTED} fontWeight={newDay ? 700 : 400}>{newDay ? dayLabel(all[i].t) : hhmm(all[i].t)}</text>; })}
             {priceNow !== null && priceNow >= lo && priceNow <= hi && <g><rect x={w - PAD_R + 1} y={y(priceNow) - 9} width={PAD_R - 2} height={18} rx={3} fill={ACC} /><text x={w - PAD_R + 5} y={y(priceNow) + 4} fontSize="10.5" fontWeight={700} fill="#fff">{fmt(priceNow, hi)}</text></g>}
+            <rect x={w - PAD_R} y={0} width={PAD_R} height={mainH} fill="transparent" style={{ cursor: 'ns-resize' }} />   {/* the price axis: drag / wheel = stretch vertically, double-click = auto-fit */}
             {hover && hover.y >= 0 && hover.y <= mainH && <g><rect x={w - PAD_R + 1} y={hover.y - 8} width={PAD_R - 2} height={16} rx={3} fill="#2a3358" /><text x={w - PAD_R + 5} y={hover.y + 4} fontSize="10" fill="#e5e9ff">{fmt(yInv(hover.y), hi)}</text></g>}
             {hover && <g><rect x={Math.min(w - PAD_R - 46, Math.max(PAD_L, x(hover.i) - 23))} y={H - AXIS_H + 2} width={46} height={16} rx={3} fill="#2a3358" /><text x={Math.min(w - PAD_R - 23, Math.max(PAD_L + 23, x(hover.i)))} y={H - AXIS_H + 14} fontSize="10" textAnchor="middle" fill="#e5e9ff">{hhmm(all[hover.i].t)}</text></g>}
           </svg>
@@ -753,7 +791,7 @@ export function PriceChart(props: PriceChartProps) {
 
         <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-mut">
           <span>{candles.length.toLocaleString()} candles · showing {Math.round(view.count)}</span>
-          {!compact && <span className="hidden md:inline">wheel = zoom · drag = move · shift+wheel / ← → = scroll · + − = zoom · F = full screen · double-click = reset</span>}
+          {!compact && <span className="hidden md:inline">wheel = zoom · drag = move · shift+wheel / ← → = scroll · + − = zoom · Alt+wheel / ↑ ↓ / drag the price axis = stretch vertically (A = auto-fit) · F = full screen · double-click = reset</span>}
           {!compact && <span className="md:hidden">drag = move · pinch = zoom · tap = details</span>}
           {anyTrades && <span className="ml-auto">
             <b className="text-fg">{trades.length}</b> trades · <span className="text-up">{stats.wins}W</span> <span className="text-down">{stats.losses}L</span>{stats.draws ? ` ${stats.draws}D` : ''}
