@@ -21,8 +21,8 @@ Fields (hi_* = the weak high above a star; lo_* = the weak low under a hammer; N
   hi_back    candles in a row, ending now, of the OPPOSITE colour to the run (red after a star), counted only after the level was broken: 1 = the first candle
              back, 2 = the second ... 0 = none yet or the run resumed
   hi_ran     1 once any candle of the run colour (green after a star) has printed since the star
-  hi_ret     candles in a row, ending now, of the OPPOSITE colour (red after a star), counted once the run has started, broken level or not: 1 = the first candle
-             back, 2 = the second. A flat candle (open = close) breaks the chain
+  hi_ret     1 on the FIRST candle back: a candle of the opposite colour (red after a star) straight after a run candle (green). When that candle also has a real body (at least
+             `turn` = 30 % of its range) and closes beyond the previous close, it is the turn: it is the last candle the setup reports and the signal is read from it
   hi_ext     the far end of the star = its LOW (for lo_*: the hammer's HIGH). A close beyond it is a decisive move back
   hi_dist    ATRs between the close and the level (positive = still below the level; for lo_*: positive = still above it), rounded to 0.01
 Nothing here looks at later candles, so live trading and a backtest read the same values."""
@@ -37,7 +37,7 @@ from . import indicators as ind
 
 SIDE_FIELDS = ["lvl", "new", "run", "touch", "closes", "broke", "back", "dist", "ran", "ret", "ext"]
 FIELDS = [f"{side}_{f}" for side in ("hi", "lo") for f in SIDE_FIELDS]
-DEFAULTS = {"atr_n": 14, "wick": 0.4, "body": 0.4, "min_atr": 0.3, "loc_n": 10, "loc_atr": 1000.0, "max_wait": 10, "wick_x": 2.0, "opp": 0.5, "min_body": 0.01}
+DEFAULTS = {"atr_n": 14, "wick": 0.4, "body": 0.4, "min_atr": 0.3, "loc_n": 10, "loc_atr": 1000.0, "max_wait": 10, "wick_x": 2.0, "opp": 0.5, "min_body": 0.01, "turn": 0.3}
 
 
 def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndarray, p: dict) -> dict:
@@ -50,6 +50,7 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
     touch = closes = broke = back = ran = ret = past = 0
     loc_n, max_wait = int(p["loc_n"]), int(p["max_wait"])
     for i in range(n):
+        ending = False
         if armed:                                              # carry the setup through this candle
             if i - s > max_wait:
                 armed = False
@@ -65,12 +66,11 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
                     past = 1                                   # price has already closed through the star's far end
                 if C[i] > O[i]:                                # a candle of the run colour
                     ran, ret = 1, 0
-                elif C[i] < O[i] and ran:                      # a candle back, after the run has started
-                    ret += 1
+                elif C[i] < O[i] and ran and i > 0 and C[i - 1] > O[i - 1]:   # the FIRST candle back: the colour changes after a run candle
+                    ret = 1
+                    ending = (O[i] - C[i]) >= p["turn"] * (H[i] - L[i]) and C[i] < C[i - 1]   # a real turn (body, closes lower): the last candle the setup reports, the signal is read from it
                 else:
                     ret = 0
-                if ret >= 2 or (ret == 1 and i > 0 and C[i] < s_low <= C[i - 1]):   # the second candle back has printed, or the first one just CROSSED the star's low: the move it warned of has happened
-                    armed = False
         new = 0
         a = A[i]
         if a == a:                                             # ATR known
@@ -86,6 +86,8 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
             out["lvl"][i], out["new"][i], out["run"][i], out["touch"][i], out["closes"][i] = level, new, i - s, touch, closes
             out["broke"][i], out["back"][i] = broke, back
             out["ran"][i], out["ret"][i], out["ext"][i] = ran, ret, s_low
+            if ending and not new:
+                armed = False                                  # the setup is spent after the turn
             out["dist"][i] = round((level - C[i]) / a, 2) if a == a and a > 0 else np.nan
         else:
             out["new"][i] = new
@@ -93,8 +95,8 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
 
 
 def compute(df: pd.DataFrame, atr_n: int = 14, wick: float = 0.4, body: float = 0.4, min_atr: float = 0.3, loc_n: int = 10, loc_atr: float = 1000.0,
-            max_wait: int = 10, wick_x: float = 2.0, opp: float = 0.5, min_body: float = 0.01) -> SimpleNamespace:
-    p = {"wick": wick, "body": body, "min_atr": min_atr, "loc_n": loc_n, "loc_atr": loc_atr, "max_wait": max_wait, "wick_x": wick_x, "opp": opp, "min_body": min_body}
+            max_wait: int = 10, wick_x: float = 2.0, opp: float = 0.5, min_body: float = 0.01, turn: float = 0.3) -> SimpleNamespace:
+    p = {"wick": wick, "body": body, "min_atr": min_atr, "loc_n": loc_n, "loc_atr": loc_atr, "max_wait": max_wait, "wick_x": wick_x, "opp": opp, "min_body": min_body, "turn": turn}
     O, H, L, C = (df[k].to_numpy(float) for k in ("open", "high", "low", "close"))
     A = ind.atr(df["high"], df["low"], df["close"], int(atr_n)).to_numpy(float)
     hi = _side(H, L, O, C, A, p)

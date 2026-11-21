@@ -17,38 +17,37 @@ def _cover_reversal() -> dict:
     """Hammer / shooting star -> a weak level -> a run toward it -> a decisive candle back. The weak high (a star's high) / weak low (a hammer's low) and everything price does
     on its way back to it is tracked by the `weak` indicator (weaklevels.py: wk.hi_* / wk.lo_*); the colour of the setup candle does not matter. A signal needs ALL three factors on the
     candle that just closed (min_agree 3); [1] = the candle before it (the last candle of the run). Distances are in ATR, so it needs no per-pair number.
-      1. SETUP  a pin bar armed a weak level (star: long UPPER wick of at least 2x the body and little wick below; hammer: the mirror) and at least one candle has followed it.
-      2. RUN    the last candle before the trigger ran toward the level (green for a star, red for a hammer) and either price has not closed beyond the level (stopped short / only
-                wicked into it) or it broke through and kept closing beyond it (2+ closes in a row) - OR the first candle back the other way has already printed (wk.hi_ret / lo_ret >= 1).
-      3. TRIGGER a candle back the other way with a real body (at least 30 % of its range: a flat candle never triggers), and EITHER it is the first candle back and closes
-                across the star's far end (a close beyond a star's low / a hammer's high that the previous candle had not yet reached: a decisive move), OR it is the SECOND candle back in a row and closes beyond the first one's close
-                (red candles toward a hammer, a green, then the next green = CALL).
+      1. SETUP  a pin bar armed a weak level (star: long UPPER wick of at least 2x the body and little wick below; hammer: the mirror) and a run has followed it.
+      2. RUN    the candle before the trigger ran toward the level (green for a star, red for a hammer), whether it stopped short, wicked into the level or broke through it.
+      3. TRIGGER the FIRST time the colour changes (wk.hi_ret / lo_ret == 1: a red candle straight after the green run for a star, a green after the red run for a hammer): it has a
+                real body (at least 30 % of its range, so a flat candle never triggers) and closes beyond the previous candle's close. That candle is the signal, one candle earlier
+                than waiting for a second confirming candle; the setup is spent after it.
     Early alert (`heads_up`): one candle or more before the signal, when the setup is armed and price runs toward the level (within 1 ATR) or has broken it with 2+ closes."""
     ind = [{"id": "a", "type": "atr", "n": 14}, {"id": "wk", "type": "weak"}]
-    star = {"setup": "wk.hi_lvl[1] > 0 and wk.hi_run[1] >= 1",
-            "run": "(green[1] and (wk.hi_closes[1] == 0 or wk.hi_closes[1] >= 2)) or wk.hi_ret[1] >= 1",
-            "trig": "red and -body >= 0.3 * range and ((wk.hi_ran[1] == 1 and wk.hi_ret[1] == 0 and close < wk.hi_ext[1] and close[1] >= wk.hi_ext[1]) or (wk.hi_ret[1] == 1 and close < close[1]))"}
-    ham = {"setup": "wk.lo_lvl[1] > 0 and wk.lo_run[1] >= 1",
-           "run": "(red[1] and (wk.lo_closes[1] == 0 or wk.lo_closes[1] >= 2)) or wk.lo_ret[1] >= 1",
-           "trig": "green and body >= 0.3 * range and ((wk.lo_ran[1] == 1 and wk.lo_ret[1] == 0 and close > wk.lo_ext[1] and close[1] <= wk.lo_ext[1]) or (wk.lo_ret[1] == 1 and close > close[1]))"}
+    star = {"setup": "wk.hi_lvl > 0 and wk.hi_run >= 2",
+            "run": "green[1]",
+            "trig": "wk.hi_ret == 1 and red and -body >= 0.3 * range and close < close[1]"}
+    ham = {"setup": "wk.lo_lvl > 0 and wk.lo_run >= 2",
+           "run": "red[1]",
+           "trig": "wk.lo_ret == 1 and green and body >= 0.3 * range and close > close[1]"}
     return {"engine": "spec/1", "kind": "factors", "timeframes": ALL_TFS, "indicators": ind,
             "factors": [
                 {"id": "setup", "name": "Shooting star at a top / hammer at a bottom left a weak level", "weight": 34, "kind": "expr", "call": ham["setup"], "put": star["setup"]},
-                {"id": "run", "name": "Price ran toward the level (stopped short, or broke it and kept closing beyond), or has started to come back", "weight": 33, "kind": "expr",
+                {"id": "run", "name": "Price ran toward the level (stopped short, or broke it and kept closing beyond)", "weight": 33, "kind": "expr",
                  "call": ham["run"], "put": star["run"]},
-                {"id": "trigger", "name": "Candle back with a real body: past the star's far end, or the second candle back in a row", "weight": 33, "kind": "expr",
+                {"id": "trigger", "name": "First candle back the other way, with a real body, closing past the previous close", "weight": 33, "kind": "expr",
                  "call": ham["trig"], "put": star["trig"]}],
             "gates": {"min_candles": 60, "min_agree": 3}, "filters": [], "expiry_candles": 1,
             "heads_up": {
                 "title": "weak level ahead",
-                "call": "wk.lo_lvl > 0 and wk.lo_run >= 1 and ((red and ((wk.lo_closes == 0 and wk.lo_dist <= 1) or wk.lo_closes >= 2)) or wk.lo_ret == 1)",
-                "put": "wk.hi_lvl > 0 and wk.hi_run >= 1 and ((green and ((wk.hi_closes == 0 and wk.hi_dist <= 1) or wk.hi_closes >= 2)) or wk.hi_ret == 1)",
+                "call": "wk.lo_lvl > 0 and wk.lo_run >= 1 and ((red and ((wk.lo_closes == 0 and wk.lo_dist <= 1) or wk.lo_closes >= 2)))",
+                "put": "wk.hi_lvl > 0 and wk.hi_run >= 1 and ((green and ((wk.hi_closes == 0 and wk.hi_dist <= 1) or wk.hi_closes >= 2)))",
                 "level": {"call": "wk.lo_lvl", "put": "wk.hi_lvl"},
                 "text": {
                     "put": "A shooting star formed a weak high at {wk.hi_lvl} ({wk.hi_run} candles ago). Price is {wk.hi_dist} ATR under it (negative = above it) and has closed above it {wk.hi_closes} time(s) in a row. "
-                           "If a red candle now closes below the star's low {wk.hi_ext} (or, when the first red candle back has already printed, a second red candle in a row closes lower), the PUT signal follows.",
+                           "If the next candle turns red with a real body and closes lower than this one, the PUT signal follows.",
                     "call": "A hammer formed a weak low at {wk.lo_lvl} ({wk.lo_run} candles ago). Price is {wk.lo_dist} ATR over it (negative = below it) and has closed below it {wk.lo_closes} time(s) in a row. "
-                            "If a green candle now closes above the hammer's high {wk.lo_ext} (or, when the first green candle back has already printed, a second green candle in a row closes higher), the CALL signal follows."}}}
+                            "If the next candle turns green with a real body and closes higher than this one, the CALL signal follows."}}}
 
 
 BUILTINS: list[dict] = [
