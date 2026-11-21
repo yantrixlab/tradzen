@@ -39,20 +39,20 @@
     },
     {
       "id": "run",
-      "name": "Price ran toward the level and stopped short, or broke it an",
+      "name": "Price ran toward the level (stopped short, or broke it and k",
       "weight": 33,
       "kind": "expr",
-      "call": "(red[1] and (wk.lo_closes[1] == 0 or wk.lo_closes[1] >= 2)) or (wk.lo_broke[1] == 1 and wk.lo_back[1] >= 1)",
-      "put": "(green[1] and (wk.hi_closes[1] == 0 or wk.hi_closes[1] >= 2)) or (wk.hi_broke[1] == 1 and wk.hi_back[1] >= 1)",
+      "call": "(red[1] and (wk.lo_closes[1] == 0 or wk.lo_closes[1] >= 2)) or wk.lo_ret[1] >= 1",
+      "put": "(green[1] and (wk.hi_closes[1] == 0 or wk.hi_closes[1] >= 2)) or wk.hi_ret[1] >= 1",
       "vote": 1
     },
     {
       "id": "trigger",
-      "name": "Candle back the other way (or, after a break, the second can",
+      "name": "Candle back with a real body: past the star's far end, or th",
       "weight": 33,
       "kind": "expr",
-      "call": "(green and wk.lo_back[1] == 0 and close > open[1]) or (wk.lo_back[1] >= 1 and green and close > close[1])",
-      "put": "(red and wk.hi_back[1] == 0 and close < open[1]) or (wk.hi_back[1] >= 1 and red and close < close[1])",
+      "call": "green and body >= 0.3 * range and ((wk.lo_ran[1] == 1 and wk.lo_ret[1] == 0 and close > wk.lo_ext[1] and close[1] <= wk.lo_ext[1]) or (wk.lo_ret[1] == 1 and close > close[1]))",
+      "put": "red and -body >= 0.3 * range and ((wk.hi_ran[1] == 1 and wk.hi_ret[1] == 0 and close < wk.hi_ext[1] and close[1] >= wk.hi_ext[1]) or (wk.hi_ret[1] == 1 and close < close[1]))",
       "vote": 1
     }
   ],
@@ -66,15 +66,15 @@
   "filters": [],
   "expiry_candles": 1,
   "heads_up": {
-    "call": "wk.lo_lvl > 0 and wk.lo_run >= 1 and ((red and ((wk.lo_closes == 0 and wk.lo_dist <= 1) or wk.lo_closes >= 2)) or (wk.lo_broke == 1 and wk.lo_back >= 1))",
-    "put": "wk.hi_lvl > 0 and wk.hi_run >= 1 and ((green and ((wk.hi_closes == 0 and wk.hi_dist <= 1) or wk.hi_closes >= 2)) or (wk.hi_broke == 1 and wk.hi_back >= 1))",
+    "call": "wk.lo_lvl > 0 and wk.lo_run >= 1 and ((red and ((wk.lo_closes == 0 and wk.lo_dist <= 1) or wk.lo_closes >= 2)) or wk.lo_ret == 1)",
+    "put": "wk.hi_lvl > 0 and wk.hi_run >= 1 and ((green and ((wk.hi_closes == 0 and wk.hi_dist <= 1) or wk.hi_closes >= 2)) or wk.hi_ret == 1)",
     "level": {
       "call": "wk.lo_lvl",
       "put": "wk.hi_lvl"
     },
     "text": {
-      "call": "A hammer formed a weak low at {wk.lo_lvl} ({wk.lo_run} candles ago). Price is {wk.lo_dist} ATR over it (negative = below it) and has closed below it {wk.lo_closes} time(s) in a row. If a green candle now closes above the previous candle's open (or, once it has broken the level, a second green candle in a row closes higher), the CALL signal follows.",
-      "put": "A shooting star formed a weak high at {wk.hi_lvl} ({wk.hi_run} candles ago). Price is {wk.hi_dist} ATR under it (negative = above it) and has closed above it {wk.hi_closes} time(s) in a row. If a red candle now closes below the previous candle's open (or, once it has broken the level, a second red candle in a row closes lower), the PUT signal follows."
+      "call": "A hammer formed a weak low at {wk.lo_lvl} ({wk.lo_run} candles ago). Price is {wk.lo_dist} ATR over it (negative = below it) and has closed below it {wk.lo_closes} time(s) in a row. If a green candle now closes above the hammer's high {wk.lo_ext} (or, when the first green candle back has already printed, a second green candle in a row closes higher), the CALL signal follows.",
+      "put": "A shooting star formed a weak high at {wk.hi_lvl} ({wk.hi_run} candles ago). Price is {wk.hi_dist} ATR under it (negative = above it) and has closed above it {wk.hi_closes} time(s) in a row. If a red candle now closes below the star's low {wk.hi_ext} (or, when the first red candle back has already printed, a second red candle in a row closes lower), the PUT signal follows."
     },
     "title": "weak level ahead"
   }

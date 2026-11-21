@@ -119,10 +119,31 @@ def test_a_tiny_bodied_star_then_a_short_green_then_a_red_below_its_low_is_the_p
     assert call_of(mirrored) == "CALL", "the same shape upside down is a hammer and a CALL"
 
 
+def test_a_flat_candle_never_triggers_and_a_small_first_candle_back_waits_for_the_second():
+    flat_red = (100.7, 100.9, 100.3, 100.69)             # the user's flat red line with a long top wick: body 1 % of the range
+    assert call_of(mirror(seq(HAMMER, SHORT, flat_red))) == "SKIP"
+    star_run = mirror(seq(HAMMER, SHORT))
+    assert call_of(star_run + mirror(seq(HAMMER, SHORT, (100.4, 101.4, 100.35, 101.3)))[-1:]) == "PUT", "a real body is fine"
+    run, back1, back2 = (100.5, 100.55, 99.9, 100.0), (100.0, 100.2, 99.95, 100.15), (100.15, 100.45, 100.1, 100.35)
+    assert call_of(seq(HAMMER, run, back1)) == "SKIP", "a first green back that stays under the hammer's high waits"
+    assert call_of(seq(HAMMER, run, back1, back2)) == "CALL", "the second green in a row, closing higher, is the signal"
+    assert call_of(mirror(seq(HAMMER, run, back1, back2))) == "PUT"
+
+
+def test_the_users_hammer_case_two_reds_a_green_then_the_second_green():
+    red1, red2 = (100.7, 100.75, 100.45, 100.5), (100.5, 100.55, 100.4, 100.45)      # two red candles that try to push down and stop short of the weak low
+    g1, g2 = (100.45, 100.6, 100.43, 100.55), (100.55, 100.75, 100.53, 100.7)
+    assert call_of(seq(HAMMER, red1, red2, g1)) == "SKIP", "the first green only starts the move back"
+    assert call_of(seq(HAMMER, red1, red2, g1, g2)) == "CALL", "the second green is the CALL"
+    assert call_of(mirror(seq(HAMMER, red1, red2, g1, g2))) == "PUT"
+
+
 def test_the_setup_ends_when_it_is_overtaken_or_goes_stale():
-    over = weaklevels.compute(evaluator.build_df(seq(HAMMER, (100.3, 101.2, 100.25, 101.1))))
-    assert np.isnan(over.lo_lvl.iloc[-1]), "a close above the hammer's high: the move it warned of has already happened"
-    stale = weaklevels.compute(evaluator.build_df(seq(HAMMER, *[(100.4, 100.55, 100.3, 100.5)] * 8)))
+    up_first = weaklevels.compute(evaluator.build_df(seq(HAMMER, (100.3, 101.2, 100.25, 101.1))))
+    assert up_first.lo_lvl.iloc[-1] == 99.4, "a push up before any run toward the level does not cancel the weak low: it is still a weak low"
+    crossed = weaklevels.compute(evaluator.build_df(seq(HAMMER, SHORT, (100.4, 101.4, 100.35, 101.3))))
+    assert np.isnan(crossed.lo_lvl.iloc[-1]), "the first candle back that closes across the hammer's high is the signal and ends the setup"
+    stale = weaklevels.compute(evaluator.build_df(seq(HAMMER, *[(100.4, 100.55, 100.3, 100.5)] * 12)))
     assert np.isnan(stale.lo_lvl.iloc[-1]), "not followed up within max_wait candles"
 
 
@@ -149,21 +170,24 @@ def test_a_run_that_stops_short_or_wicks_into_the_level_then_a_decisive_candle_i
 
 
 def test_a_break_through_that_keeps_closing_beyond_then_a_decisive_candle_is_a_signal():
-    assert call_of(seq(HAMMER, B1, B2, B3, B_TRIGGER)) == "CALL", "three closes under the weak low, then a green candle"
-    assert call_of(mirror(seq(HAMMER, B1, B2, B3, B_TRIGGER))) == "PUT"
-    two = seq(HAMMER, B1, B2, (98.8, 98.85, 98.65, 98.7), (98.7, 99.8, 98.65, 99.7))   # the run ends after two closes beyond: still enough
+    decisive = (98.4, 100.6, 98.35, 100.5)                     # the first green back closes above the hammer's high: decisive on its own
+    assert call_of(seq(HAMMER, B1, B2, B3, decisive)) == "CALL", "three closes under the weak low, then a green candle that closes above the hammer's high"
+    assert call_of(mirror(seq(HAMMER, B1, B2, B3, decisive))) == "PUT"
+    assert call_of(seq(HAMMER, B1, B2, B3, B_TRIGGER)) == "SKIP", "a first green back that stays under the hammer's high waits for the second one"
+    assert call_of(seq(HAMMER, B1, B2, B3, B_TRIGGER, (99.4, 99.9, 99.35, 99.8))) == "CALL"
+    two = seq(HAMMER, B1, B2, (98.8, 98.85, 98.65, 98.7), (98.7, 100.8, 98.65, 100.6))   # the run ends after two closes beyond: still enough
     assert call_of(two) == "CALL"
     once = seq(HAMMER, B1, (99.2, 100.3, 99.15, 100.2))        # ONE close beyond the level, then green: neither stopped short nor a break-through
     assert call_of(once) == "SKIP"
 
 
 def test_every_missing_piece_means_no_signal():
-    assert call_of(seq(HAMMER, SWEEP, (99.9, 100.2, 99.85, 100.0))) == "SKIP", "a weak trigger (smaller than half an ATR) is not decisive"
+    assert call_of(seq(HAMMER, SWEEP, (99.9, 100.2, 99.85, 100.0))) == "SKIP", "a first candle back that does not close above the hammer's high is not decisive: it waits for the second"
     assert call_of(seq(HAMMER, SWEEP, (99.9, 100.5, 99.3, 99.4))) == "SKIP", "a red trigger is not a call"
-    assert call_of(seq(HAMMER, SWEEP, (99.9, 100.45, 99.85, 100.35))) == "SKIP", "closing under the previous candle's open does not turn the run"
+    assert call_of(seq(HAMMER, SWEEP, (99.9, 100.45, 99.85, 100.35))) == "SKIP", "closing under the hammer's high (100.4) is not decisive"
     assert call_of(seq(HAMMER, (99.9, 100.5, 99.3, 100.4), TRIGGER)) == "SKIP", "a green candle after a hammer is not a run toward its low"
     assert call_of(seq(HAMMER, TRIGGER)) == "SKIP", "no run candle between the hammer and the decisive candle"
-    assert call_of(seq(HAMMER, *[(100.4, 100.55, 100.3, 100.5)] * 8, TRIGGER)) == "SKIP", "the hammer is stale"
+    assert call_of(seq(HAMMER, *[(100.4, 100.55, 100.3, 100.5)] * 12, TRIGGER)) == "SKIP", "the hammer is stale"
 
 
 def test_it_fits_any_price_scale():
@@ -222,21 +246,24 @@ def test_red_break_then_the_second_green_is_the_call():
     r1, r2 = (100.25, 100.3, 99.2, 99.3), (99.3, 99.35, 98.5, 98.6)       # screenshot 2: two red candles close under the level, a flat green, a green, another green
     flat, g2, g3 = (98.6, 98.8, 98.5, 98.65), (98.65, 99.2, 98.6, 99.1), (99.1, 99.6, 99.05, 99.5)
     assert call_of(seq(HAMMER, *PAUSE, r1, r2, flat, g2)) == "CALL"
-    assert call_of(seq(HAMMER, *PAUSE, r1, r2, flat, g2, g3)) == "CALL", "a further green keeps the confirmation (the first of the two is the flat one)"
+    assert call_of(seq(HAMMER, *PAUSE, r1, r2, flat, g2, g3)) == "SKIP", "the signal came on g2; a third green in a row is not another one"
 
 
 def test_the_second_candle_must_confirm():
     assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.05, 99.1, 98.6, 98.7))) == "SKIP", "a red candle after the first green: no confirmation"
     assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.0, 99.2, 98.95, 99.04))) == "SKIP", "closing under the first green's close is no progress"
-    assert call_of(seq(HAMMER, SHORT, G1, G2)) == "SKIP", "the level was never broken, so the two-green rule does not apply"
+    assert call_of(seq(HAMMER, SHORT, G1, G2)) == "CALL", "the second candle back confirms whether or not the level was broken"
     assert call_of(seq(HAMMER, *PAUSE, BIG_RED, (98.9, 98.95, 98.4, 98.5), G1, G2)) == "CALL", "more red candles after the break are fine: what counts is the first green after the LAST red"
-    assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.05, 99.1, 98.6, 98.7), G2)) == "CALL", "a red candle between the greens restarts the two-green count, but three closes under the level then a decisive green is the break-through rule"
+    assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.05, 99.1, 98.6, 98.7), G2)) == "SKIP", "a red candle between the greens restarts the count: this green is a first candle back again"
 
 
 def test_the_tracker_remembers_the_break_and_counts_the_candles_back():
     w = weaklevels.compute(evaluator.build_df(seq(HAMMER, *PAUSE, BIG_RED, G1, G2)))
-    assert list(w.lo_broke.iloc[-3:]) == [1, 1, 1] and list(w.lo_closes.iloc[-3:]) == [1, 2, 0], "closes falls back to 0 when price is back above the level, broke does not"
-    assert list(w.lo_back.iloc[-3:]) == [0, 1, 2]
+    assert list(w.lo_broke.iloc[-3:-1]) == [1, 1] and list(w.lo_closes.iloc[-3:-1]) == [1, 2]
+    assert list(w.lo_back.iloc[-3:-1]) == [0, 1]
+    assert list(w.lo_ret.iloc[-3:-1]) == [0, 1] and list(w.lo_ran.iloc[-3:-1]) == [1, 1], "candles back in a row, counted once the run has started"
+    assert w.lo_ext.iloc[-2] == 100.4, "the far end of a hammer is its high"
+    assert np.isnan(w.lo_lvl.iloc[-1]), "the second candle back ends the setup (the signal was read from the candle before it)"
     assert w.lo_broke.iloc[-5] == 0 and w.lo_back.iloc[-5] == 0
 
 
