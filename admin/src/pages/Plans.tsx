@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { ago, dateTime } from '../format';
 import { Badge, Card, Empty, ErrorBox, PageTitle, Spinner } from '../components/ui';
-import CheckoutModal from '../components/CheckoutModal';
+import { useCheckout } from '../components/CheckoutHost';
 import { STATUS_TONE, daysLeft, money, type Catalog, type Order } from '../lib/pay';
 
 const kindTone = (label: string) => (/usdt|crypto|btc|eth/i.test(label) ? 'bg-amber-500/15 text-amber-300' : /upi|inr|bank/i.test(label) ? 'bg-sky-500/15 text-sky-300' : 'bg-slate-500/20 text-slate-300');
@@ -14,11 +14,9 @@ export default function Plans() {
   const qc = useQueryClient();
   const cat = useQuery({ queryKey: ['pay-plans'], queryFn: () => api<Catalog>('/api/pay/plans') });
   const orders = useQuery({ queryKey: ['pay-orders'], queryFn: () => api<Order[]>('/api/pay/orders'), refetchInterval: 15000 });
-  const [planId, setPlanId] = useState<number | null>(null);
-  const close = useCallback(() => setPlanId(null), []);
+  const { open } = useCheckout();
 
   const plans = cat.data?.plans ?? [];
-  const plan = plans.find((p) => p.id === planId) ?? null;
   const pending = (orders.data ?? []).find((o) => o.status === 'pending') ?? null;
   const approved = (orders.data ?? []).filter((o) => o.status === 'approved').length;
   const lastApproved = useRef<number | null>(null);
@@ -78,14 +76,12 @@ export default function Plans() {
                       </div>) : null;
                   })}
                 </div>
-                <button type="button" onClick={() => setPlanId(p.id)}
+                <button type="button" onClick={() => open(p.id)}
                   className="relative mt-5 inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 px-5 text-sm font-extrabold uppercase tracking-wider text-white shadow-[0_12px_30px_rgba(14,116,230,.35),inset_0_1px_0_rgba(255,255,255,.3)] transition hover:brightness-110">
                   {yours ? 'Renew' : 'Get'} {p.name}</button>
               </section>);
           })}
         </div>)}
-
-      {plan && <CheckoutModal plan={plan} cat={cat.data} pending={pending} onClose={close} />}
 
       <Card title="My payments" className="mt-6">
         {!orders.data ? <Spinner /> : orders.data.length === 0 ? <Empty>No payments yet.</Empty> : (

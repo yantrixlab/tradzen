@@ -20,12 +20,15 @@ function Copy({ text }: { text: string }) {
 
 const kindTone = (k: string) => (k === 'usdt' ? 'bg-amber-500/15 text-amber-300' : k === 'upi' ? 'bg-sky-500/15 text-sky-300' : 'bg-slate-500/20 text-slate-300');
 
-interface Props { plan: PlanOffer; cat: Catalog; pending: Order | null; onClose: () => void }
+interface Props { plans: PlanOffer[]; initialPlanId: number | null; cat: Catalog; pending: Order | null; onClose: () => void }
 
-export default function CheckoutModal({ plan, cat, pending, onClose }: Props) {
+export default function CheckoutModal({ plans, initialPlanId, cat, pending, onClose }: Props) {
   const qc = useQueryClient();
+  // opened for a plan (its Get button) or for none (the plan banner, a locked market): then the plan the person does not have yet comes first
+  const [planId, setPlanId] = useState<number>(() => (plans.find((p) => p.id === initialPlanId) ?? plans.find((p) => p.id !== cat.current.plan_id) ?? plans[0]).id);
+  const plan = plans.find((p) => p.id === planId) ?? plans[0];
   const methods: PayMethod[] = useMemo(() => cat.methods.filter((m) => plan.prices.some((p) => p.method_id === m.id)), [cat.methods, plan.prices]);
-  const [methodId, setMethodId] = useState<number | null>(methods[0]?.id ?? null);
+  const [methodId, setMethodId] = useState<number | null>(null);
   const method = methods.find((m) => m.id === methodId) ?? methods[0] ?? null;
   const price = method ? plan.prices.find((p) => p.method_id === method.id) ?? null : null;
   const [network, setNetwork] = useState<string>('TRC20');
@@ -95,6 +98,13 @@ export default function CheckoutModal({ plan, cat, pending, onClose }: Props) {
             <p className="pt-2 text-[15px] text-slate-400">Choose how you pay to unlock <b className="text-slate-100">{plan.name}</b></p>
             <button type="button" onClick={onClose} aria-label="Close" className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white/[.06] text-xl text-white transition hover:bg-white/[.12]">✕</button>
           </div>
+
+          {plans.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Plan">
+              {plans.map((p) => (
+                <button key={p.id} type="button" role="tab" aria-selected={p.id === plan.id} onClick={() => { setPlanId(p.id); setMethodId(null); setTouched(false); setDone(false); }}
+                  className={`rounded-full border px-4 py-1.5 text-sm font-bold transition ${p.id === plan.id ? 'border-cyan-400 bg-cyan-400/15 text-white' : 'border-white/10 bg-white/[.04] text-slate-300 hover:border-white/25'}`}>{p.name}</button>))}
+            </div>)}
 
           <div className={`grid gap-3 ${methods.length > 1 ? 'sm:grid-cols-2' : ''}`} role="radiogroup" aria-label="Payment method">
             {methods.map((m) => {

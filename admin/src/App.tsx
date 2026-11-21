@@ -36,6 +36,7 @@ import SessionConsole from './pages/SessionConsole';
 import MyTrades from './pages/MyTrades';
 import AccountBar from './components/AccountBar';
 import PlanBanner from './components/PlanBanner';
+import { CheckoutProvider } from './components/CheckoutHost';
 import Guard from './pages/Guard';
 import MyStyle from './pages/MyStyle';
 import Login from './pages/Login';
@@ -245,5 +246,5 @@ export default function App() {
       </div>
     );
   }
-  return <Shell me={me.data} />;
+  return <CheckoutProvider><Shell me={me.data} /></CheckoutProvider>;
 }

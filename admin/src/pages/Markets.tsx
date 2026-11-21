@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { useCheckout } from '../components/CheckoutHost';
 import { api, ApiError } from '../api';
 import { prettyPair, tfName } from '../format';
 import { usePersisted } from '../hooks';
@@ -46,13 +46,14 @@ function Sidebar({ list, sym, onPick }: { list: MarketList; sym: string; onPick:
 }
 
 function Paywall({ pair, plan }: { pair: string; plan: string | null }) {
+  const { open } = useCheckout();
   return (
     <Card>
       <div className="mx-auto max-w-md py-8 text-center">
         <div className="text-4xl">🔒</div>
         <h2 className="mt-2 text-xl font-bold">{prettyPair(pair)} is part of a paid plan</h2>
         <p className="mt-2 text-sm text-mut">{plan ? `Your plan (${plan}) opens only some markets. ` : ''}Choose a plan to unlock every OTC and live market with live candles and the countdown to each close.</p>
-        <Link to="/plans" className="btn btn-primary mt-4">See the plans</Link>
+        <button type="button" className="btn btn-primary mt-4" onClick={() => open()}>See the plans</button>
       </div>
     </Card>
   );
