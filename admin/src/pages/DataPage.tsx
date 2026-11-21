@@ -5,6 +5,7 @@ import { Badge, Card, Empty, Field, PageTitle, Spinner, Stat, Tabs } from '../co
 import { CandleManager } from '../components/CandleManager';
 import { ContribPanel } from '../components/ContribPanel';
 import { FeedPanel } from '../components/FeedPanel';
+import { SourcesPanel } from '../components/SourcesPanel';
 import { SentimentPanel } from '../components/SentimentPanel';
 
 function PlanTab({ now }: { now: number }) {
@@ -87,7 +88,7 @@ export default function DataPage() {
       {tab === 'plan' && <PlanTab now={now} />}
       {tab === 'manage' && isAdmin && <CandleManager filter={q} now={now} />}
       {tab === 'shared' && isAdmin && <ContribPanel now={now} />}
-      {tab === 'feed' && isAdmin && <FeedPanel now={now} />}
+      {tab === 'feed' && isAdmin && <><SourcesPanel /><FeedPanel now={now} /></>}
       {tab === 'sentiment' && <SentimentPanel now={now} />}
 
       {tab === 'coverage' && (

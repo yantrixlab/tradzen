@@ -1,0 +1,22 @@
+# The server-side price feed (backend/app/feedworker.py): a second Coolify application next to the Tradzen one, built from this file (Dockerfile location: /Dockerfile.feed).
+# It logs in to Quotex with ONE dedicated account and sends prices to the Tradzen server with a price-feed token. Read FEEDWORKER.md before you start it.
+#
+# Build argument PYQUOTEX_SPEC is REQUIRED and is deliberately not defaulted: it is third-party code that logs in with your Quotex account, so you choose and PIN the exact version after
+# reading it, e.g.   git+https://github.com/cleitonleonel/pyquotex.git@<full commit hash>   (Coolify: Build -> Build arguments).
+FROM python:3.13-slim
+ARG PYQUOTEX_SPEC
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    QXS_FEED_HEALTH=/tmp/feedworker-health.json
+RUN test -n "$PYQUOTEX_SPEC" || (echo "Set the PYQUOTEX_SPEC build argument to a pinned PyQuotex version (see FEEDWORKER.md)" && exit 1)
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir "$PYQUOTEX_SPEC"
+WORKDIR /app/backend
+COPY backend/app ./app
+RUN useradd --system --uid 10002 --home-dir /app qxsfeed && chown -R qxsfeed:qxsfeed /app
+USER qxsfeed
+# healthy = the worker wrote its health file in the last 30 seconds and says it is connected and receiving prices
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD python -c "import json, sys, time; h = json.load(open('/tmp/feedworker-health.json')); sys.exit(0 if h['ok'] and time.time() - h['now'] < 30 else 1)" || exit 1
+# environment (set in Coolify, runtime only): QXS_URL, QXS_FEED_TOKEN, QX_EMAIL, QX_PASSWORD   - optional: QXS_FEED_PAIRS, QXS_FEED_MAX_PAIRS, QX_HOST
+CMD ["python", "-m", "app.feedworker", "--adapter", "pyquotex"]

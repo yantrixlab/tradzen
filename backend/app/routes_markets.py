@@ -6,6 +6,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from . import feedsources
 from .auth import COOKIE, SESSION_DAYS, AuthError
 from .markets import Locked, Markets
 from .payments import Payments
@@ -14,6 +15,11 @@ from .payments import Payments
 class RegisterIn(BaseModel):
     username: str = Field(..., max_length=60)
     password: str = Field(..., max_length=200)
+
+
+class SourcesIn(BaseModel):
+    contrib: bool
+    leases: bool
 
 
 class PlatformIn(BaseModel):
@@ -89,5 +95,16 @@ def bind(engine, auth, markets: Markets, pay: Payments) -> APIRouter:
             raise HTTPException(400, str(e))
         auth.audit(user(request)["username"], "platform-settings", "", out)
         return out
+
+    @r.get("/api/platform-admin/sources")
+    async def get_sources() -> dict:
+        """Who is feeding the market (feeders, the feed worker, pairs by source) and the two switches for ordinary accounts' candles and live prices."""
+        return feedsources.status(engine)
+
+    @r.put("/api/platform-admin/sources")
+    async def put_sources(body: SourcesIn, request: Request) -> dict:
+        out = feedsources.save(engine, body.contrib, body.leases)
+        auth.audit(user(request)["username"], "sources-switch", "", out)
+        return feedsources.status(engine)
 
     return r

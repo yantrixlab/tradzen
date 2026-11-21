@@ -110,6 +110,7 @@ class Engine:
         self._sty_at = 0.0
         self.edgelab = EdgeLab(self)
         self.feed_at: dict[str, float] = {}                 # symbol -> when the admin's price feed (feeder token) last sent a tick for it
+        self.feeder_seen: dict[int, dict] = {}              # feeder account id -> {agent, first, last, ticks, batches, pairs}: who feeds the market (the admin's tab, or the server's feed worker)
         self.tick_ring: dict[str, deque] = {}               # symbol -> its last few applied ticks (ts, price): what other accounts' ticks are compared with
         self.leases = Leases(self, enabled=os.getenv("QXS_LIVE_FEED", "on").lower() not in ("off", "0", "false", "no"))   # live prices from ordinary accounts, one holder per pair
         self.contrib = Contributions(self, (*TFS, *STORE_ONLY_TFS), enabled=os.getenv("QXS_CONTRIB", "on").lower() not in ("off", "0", "false", "no"))   # shared candles: history contributed by every extension
@@ -454,6 +455,7 @@ class Engine:
             self.ingest_stats["last_recv"] = time.time()
         n_ticks = 0
         got_order = False
+        fed: set[str] = set()
         for item in payload.get("items", []):
             k = item.get("k")
             if not feeder and k not in ("o", "b", "sel"):
@@ -463,6 +465,7 @@ class Engine:
                 for sym, ts, price, *rest in item.get("d", []):
                     self.on_tick(sym, float(ts), float(price))
                     self.feed_at[sym] = now_f                # the price feed has this pair: nobody else holds it
+                    fed.add(sym)
                     n_ticks += 1
             elif k == "h":
                 self.seed_history(item.get("asset"), rows_from_history(item.get("rows", [])))
@@ -492,6 +495,12 @@ class Engine:
             elif k == "b":
                 self.user(uid).trades.on_balance(item)
         self.ingest_stats["ticks"] += n_ticks
+        if feeder:
+            rec = self.feeder_seen.setdefault(uid, {"agent": None, "first": time.time(), "last": 0.0, "ticks": 0, "batches": 0, "pairs": {}})
+            now_s = time.time()
+            rec.update(last=now_s, agent=str(payload.get("agent") or "extension")[:40], batches=rec["batches"] + 1, ticks=rec["ticks"] + n_ticks)
+            for sym in fed:
+                rec["pairs"][sym] = now_s
         if got_order:
             try:
                 for g in self.user(uid).guard.check():

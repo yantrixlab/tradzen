@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import backup, candleadmin, expr, extpack, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_markets, routes_pay, routes_sessions, payments as payments_mod, markets as markets_mod
+from . import backup, candleadmin, expr, extpack, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_markets, routes_pay, routes_sessions, payments as payments_mod, markets as markets_mod, feedsources
 from .auth import COOKIE as COOKIE_NAME, from_env
 from .strategy_access import Access, is_staff
 from .feature_flags import Features
@@ -107,6 +107,7 @@ access = Access(engine)                                          # who may see /
 features = Features(engine.db)                                   # menus / capabilities, plans and per-user overrides (see app/feature_flags.py)
 pay = payments_mod.Payments(engine.db, DB_PATH.parent / "pay", features.plan, features.plans)       # plans bought with manual payments: methods, QR, orders, approval (app/payments.py)
 markets = markets_mod.Markets(engine, features, auth)                      # the public chart platform: pair locks, market list, sign-up (app/markets.py)
+feedsources.apply(engine)                                                 # the admin's stored choice about ordinary accounts' candles / live prices wins over QXS_CONTRIB / QXS_LIVE_FEED
 _env_admin = engine.db.execute("SELECT id FROM users WHERE env_admin=1").fetchone()
 if _env_admin:
     engine.set_primary(_env_admin[0])                          # the data that existed before accounts (the main database) belongs to the admin from the .env file

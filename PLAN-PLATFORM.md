@@ -50,7 +50,7 @@ The reference site: header with pair, timeframe, a live countdown to the candle 
 - **Sign-up:** self sign-up with e-mail verification (or admin-created accounts only; decide), per-account device limit so one paid plan is not shared by many people.
 - **Same data for everybody:** every viewer sees the one candle store, so the chart is identical for all users and identical to what the engine and the strategies use.
 
-## Phase 4 - Candles from the server, none from users (the dependency; start with the spike)
+## Phase 4 - Candles from the server, none from users (the dependency; start with the spike) - BUILT EXCEPT the Quotex connection itself: the worker, its tests, the deployment files, the source switches and the status are done; the PyQuotex adapter is unverified until --selfcheck has been run with a real account (see FEEDWORKER.md). Still to do: the nightly server-vs-tab candle comparison
 Today candles reach the server from (a) the admin's price-feed tab, (b) other users' extensions (`contrib`, `leases`). The goal is a server process that fetches and streams the OTC and live prices itself.
 
 - **Step 0 (already written, waiting for you):** `backend/tools/quotex_spike.py` connects to Quotex with ONE dedicated account through the open-source PyQuotex client and compares its candles with the stored ones: shape, freshness (how many minutes behind), gaps, price agreement, session stability. Its report decides everything below.
