@@ -122,13 +122,18 @@ export function PnlCalendar({ account, tz, onShowDay }: { account: string; tz: n
           </div>)}
 
         <div className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-          <div className="min-w-0 text-sm">
-            {fd && focus ? (
-              <>
-                <div className="font-semibold">{longDate(focus)}</div>
-                <div className="note">{fd.n} trade{fd.n === 1 ? '' : 's'} · {fd.wins} won · {fd.losses} lost{fd.draws ? ` · ${fd.draws} draw` : ''} · win rate {pct(fd.win_rate, 0)} · staked {money(fd.staked)}
-                  {fd.best !== null && <> · best {money(fd.best, true)} · worst {money(fd.worst, true)}</>}{fd.top_pair && <> · top pair {prettyPair(fd.top_pair.symbol)} ({money(fd.top_pair.net, true)})</>}</div>
-              </>) : <div className="note">{single ? monthLabel(months[0]) : 'Period'} · hover or tap a day for its details</div>}
+          {/* A FIXED height, whatever it shows: a block that grows when a day is hovered pushes the whole calendar down, the pointer is then off the day, the block shrinks, the calendar
+              moves back under the pointer ... and the screen flickers up and down. The text is clamped to the room (its full wording is in the tooltip). */}
+          <div className="h-[5.25rem] min-w-0 flex-[1_1_14rem] overflow-hidden text-sm sm:h-[4.25rem]">
+            {fd && focus ? (() => {
+              const detail = `${fd.n} trade${fd.n === 1 ? '' : 's'} · ${fd.wins} won · ${fd.losses} lost${fd.draws ? ` · ${fd.draws} draw` : ''} · win rate ${pct(fd.win_rate, 0)} · staked ${money(fd.staked)}`
+                + `${fd.best !== null ? ` · best ${money(fd.best, true)} · worst ${money(fd.worst, true)}` : ''}${fd.top_pair ? ` · top pair ${prettyPair(fd.top_pair.symbol)} (${money(fd.top_pair.net, true)})` : ''}`;
+              return (
+                <>
+                  <div className="truncate font-semibold">{longDate(focus)}</div>
+                  <div className="note line-clamp-4 sm:line-clamp-3" title={detail}>{detail}</div>
+                </>);
+            })() : <div className="note">{single ? monthLabel(months[0]) : 'Period'} · hover or tap a day for its details</div>}
           </div>
           <div className="text-right">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-mut">{fd && focus ? 'Day result' : 'Period result'}</div>
