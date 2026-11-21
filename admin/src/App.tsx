@@ -22,6 +22,8 @@ import Research from './pages/Research';
 import AI from './pages/AI';
 import EdgeLab from './pages/EdgeLab';
 import DataPage from './pages/DataPage';
+import Plans from './pages/Plans';
+import Payments from './pages/Payments';
 import Alerts from './pages/Alerts';
 import System from './pages/System';
 import EmbedChart from './pages/EmbedChart';
@@ -51,7 +53,7 @@ const NAV: [string, string, string, 'trader' | 'editor' | 'admin', string][] = [
   ['/sweeps', 'Sweeps', '⇄', 'editor', 'menu.sweeps'], ['/research', 'Research', '◎', 'admin', 'menu.research'], ['/edgelab', 'Edge Lab', '⌖', 'admin', 'menu.edgelab'],
   ['/ai', 'AI advisor', '✧', 'admin', 'menu.ai'], ['/clinic', 'Clinic', '✚', 'editor', 'menu.clinic'], ['/data', 'Data', '▤', 'editor', 'menu.data'],
   ['/alerts', 'Alerts', '♪', 'editor', 'menu.alerts'], ['/system', 'System', '⌘', 'admin', 'menu.system'], ['/users', 'Users', '👥', 'admin', 'menu.users'],
-  ['/features', 'Features', '☰', 'admin', 'menu.features'], ['/account', 'My account', '☺', 'trader', 'menu.account'],
+  ['/features', 'Features', '☰', 'admin', 'menu.features'], ['/payments', 'Payments', '₹', 'admin', 'menu.payments'], ['/plans', 'Plans', '★', 'trader', 'menu.plans'], ['/account', 'My account', '☺', 'trader', 'menu.account'],
 ];
 const RANK: Record<Role, number> = { trader: 0, editor: 1, admin: 2 };
 const may = (role: Role, min: 'trader' | 'editor' | 'admin') => RANK[role] >= RANK[min];
@@ -187,6 +189,8 @@ function Shell({ me }: { me: Me }) {
             <Route path="/system" element={gate('admin', <System />)} />
             <Route path="/users" element={gate('admin', <Users />)} />
             <Route path="/features" element={gate('admin', <Features />)} />
+            <Route path="/plans" element={gate('trader', <Plans />)} />
+            <Route path="/payments" element={gate('admin', <Payments />)} />
             <Route path="/account" element={<Account />} />
             <Route path="*" element={<div className="p-10 text-center text-mut">Page not found.</div>} />
           </Routes>

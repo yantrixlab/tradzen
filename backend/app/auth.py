@@ -109,6 +109,9 @@ _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile
     (r"^/api/events$", {"GET"}, "any", None),
     (r"^/api/livefeed/mine$", {"GET"}, "any", None),                   # the live-price leases of the caller; everything else under /api/livefeed is admin-only
     (r"^/api/contrib/mine$", {"GET"}, "any", None),                  # the shared-candle contributions of the caller; everything else under /api/contrib is admin-only
+    (r"^/api/pay/(plans|orders)$", None, "any", None),           # buying a plan: the catalogue, my orders and submitting one (everything under /api/pay-admin is admin-only)
+    (r"^/api/pay/orders/\d+/cancel$", {"POST"}, "any", None),
+    (r"^/api/pay/qr/[0-9a-f]{20}\.(png|jpg|webp)$", {"GET"}, "any", None),
     # Private data of the signed-in user (their own database): open to every role, each behind its own switch.
     (r"^/api/(trades|account)(/|$)", None, "any", "menu.trades"),
     (r"^/api/guard(/|$)", None, "any", "menu.guard"),

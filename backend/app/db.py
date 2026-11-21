@@ -308,9 +308,31 @@ def m021_signal_entry(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE session_signals ADD COLUMN entry_px REAL")
 
 
+def m022_payments(conn: sqlite3.Connection) -> None:
+    """Plans bought with manual payments (see payments.py): the admin's payment methods, the price of each plan per method, and the users' orders (reference = a UPI UTR or a
+    transaction hash; one live order per reference, enforced by a partial unique index)."""
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS pay_methods (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, label TEXT NOT NULL, currency TEXT NOT NULL, address TEXT NOT NULL DEFAULT '', instructions TEXT NOT NULL DEFAULT '',
+      qr_file TEXT, active INTEGER NOT NULL DEFAULT 1, sort INTEGER NOT NULL DEFAULT 0, created REAL
+    );
+    CREATE TABLE IF NOT EXISTS pay_prices (
+      plan_id INTEGER NOT NULL, method_id INTEGER NOT NULL, amount REAL NOT NULL, days INTEGER NOT NULL DEFAULT 30, PRIMARY KEY (plan_id, method_id)
+    );
+    CREATE TABLE IF NOT EXISTS pay_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, plan_id INTEGER NOT NULL, method_id INTEGER NOT NULL, amount REAL NOT NULL, currency TEXT NOT NULL,
+      days INTEGER NOT NULL, reference TEXT NOT NULL, ref_norm TEXT NOT NULL, network TEXT, note TEXT, proof_file TEXT, status TEXT NOT NULL DEFAULT 'pending',
+      reviewer TEXT, review_note TEXT, created REAL, reviewed REAL, plan_from REAL, plan_until REAL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pay_ref_live ON pay_orders(ref_norm) WHERE status IN ('pending', 'approved');
+    CREATE INDEX IF NOT EXISTS ix_pay_orders_user ON pay_orders(user_id, created);
+    CREATE INDEX IF NOT EXISTS ix_pay_orders_status ON pay_orders(status, created);
+    """)
+
+
 MIGRATIONS = [(1, m001_foundation), (2, m002_backtests), (3, m003_settings), (4, m004_manual_trades), (5, m005_sweeps), (6, m006_research),
               (7, m007_broker_trades), (8, m008_broker_trades_hidden), (9, m009_guard_alerts), (10, m010_style), (11, m011_style_step), (12, m012_accounts), (13, m013_features), (14, m014_strategy_owner),
-              (15, m015_quotex_link), (16, m016_contrib), (17, m017_live_feed), (18, m018_panel_session), (19, m019_live_sessions), (20, m020_user_prefs), (21, m021_signal_entry)]
+              (15, m015_quotex_link), (16, m016_contrib), (17, m017_live_feed), (18, m018_panel_session), (19, m019_live_sessions), (20, m020_user_prefs), (21, m021_signal_entry), (22, m022_payments)]
 
 
 def schema_version(conn: sqlite3.Connection) -> int:

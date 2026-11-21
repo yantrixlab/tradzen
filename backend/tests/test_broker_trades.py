@@ -202,6 +202,40 @@ def test_a_date_range_and_the_table_order_are_applied_by_the_server():
     assert b.query(sort="profit")["summary"]["net"] == b.query()["summary"]["net"] == 5.5            # sorting the table never changes the totals
 
 
+def _close_at(b, tid, sym, amount, profit, close_t, demo=0):
+    b.on_item(ev("s_orders/close", {"deals": [{"id": tid, "asset": sym, "amount": amount, "command": 0, "profit": profit, "openPrice": 1.0, "closePrice": 1.1, "isDemo": demo,
+                                                "openTime": close_t - 60, "closeTimestamp": close_t}]}, close_t + 1))
+
+
+def test_the_calendar_groups_by_your_own_day_and_ranks_the_pairs():
+    db, b = fresh()
+    day0 = 1_794_614_400                       # a UTC midnight (2026-11-14 00:00 UTC)
+    # day 0 (UTC): +0.8, -1 on A; day 1: +1.6 on B; day 3: -1 -1 on A, +0.8 on C; a trade at 23:50 UTC on day 4 is already day 5 for someone at UTC+5:30
+    _close_at(b, "a1", "A_otc", 1, 0.8, day0 + 3600)
+    _close_at(b, "a2", "A_otc", 1, 0, day0 + 7200)
+    _close_at(b, "b1", "B_otc", 2, 1.6, day0 + 86400 + 3600)
+    _close_at(b, "a3", "A_otc", 1, 0, day0 + 3 * 86400 + 100)
+    _close_at(b, "a4", "A_otc", 1, 0, day0 + 3 * 86400 + 200)
+    _close_at(b, "c1", "C_otc", 1, 0.8, day0 + 3 * 86400 + 300)
+    _close_at(b, "d1", "B_otc", 1, 1.0, day0 + 4 * 86400 + 23 * 3600 + 3000, demo=1)             # a draw on the demo account at 23:50 UTC
+    cal = b.calendar("real", day0, day0 + 7 * 86400, 0)
+    assert sorted(cal["days"]) == ["2026-11-14", "2026-11-15", "2026-11-17"], "days without trades are absent, demo is excluded"
+    d0 = cal["days"]["2026-11-14"]
+    assert (d0["n"], d0["wins"], d0["losses"], d0["net"], d0["best"], d0["worst"]) == (2, 1, 1, -0.2, 0.8, -1.0) and d0["win_rate"] == 0.5
+    assert cal["days"]["2026-11-17"]["top_pair"] == {"symbol": "C_otc", "net": 0.8} and cal["days"]["2026-11-17"]["net"] == -1.2
+    s = cal["summary"]
+    assert (s["trading_days"], s["green_days"], s["red_days"], s["n"], s["net"]) == (3, 1, 2, 6, 0.2) and s["best_day"]["date"] == "2026-11-15" and s["worst_day"]["date"] == "2026-11-17"
+    assert s["first_day"] == "2026-11-14" and s["last_day"] == "2026-11-17" and s["current_streak"] == {"kind": "red", "n": 1} and s["best_red_streak"] == 1
+    assert [p["symbol"] for p in cal["pairs"]] == ["B_otc", "C_otc", "A_otc"], "pairs ranked by net"
+    both = b.calendar("all", day0, day0 + 7 * 86400, 0)
+    assert "2026-11-18" in both["days"] and both["days"]["2026-11-18"]["draws"] == 1 and both["summary"]["flat_days"] == 1
+    ist = b.calendar("all", day0, day0 + 7 * 86400, 330)                                          # UTC+5:30: 23:50 UTC is 05:20 the next day
+    assert "2026-11-19" in ist["days"] and "2026-11-18" not in ist["days"]
+    narrow = b.calendar("real", day0 + 86400, day0 + 2 * 86400, 0)                                 # a range keeps only its own days
+    assert list(narrow["days"]) == ["2026-11-15"] and narrow["summary"]["n"] == 1
+    assert b.calendar("real", day0 + 10 * 86400, day0 + 20 * 86400, 0)["summary"]["trading_days"] == 0, "an empty range is a valid answer"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

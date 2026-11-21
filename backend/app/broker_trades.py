@@ -407,6 +407,69 @@ class BrokerTrades:
             out.append({"date": day, "n": st["n"], "wins": st["wins"], "losses": st["losses"], "net": st["net"], "cum": round(cum, 2)})
         return out
 
+    def calendar(self, account: str = "all", since: float | None = None, until: float | None = None, tz_min: int = 0) -> dict:
+        """The profit / loss calendar: one entry per calendar day (your own days, `tz_min` = your UTC offset in minutes) that has finished trades between `since` and `until`
+        (seconds; `until` exclusive), a summary of the period and the pairs ranked by what they earned. A trade belongs to the day it CLOSED, like the by-day chart.
+        Days without trades are simply absent. Draws count as trades but not as wins or losses."""
+        where, args = ["hidden = 0", "status IN ('win', 'loss', 'draw')"], []
+        if account == "real":
+            where.append("COALESCE(is_demo, 0) = 0")
+        elif account == "demo":
+            where.append("is_demo = 1")
+        if since:                                              # a day of margin each side: a trade opened late on the last day may close on the next one
+            where.append("COALESCE(open_t, first_seen) >= ?")
+            args.append(since - 86400)
+        if until:
+            where.append("COALESCE(open_t, first_seen) < ?")
+            args.append(until + 86400)
+        rows = [dict(zip(("id", "symbol", "amount", "profit", "status", "t"), r)) for r in self.db.execute(
+            f"SELECT id, symbol, amount, profit, status, COALESCE(close_t, open_t, first_seen) FROM broker_trades WHERE {' AND '.join(where)}", args)]
+
+        def day_of(t: float) -> str:
+            return datetime.fromtimestamp(t + tz_min * 60, tz=timezone.utc).strftime("%Y-%m-%d")
+
+        lo_day = day_of(since) if since else None
+        hi_day = day_of(until - 1) if until else None
+        by_day: dict[str, list[dict]] = {}
+        for r in rows:
+            if not r["t"]:
+                continue
+            d = day_of(r["t"])
+            if (lo_day and d < lo_day) or (hi_day and d > hi_day):
+                continue
+            by_day.setdefault(d, []).append(r)
+        days: dict[str, dict] = {}
+        for d, rs in by_day.items():
+            st = self._stats(rs)
+            nets = [r["profit"] for r in rs if r["profit"] is not None]
+            pairs: dict[str, float] = {}
+            for r in rs:
+                pairs[r["symbol"] or "?"] = pairs.get(r["symbol"] or "?", 0.0) + (r["profit"] or 0.0)
+            top = max(pairs.items(), key=lambda kv: kv[1]) if pairs else None
+            days[d] = {**st, "best": round(max(nets), 2) if nets else None, "worst": round(min(nets), 2) if nets else None,
+                       "top_pair": {"symbol": top[0], "net": round(top[1], 2)} if top else None}
+        allrows = [r for rs in by_day.values() for r in rs]
+        order = sorted(days)
+        green = [d for d in order if days[d]["net"] > 0]
+        red = [d for d in order if days[d]["net"] < 0]
+        run_g = run_r = best_g = best_r = 0
+        for d in order:                                        # streaks over the days you traded (a day off does not break one)
+            net = days[d]["net"]
+            run_g = run_g + 1 if net > 0 else 0
+            run_r = run_r + 1 if net < 0 else 0
+            best_g, best_r = max(best_g, run_g), max(best_r, run_r)
+        summary = {**self._stats(allrows), "trading_days": len(order), "green_days": len(green), "red_days": len(red), "flat_days": len(order) - len(green) - len(red),
+                   "best_day": ({"date": max(order, key=lambda d: days[d]["net"]), "net": max(days[d]["net"] for d in order)} if order else None),
+                   "worst_day": ({"date": min(order, key=lambda d: days[d]["net"]), "net": min(days[d]["net"] for d in order)} if order else None),
+                   "avg_day": round(sum(days[d]["net"] for d in order) / len(order), 2) if order else None,
+                   "best_green_streak": best_g, "best_red_streak": best_r, "current_streak": {"kind": ("green" if run_g else "red" if run_r else None), "n": run_g or run_r},
+                   "first_day": order[0] if order else None, "last_day": order[-1] if order else None}
+        g: dict[str, list[dict]] = {}
+        for r in allrows:
+            g.setdefault(r["symbol"] or "?", []).append(r)
+        pairs_out = sorted(({"symbol": k, **self._stats(v)} for k, v in g.items()), key=lambda x: (-x["net"], -x["n"]))
+        return {"days": days, "summary": summary, "pairs": pairs_out[:30]}
+
     def _pairs(self, settled: list[dict]) -> list[dict]:
         g: dict[str, list[dict]] = {}
         for r in settled:

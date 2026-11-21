@@ -6,6 +6,7 @@ import { dateTime, pct, prettyPair } from '../format';
 import { usePersisted, useMoney } from '../hooks';
 import { Badge, Card, DirBadge, Empty, ErrorBox, PageTitle, Spinner, Stat } from '../components/ui';
 import TradeDetail from '../components/TradeDetail';
+import { PnlCalendar } from '../components/PnlCalendar';
 import { useBoxWidth } from '../lib/useBoxWidth';
 import UndoToasts, { UndoItem } from '../components/UndoToasts';
 import { SortSelect, SortTh, sortRows, useSortState } from '../components/SortHead';
@@ -244,6 +245,8 @@ export default function MyTrades() {
         <p className="note mt-2">Against Quotex's payout (about {s.avg_payout}% on a win) you need to win <b>{pct(s.break_even)}</b> of your trades just to break even; you are at <b>{pct(s.win_rate)}</b>{settled < 30 ? ` after only ${settled} finished trades - too few to say anything yet` : ''}.</p>
       )}
 
+      <PnlCalendar account={account} tz={tz} onShowDay={(day) => { setRange('custom'); setCustom({ from: day, to: day }); setShown(50); setTimeout(() => document.getElementById('trades-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80); }} />
+
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <Card title="Profit / loss by day" className="lg:col-span-2"><DailyChart days={d.daily} /></Card>
         <Card title="Did you follow the signals?">
@@ -257,6 +260,7 @@ export default function MyTrades() {
 
       <MtgCard m={d.mtg} onOpen={setSel} last={last} />
 
+      <div id="trades-list" className="scroll-mt-4" />
       <Card title={`Trades (${d.total})`} className="mt-4" right={<span className="flex flex-wrap items-center justify-end gap-2"><SortSelect options={TRADE_SORTS} sort={sort} onChange={setSort} /><span className="note">Click a trade to see it on the chart</span></span>}>
           {d.trades.length === 0 ? <Empty>No trades in this range ({describeRange(span)}).{d.removed > 0 && <div className="mt-2 text-sm">{d.removed} removed trade{d.removed === 1 ? '' : 's'} hidden · <button className="underline hover:text-fg" onClick={() => restoreAll.mutate()}>Restore {d.removed === 1 ? 'it' : 'all'}</button></div>}</Empty> : (
             <div className="overflow-x-auto max-md:overflow-visible">

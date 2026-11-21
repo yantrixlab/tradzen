@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import backup, candleadmin, expr, extpack, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_sessions
+from . import backup, candleadmin, expr, extpack, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_pay, routes_sessions, payments as payments_mod
 from .auth import COOKIE as COOKIE_NAME, from_env
 from .strategy_access import Access, is_staff
 from .feature_flags import Features
@@ -105,6 +105,7 @@ print(f"Tradzen: {'PRODUCTION' if auth.production else 'development'} mode, sign
       f"database {DB_PATH}, nightly backup {'ON' if BACKUP_ON else 'off'}", flush=True)
 access = Access(engine)                                          # who may see / change / receive which strategy (app/strategy_access.py)
 features = Features(engine.db)                                   # menus / capabilities, plans and per-user overrides (see app/feature_flags.py)
+pay = payments_mod.Payments(engine.db, DB_PATH.parent / "pay", features.plan, features.plans)       # plans bought with manual payments: methods, QR, orders, approval (app/payments.py)
 _env_admin = engine.db.execute("SELECT id FROM users WHERE env_admin=1").fetchone()
 if _env_admin:
     engine.set_primary(_env_admin[0])                          # the data that existed before accounts (the main database) belongs to the admin from the .env file
@@ -154,6 +155,7 @@ if auth.production:
 app.include_router(auth_router)
 
 
+app.include_router(routes_pay.bind(engine, auth, pay))               # plan payments (payments.py)
 app.include_router(routes_sessions.bind(engine, auth, features))   # live sessions (live_session.py)
 app.include_router(routes_control.bind(engine))      # settings, bulk strategy control, presets, signal board
 
@@ -904,6 +906,15 @@ async def my_trades(request: Request, account: str = "all", days: float = 0, tz:
     import time as _t
     lo = since if since > 0 else ((_t.time() - days * 86400) if days > 0 else None)
     return _ctx(request).trades.query(account, lo, tz, limit, offset, engine.names, until=until if until > 0 else None, sort=sort, desc=desc)
+
+
+@app.get("/api/trades/calendar")
+async def my_trades_calendar(request: Request, account: str = "all", tz: int = 0, since: float = 0, until: float = 0) -> dict:
+    """The profit / loss calendar: per calendar day (your own days: `tz` = your UTC offset in minutes) the finished trades, wins, losses, staked, net, best / worst trade and
+    top pair, plus a summary of the period (green / red days, best / worst day, streaks) and the pairs ranked by net. since / until: epoch seconds (until exclusive)."""
+    if account not in ("all", "real", "demo"):
+        raise HTTPException(400, "account must be all, real or demo")
+    return _ctx(request).trades.calendar(account, since if since > 0 else None, until if until > 0 else None, tz)
 
 
 class GuardSettings(BaseModel):
