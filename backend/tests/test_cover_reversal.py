@@ -174,6 +174,44 @@ def test_no_alert_for_a_candle_that_ends_the_setup_or_runs_the_wrong_way():
     assert alerts_of(seq(HAMMER, (100.3, 101.2, 100.25, 101.1))) == [], "overtaken: no setup left to warn about"
 
 
+# ------------------------------------------------------------------------------------------------ break, bounce, confirm (the user's two screenshots)
+PAUSE = [(100.35, 100.5, 100.2, 100.3), (100.3, 100.45, 100.1, 100.35), (100.35, 100.5, 100.2, 100.25)]   # crosses that stay above the weak low
+BIG_RED = (100.25, 100.3, 98.7, 98.9)                # the break of structure: closes under the weak low 99.4
+G1 = (98.9, 99.2, 98.7, 99.05)                       # first green: small, still under the level
+G2 = (99.05, 99.9, 99.0, 99.8)                       # second green: bigger, closes above the first one's close
+
+
+def test_red_break_then_the_second_green_is_the_call():
+    assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1)) == "SKIP", "the first green candle alone is not the signal"
+    assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, G2)) == "CALL", "screenshot 1: break below the weak low, a green candle, then the second green"
+    assert call_of(mirror(seq(HAMMER, *PAUSE, BIG_RED, G1, G2))) == "PUT", "and the mirror"
+    r1, r2 = (100.25, 100.3, 99.2, 99.3), (99.3, 99.35, 98.5, 98.6)       # screenshot 2: two red candles close under the level, a flat green, a green, another green
+    flat, g2, g3 = (98.6, 98.8, 98.5, 98.65), (98.65, 99.2, 98.6, 99.1), (99.1, 99.6, 99.05, 99.5)
+    assert call_of(seq(HAMMER, *PAUSE, r1, r2, flat, g2)) == "CALL"
+    assert call_of(seq(HAMMER, *PAUSE, r1, r2, flat, g2, g3)) == "CALL", "a further green keeps the confirmation (the first of the two is the flat one)"
+
+
+def test_the_second_candle_must_confirm():
+    assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.05, 99.1, 98.6, 98.7))) == "SKIP", "a red candle after the first green: no confirmation"
+    assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.05, 99.12, 99.0, 99.1))) == "SKIP", "a green candle too small to count (under 0.3 ATR)"
+    assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.0, 99.2, 98.95, 99.04))) == "SKIP", "closing under the first green's close is no progress"
+    assert call_of(seq(HAMMER, SHORT, G1, G2)) == "SKIP", "the level was never broken, so the two-green rule does not apply"
+    assert call_of(seq(HAMMER, *PAUSE, BIG_RED, (98.9, 98.95, 98.4, 98.5), G1, G2)) == "CALL", "more red candles after the break are fine: what counts is the first green after the LAST red"
+    assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.05, 99.1, 98.6, 98.7), G2)) == "CALL", "a red candle between the greens restarts the two-green count, but three closes under the level then a decisive green is the break-through rule"
+
+
+def test_the_tracker_remembers_the_break_and_counts_the_candles_back():
+    w = weaklevels.compute(evaluator.build_df(seq(HAMMER, *PAUSE, BIG_RED, G1, G2)))
+    assert list(w.lo_broke.iloc[-3:]) == [1, 1, 1] and list(w.lo_closes.iloc[-3:]) == [1, 2, 0], "closes falls back to 0 when price is back above the level, broke does not"
+    assert list(w.lo_back.iloc[-3:]) == [0, 1, 2]
+    assert w.lo_broke.iloc[-5] == 0 and w.lo_back.iloc[-5] == 0
+
+
+def test_the_alert_covers_the_first_bounce_candle_after_a_break():
+    a = alerts_of(seq(HAMMER, *PAUSE, BIG_RED, G1))
+    assert [x["direction"] for x in a] == ["CALL"] and a[0]["level"] == 99.4 and "second green" in a[0]["text"]
+
+
 # ------------------------------------------------------------------------------------------------ the engine sends it, once, only when live
 def _engine(status="live"):
     eng = Engine(":memory:", seed_builtins=True)

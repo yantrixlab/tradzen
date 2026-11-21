@@ -13,6 +13,9 @@ Fields (hi_* = the weak high above a star; lo_* = the weak low under a hammer; N
   hi_run     candles since the star (0 = the star itself)
   hi_touch   1 once any candle since the star has traded up to the level (a wick counts)
   hi_closes  candles in a row, ending now, that CLOSED above the level (0 = price is below it or only wicked into it)
+  hi_broke   1 once ANY candle since the star has closed above the level (it stays 1 even after price falls back under it: "the level was broken")
+  hi_back    candles in a row, ending now, of the OPPOSITE colour to the run (red after a star), counted only after the level was broken: 1 = the first candle
+             back, 2 = the second ... 0 = none yet or the run resumed
   hi_dist    ATRs between the close and the level (positive = still below the level; for lo_*: positive = still above it), rounded to 0.01
 Nothing here looks at later candles, so live trading and a backtest read the same values."""
 from __future__ import annotations
@@ -24,9 +27,9 @@ import pandas as pd
 
 from . import indicators as ind
 
-SIDE_FIELDS = ["lvl", "new", "run", "touch", "closes", "dist"]
+SIDE_FIELDS = ["lvl", "new", "run", "touch", "closes", "broke", "back", "dist"]
 FIELDS = [f"{side}_{f}" for side in ("hi", "lo") for f in SIDE_FIELDS]
-DEFAULTS = {"atr_n": 14, "wick": 0.4, "body": 0.4, "min_atr": 0.3, "loc_n": 10, "loc_atr": 0.25, "max_wait": 6}
+DEFAULTS = {"atr_n": 14, "wick": 0.4, "body": 0.4, "min_atr": 0.3, "loc_n": 10, "loc_atr": 0.25, "max_wait": 10}
 
 
 def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndarray, p: dict) -> dict:
@@ -36,7 +39,7 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
     armed = False
     s = 0
     level = s_low = 0.0
-    touch = closes = 0
+    touch = closes = broke = back = 0
     loc_n, max_wait = int(p["loc_n"]), int(p["max_wait"])
     for i in range(n):
         if armed:                                              # carry the setup through this candle
@@ -45,7 +48,11 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
             else:
                 if H[i] >= level:
                     touch = 1
+                if broke:                                      # after the break: count the candles that come back against the run
+                    back = back + 1 if C[i] < O[i] else 0
                 closes = closes + 1 if C[i] > level else 0
+                if closes:
+                    broke = 1
                 if C[i] < s_low:                               # closed under the star's low: what the star warned of has happened
                     armed = False
         new = 0
@@ -57,9 +64,10 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
                 if upper >= p["wick"] * rng and upper >= lower and body <= p["body"] * rng \
                         and H[i] >= H[max(0, i - loc_n + 1):i + 1].max() - p["loc_atr"] * a:
                     if not armed or (H[i] >= level and closes == 0):
-                        armed, s, level, s_low, touch, closes, new = True, i, H[i], L[i], 0, 0, 1
+                        armed, s, level, s_low, touch, closes, broke, back, new = True, i, H[i], L[i], 0, 0, 0, 0, 1
         if armed:
             out["lvl"][i], out["new"][i], out["run"][i], out["touch"][i], out["closes"][i] = level, new, i - s, touch, closes
+            out["broke"][i], out["back"][i] = broke, back
             out["dist"][i] = round((level - C[i]) / a, 2) if a == a and a > 0 else np.nan
         else:
             out["new"][i] = new
@@ -67,7 +75,7 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
 
 
 def compute(df: pd.DataFrame, atr_n: int = 14, wick: float = 0.4, body: float = 0.4, min_atr: float = 0.3, loc_n: int = 10, loc_atr: float = 0.25,
-            max_wait: int = 6) -> SimpleNamespace:
+            max_wait: int = 10) -> SimpleNamespace:
     p = {"wick": wick, "body": body, "min_atr": min_atr, "loc_n": loc_n, "loc_atr": loc_atr, "max_wait": max_wait}
     O, H, L, C = (df[k].to_numpy(float) for k in ("open", "high", "low", "close"))
     A = ind.atr(df["high"], df["low"], df["close"], int(atr_n)).to_numpy(float)
