@@ -93,28 +93,49 @@ def test_only_real_pin_bars_arm_a_level():
     assert arms(HAMMER) and arms((100.35, 100.4, 99.4, 100.2)), "green or red body, both fine"
     assert not arms((100.0, 100.4, 99.5, 100.3)), "lower wick 0.5 against a body of 0.3: not double (a looser rule took it)"
     assert not arms((100.2, 100.8, 99.4, 100.3)), "a long wick on both sides is a spinning top, not a pin bar"
-    assert not arms((100.25, 100.45, 99.45, 100.27)), "a doji (body under 10 % of the range) is avoided"
-    assert not arms((100.3, 100.4, 99.4, 100.3)), "a flat body (open = close) is a doji"
+    assert arms((100.25, 100.45, 99.45, 100.27)), "a tiny body with ONE long wick (gravestone / dragonfly style) is a real pin bar"
+    assert not arms((100.25, 100.8, 99.7, 100.27)), "a doji with long wicks on BOTH sides is avoided"
+    assert not arms((100.3, 100.4, 99.4, 100.3)), "a perfectly flat body (open = close) is still not counted"
     star = mirror(seq(HAMMER))[-1]
     w = weaklevels.compute(evaluator.build_df(mirror(seq(HAMMER, SWEEP))))
     assert w.hi_lvl.iloc[-2] == star["h"], "the same strictness on the star side"
 
 
+def test_a_tiny_bodied_star_then_a_short_green_then_a_red_below_its_low_is_the_put():
+    """The user's screenshot: a long upper wick on a tiny body (about 6 % of the range), a green that stays well under the star's high, then one red that closes under the star's low."""
+    def up(n=60, end=99.9):
+        rows, p = [], end - 0.5 * n * 0.5
+        for i in range(n):
+            o, c = p, p + 0.25
+            rows.append(row(i, o, c + 0.1, o - 0.1, c))
+            p = c
+        return rows
+    star, green = (100.06, 100.94, 100.0, 100.0), (100.0, 100.42, 99.95, 100.4)
+    for red in ((100.45, 100.47, 99.0, 99.1), (100.42, 100.43, 99.9, 99.92)):          # a big red, and a small one: the size does not matter
+        assert call_of(seq(star, green, red, base=up())) == "PUT"
+    low = lambda r: weaklevels.compute(evaluator.build_df(seq(star, green, r, base=up()))).hi_lvl.iloc[-2]
+    assert low((100.45, 100.47, 99.0, 99.1)) == 100.94, "the weak high is the star's high"
+    mirrored = mirror(seq(star, green, (100.45, 100.47, 99.0, 99.1), base=up()))
+    assert call_of(mirrored) == "CALL", "the same shape upside down is a hammer and a CALL"
+
+
 def test_the_setup_ends_when_it_is_overtaken_or_goes_stale():
     over = weaklevels.compute(evaluator.build_df(seq(HAMMER, (100.3, 101.2, 100.25, 101.1))))
     assert np.isnan(over.lo_lvl.iloc[-1]), "a close above the hammer's high: the move it warned of has already happened"
-    stale = weaklevels.compute(evaluator.build_df(seq(HAMMER, *[(100.4, 100.5, 100.3, 100.45)] * 8)))
+    stale = weaklevels.compute(evaluator.build_df(seq(HAMMER, *[(100.4, 100.55, 100.3, 100.5)] * 8)))
     assert np.isnan(stale.lo_lvl.iloc[-1]), "not followed up within max_wait candles"
 
 
-def test_colour_does_not_matter_and_only_a_real_wick_at_a_extreme_counts():
+def test_colour_and_location_do_not_matter_only_a_real_wick_counts():
     red_hammer = (100.35, 100.4, 99.4, 100.2)
     assert call_of(seq(red_hammer, SWEEP, TRIGGER)) == "CALL"
     plain = (100.2, 100.45, 100.15, 100.4)               # no long wick
     assert call_of(seq(plain, SWEEP, TRIGGER)) == "SKIP"
     base = downtrend()
     base[-8] = row(len(base) - 8, 99.0, 99.2, 97.9, 98.0)   # a much lower low a few candles earlier: the hammer is NOT at the bottom
-    assert call_of(seq(HAMMER, SWEEP, TRIGGER, base=base)) == "SKIP"
+    assert call_of(seq(HAMMER, SWEEP, TRIGGER, base=base)) == "CALL", "where it forms does not matter: a pin bar on a pullback inside a swing still counts (the user's UKBrent_otc case)"
+    near = weaklevels.compute(evaluator.build_df(seq(HAMMER, SWEEP, base=base)), loc_atr=0.25)
+    assert np.isnan(near.lo_lvl.iloc[-2]), "the old 'only at an extreme' rule is still there as a parameter (loc_atr)"
 
 
 # ------------------------------------------------------------------------------------------------ the signal
@@ -142,7 +163,7 @@ def test_every_missing_piece_means_no_signal():
     assert call_of(seq(HAMMER, SWEEP, (99.9, 100.45, 99.85, 100.35))) == "SKIP", "closing under the previous candle's open does not turn the run"
     assert call_of(seq(HAMMER, (99.9, 100.5, 99.3, 100.4), TRIGGER)) == "SKIP", "a green candle after a hammer is not a run toward its low"
     assert call_of(seq(HAMMER, TRIGGER)) == "SKIP", "no run candle between the hammer and the decisive candle"
-    assert call_of(seq(HAMMER, *[(100.4, 100.5, 100.3, 100.45)] * 8, TRIGGER)) == "SKIP", "the hammer is stale"
+    assert call_of(seq(HAMMER, *[(100.4, 100.55, 100.3, 100.5)] * 8, TRIGGER)) == "SKIP", "the hammer is stale"
 
 
 def test_it_fits_any_price_scale():
@@ -206,7 +227,6 @@ def test_red_break_then_the_second_green_is_the_call():
 
 def test_the_second_candle_must_confirm():
     assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.05, 99.1, 98.6, 98.7))) == "SKIP", "a red candle after the first green: no confirmation"
-    assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.05, 99.12, 99.0, 99.1))) == "SKIP", "a green candle too small to count (under 0.3 ATR)"
     assert call_of(seq(HAMMER, *PAUSE, BIG_RED, G1, (99.0, 99.2, 98.95, 99.04))) == "SKIP", "closing under the first green's close is no progress"
     assert call_of(seq(HAMMER, SHORT, G1, G2)) == "SKIP", "the level was never broken, so the two-green rule does not apply"
     assert call_of(seq(HAMMER, *PAUSE, BIG_RED, (98.9, 98.95, 98.4, 98.5), G1, G2)) == "CALL", "more red candles after the break are fine: what counts is the first green after the LAST red"

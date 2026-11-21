@@ -20,11 +20,11 @@
       "body": 0.4,
       "min_atr": 0.3,
       "loc_n": 10,
-      "loc_atr": 0.25,
+      "loc_atr": 1000.0,
       "max_wait": 10,
       "wick_x": 2.0,
       "opp": 0.5,
-      "min_body": 0.1
+      "min_body": 0.01
     }
   ],
   "factors": [
@@ -48,11 +48,11 @@
     },
     {
       "id": "trigger",
-      "name": "Decisive candle back the other way (or, after a break, the s",
+      "name": "Candle back the other way (or, after a break, the second can",
       "weight": 33,
       "kind": "expr",
-      "call": "(green and body >= 0.5 * a and close > open[1]) or (wk.lo_back[1] >= 1 and green and body >= 0.3 * a and close > close[1])",
-      "put": "(red and -body >= 0.5 * a and close < open[1]) or (wk.hi_back[1] >= 1 and red and -body >= 0.3 * a and close < close[1])",
+      "call": "(green and wk.lo_back[1] == 0 and close > open[1]) or (wk.lo_back[1] >= 1 and green and close > close[1])",
+      "put": "(red and wk.hi_back[1] == 0 and close < open[1]) or (wk.hi_back[1] >= 1 and red and close < close[1])",
       "vote": 1
     }
   ],
@@ -73,8 +73,8 @@
       "put": "wk.hi_lvl"
     },
     "text": {
-      "call": "A hammer formed a weak low at {wk.lo_lvl} ({wk.lo_run} candles ago). Price is {wk.lo_dist} ATR over it (negative = below it) and has closed below it {wk.lo_closes} time(s) in a row. If a decisive green candle now closes above the previous candle's open (or, once it has broken the level, a second green candle in a row closes higher), the CALL signal follows.",
-      "put": "A shooting star formed a weak high at {wk.hi_lvl} ({wk.hi_run} candles ago). Price is {wk.hi_dist} ATR under it (negative = above it) and has closed above it {wk.hi_closes} time(s) in a row. If a decisive red candle now closes below the previous candle's open (or, once it has broken the level, a second red candle in a row closes lower), the PUT signal follows."
+      "call": "A hammer formed a weak low at {wk.lo_lvl} ({wk.lo_run} candles ago). Price is {wk.lo_dist} ATR over it (negative = below it) and has closed below it {wk.lo_closes} time(s) in a row. If a green candle now closes above the previous candle's open (or, once it has broken the level, a second green candle in a row closes higher), the CALL signal follows.",
+      "put": "A shooting star formed a weak high at {wk.hi_lvl} ({wk.hi_run} candles ago). Price is {wk.hi_dist} ATR under it (negative = above it) and has closed above it {wk.hi_closes} time(s) in a row. If a red candle now closes below the previous candle's open (or, once it has broken the level, a second red candle in a row closes lower), the PUT signal follows."
     },
     "title": "weak level ahead"
   }
