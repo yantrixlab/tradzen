@@ -2,8 +2,9 @@
 price does on its way back to that level, candle by candle. Colour of the setup candle does not matter. The expression language can only look a fixed number of candles back,
 so the memory of "the last star and where it is now" lives here and the strategy reads it through fields.
 
-A STAR (mirror for a hammer) is a candle with: the upper wick at least `wick` of its range and not shorter than the lower wick, a body of at most `body` of its range, a range
-of at least `min_atr` ATR, and its high within `loc_atr` ATR of the highest high of the last `loc_n` candles (it sits at a top). It arms the level = its high. The setup stays
+A STAR (mirror for a hammer) is a PIN BAR, nothing looser: the upper wick is at least `wick_x` times the body (default 2, "more than double"), at least `wick` of the range, and the
+lower wick is at most `opp` of the upper wick (default half, so the other side is clearly shorter); the body is between `min_body` (default 10 % of the range: a doji is not a star)
+and `body` (40 %) of the range; the range is at least `min_atr` ATR, and its high within `loc_atr` ATR of the highest high of the last `loc_n` candles (it sits at a top). It arms the level = its high. The setup stays
 alive for `max_wait` candles and ends sooner when a candle closes under the star's low (the move it warned of has happened). A newer star at or above the level replaces it,
 unless price is already closing beyond the level (a breakout in progress keeps its level).
 
@@ -29,7 +30,7 @@ from . import indicators as ind
 
 SIDE_FIELDS = ["lvl", "new", "run", "touch", "closes", "broke", "back", "dist"]
 FIELDS = [f"{side}_{f}" for side in ("hi", "lo") for f in SIDE_FIELDS]
-DEFAULTS = {"atr_n": 14, "wick": 0.4, "body": 0.4, "min_atr": 0.3, "loc_n": 10, "loc_atr": 0.25, "max_wait": 10}
+DEFAULTS = {"atr_n": 14, "wick": 0.4, "body": 0.4, "min_atr": 0.3, "loc_n": 10, "loc_atr": 0.25, "max_wait": 10, "wick_x": 2.0, "opp": 0.5, "min_body": 0.1}
 
 
 def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndarray, p: dict) -> dict:
@@ -61,7 +62,8 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
             rng = H[i] - L[i]
             if rng > 0 and rng >= p["min_atr"] * a:
                 upper, lower, body = H[i] - max(O[i], C[i]), min(O[i], C[i]) - L[i], abs(C[i] - O[i])
-                if upper >= p["wick"] * rng and upper >= lower and body <= p["body"] * rng \
+                if upper >= p["wick"] * rng and upper >= p["wick_x"] * body and lower <= p["opp"] * upper \
+                        and p["min_body"] * rng <= body <= p["body"] * rng \
                         and H[i] >= H[max(0, i - loc_n + 1):i + 1].max() - p["loc_atr"] * a:
                     if not armed or (H[i] >= level and closes == 0):
                         armed, s, level, s_low, touch, closes, broke, back, new = True, i, H[i], L[i], 0, 0, 0, 0, 1
@@ -75,8 +77,8 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
 
 
 def compute(df: pd.DataFrame, atr_n: int = 14, wick: float = 0.4, body: float = 0.4, min_atr: float = 0.3, loc_n: int = 10, loc_atr: float = 0.25,
-            max_wait: int = 10) -> SimpleNamespace:
-    p = {"wick": wick, "body": body, "min_atr": min_atr, "loc_n": loc_n, "loc_atr": loc_atr, "max_wait": max_wait}
+            max_wait: int = 10, wick_x: float = 2.0, opp: float = 0.5, min_body: float = 0.1) -> SimpleNamespace:
+    p = {"wick": wick, "body": body, "min_atr": min_atr, "loc_n": loc_n, "loc_atr": loc_atr, "max_wait": max_wait, "wick_x": wick_x, "opp": opp, "min_body": min_body}
     O, H, L, C = (df[k].to_numpy(float) for k in ("open", "high", "low", "close"))
     A = ind.atr(df["high"], df["low"], df["close"], int(atr_n)).to_numpy(float)
     hi = _side(H, L, O, C, A, p)

@@ -53,7 +53,7 @@ def mirror(rows):
     return [{**r, "o": 2 * PIVOT * 1.4 - r["o"], "h": 2 * PIVOT * 1.4 - r["l"], "l": 2 * PIVOT * 1.4 - r["h"], "c": 2 * PIVOT * 1.4 - r["c"]} for r in rows]
 
 
-HAMMER = (100.2, 100.4, 99.4, 100.3)                 # small green body, long lower wick: the weak low is 99.4
+HAMMER = (100.15, 100.4, 99.4, 100.3)                # small green body (0.15), lower wick 0.75 (5x the body), upper wick 0.1: the weak low is 99.4
 SWEEP = (100.4, 100.5, 99.3, 99.9)                   # red candle that wicks 0.1 under the weak low and closes back above it
 SHORT = (100.7, 100.8, 100.3, 100.4)                 # red candle that runs toward the weak low and stops 0.9 short of it
 TRIGGER = (99.9, 101.0, 99.85, 100.9)                # decisive green candle (body 1.0) closing above the previous candle's open
@@ -85,6 +85,21 @@ def test_a_hammer_arms_a_weak_low_and_follows_price_toward_it():
     assert w.lo_dist.iloc[-1] < 0, "negative = beyond the level"
 
 
+def test_only_real_pin_bars_arm_a_level():
+    """The setup must be a hammer / shooting star in the strict sense: a wick more than double the body, a clearly shorter wick on the other side, and no doji."""
+    def arms(c):
+        w = weaklevels.compute(evaluator.build_df(seq(c, SWEEP)))
+        return w.lo_lvl.iloc[-2] == c[2]
+    assert arms(HAMMER) and arms((100.35, 100.4, 99.4, 100.2)), "green or red body, both fine"
+    assert not arms((100.0, 100.4, 99.5, 100.3)), "lower wick 0.5 against a body of 0.3: not double (a looser rule took it)"
+    assert not arms((100.2, 100.8, 99.4, 100.3)), "a long wick on both sides is a spinning top, not a pin bar"
+    assert not arms((100.25, 100.45, 99.45, 100.27)), "a doji (body under 10 % of the range) is avoided"
+    assert not arms((100.3, 100.4, 99.4, 100.3)), "a flat body (open = close) is a doji"
+    star = mirror(seq(HAMMER))[-1]
+    w = weaklevels.compute(evaluator.build_df(mirror(seq(HAMMER, SWEEP))))
+    assert w.hi_lvl.iloc[-2] == star["h"], "the same strictness on the star side"
+
+
 def test_the_setup_ends_when_it_is_overtaken_or_goes_stale():
     over = weaklevels.compute(evaluator.build_df(seq(HAMMER, (100.3, 101.2, 100.25, 101.1))))
     assert np.isnan(over.lo_lvl.iloc[-1]), "a close above the hammer's high: the move it warned of has already happened"
@@ -93,10 +108,8 @@ def test_the_setup_ends_when_it_is_overtaken_or_goes_stale():
 
 
 def test_colour_does_not_matter_and_only_a_real_wick_at_a_extreme_counts():
-    red_hammer = (100.3, 100.4, 99.4, 100.2)
+    red_hammer = (100.35, 100.4, 99.4, 100.2)
     assert call_of(seq(red_hammer, SWEEP, TRIGGER)) == "CALL"
-    doji = (100.25, 100.45, 99.45, 100.27)
-    assert call_of(seq(doji, SWEEP, TRIGGER)) == "CALL"
     plain = (100.2, 100.45, 100.15, 100.4)               # no long wick
     assert call_of(seq(plain, SWEEP, TRIGGER)) == "SKIP"
     base = downtrend()
@@ -235,7 +248,7 @@ def test_the_engine_sends_one_get_ready_per_setup_and_only_for_a_live_strategy()
     rows2 = rows + [row(len(rows), 100.0, 100.05, 99.7, 99.75)]       # the next candle, same setup, same level
     eng._heads_up(defs, {}, "T_otc", 60, rows2[-1], rows2)
     assert len([x for x in eng.notify_log if x["kind"] == "headsup"]) == 1, "the same setup does not warn twice"
-    other = seq((100.2, 100.4, 99.2, 100.3), (100.3, 100.35, 99.8, 99.9))      # a new hammer, a new level
+    other = seq((100.15, 100.4, 99.2, 100.3), (100.3, 100.35, 99.8, 99.9))      # a new hammer, a new level
     eng._heads_up(defs, {}, "T_otc", 60, other[-1], other)
     assert len([x for x in eng.notify_log if x["kind"] == "headsup"]) == 2, "a new level warns again"
     paper, psid = _engine("paper")
