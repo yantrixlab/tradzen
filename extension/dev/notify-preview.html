@@ -33,7 +33,7 @@
       tier_stats: tierB ? { n: 0, wins: 0, losses: 0 } : { n: 84, wins: 47, losses: 37, acc: 0.56, lo: 0.45, hi: 0.66 },
       pair_stats: { n: 12, wins: 7, losses: 5, acc: 0.58 } };
   }
-  const S = { alerts: true, sound: true, volume: 0.7, position: 'top-center' };
+  const S = { alerts: true, sound: true, volume: 0.7, position: 'bottom-left' };
   function fire(kind) { const ev = make(kind); window.__last = ev; window.__h({ __qxsNotify: ev, settings: S, sound: kind, playHere: false }); }
   function result(status) {
     const ev = window.__last || make('call');

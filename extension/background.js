@@ -1,7 +1,7 @@
 // Background worker: keeps snapshots for the popup, forwards market data to the local backend, and routes the
 // backend's signal/result events to the on-page cards, the alert sounds (offscreen document) and desktop notifications.
 const DEFAULT_BACKEND = 'http://127.0.0.1:8787';
-const DEFAULTS = { forward: true, alerts: true, guard: true, sessions: true, sound: true, resultSound: true, volume: 0.7, tiers: 'AB', desktop: true, position: 'top-center' };
+const DEFAULTS = { forward: true, alerts: true, guard: true, sessions: true, sound: true, resultSound: true, volume: 0.7, tiers: 'AB', desktop: true, position: 'bottom-left' };
 const TFN = { 60: '1 min', 300: '5 min', 900: '15 min' };
 
 const getSettings = async () => ({ ...DEFAULTS, ...(await chrome.storage.local.get(null)) });

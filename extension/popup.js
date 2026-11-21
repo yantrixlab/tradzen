@@ -311,7 +311,7 @@ chrome.storage.local.get('forward').then((c) => { $('fwd').checked = c.forward !
 $('fwd').onchange = (e) => chrome.storage.local.set({ forward: e.target.checked });
 
 // ------------------------------------------------------------------ alert settings (defaults mirror background.js)
-const DEF = { alerts: true, guard: true, sessions: true, sound: true, resultSound: true, desktop: true, tiers: 'AB', position: 'top-center', volume: 0.7 };
+const DEF = { alerts: true, guard: true, sessions: true, sound: true, resultSound: true, desktop: true, tiers: 'AB', position: 'bottom-left', volume: 0.7 };
 const bound = [];
 const bind = (id, key, kind) => {
   const el = $(id);

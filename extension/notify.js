@@ -8,52 +8,78 @@
   const CSS = `
   :host { all: initial; }
   * { box-sizing: border-box; }
-  .stack { position: fixed; z-index: 2147483647; display: flex; flex-direction: column; gap: 10px; width: 316px; max-width: calc(100vw - 24px);
+  /* the cards sit side by side in a row, the first one at the corner and the next ones beside it; when the row is full the next line starts above (below at the top) */
+  .stack { position: fixed; z-index: 2147483647; display: flex; flex-direction: row; flex-wrap: wrap-reverse; align-items: flex-end; gap: 10px; width: max-content; max-width: calc(100vw - 24px);
            pointer-events: none; font: 13px/1.4 "Inter", "Segoe UI", system-ui, -apple-system, sans-serif; color: #e9ecf8; }
-  .stack.tc { top: 76px; left: 50%; transform: translateX(-50%); }
-  .stack.tr { top: 76px; right: 16px; } .stack.br { bottom: 16px; right: 16px; flex-direction: column-reverse; }
-  .stack.bl { bottom: 16px; left: 76px; flex-direction: column-reverse; }
-  .card { pointer-events: auto; position: relative; overflow: hidden; border-radius: 18px; --c: #22c55e; --cs: rgba(34,197,94,.16);
-          background: linear-gradient(180deg, rgba(24,31,58,.98), rgba(11,15,32,.98)); border: 1px solid rgba(255,255,255,.09);
-          box-shadow: 0 22px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.45), 0 0 46px var(--cs);
+  .stack.bl { bottom: 16px; left: 12px; }
+  .stack.br { bottom: 16px; right: 12px; flex-direction: row-reverse; }
+  .stack.tc { top: 76px; left: 50%; transform: translateX(-50%); flex-wrap: wrap; align-items: flex-start; justify-content: center; }
+  .stack.tr { top: 76px; right: 12px; flex-direction: row-reverse; flex-wrap: wrap; align-items: flex-start; }
+  /* glossy glass card, tinted by the direction (green = call, red = put), with a sheen, a curved glow at the bottom and a faint candle backdrop */
+  .card { flex: none; width: 344px; max-width: calc(100vw - 24px); pointer-events: auto; position: relative; overflow: hidden; border-radius: 22px; --c: #22c55e; --cs: rgba(34,197,94,.24);
+          background: radial-gradient(120% 70% at 0% 0%, color-mix(in srgb, var(--c) 26%, transparent), transparent 62%), linear-gradient(180deg, color-mix(in srgb, var(--c) 9%, #0b1124), #070a15);
+          border: 1px solid color-mix(in srgb, var(--c) 58%, transparent);
+          box-shadow: 0 24px 64px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.5), 0 0 36px var(--cs), inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 30px color-mix(in srgb, var(--c) 10%, transparent);
           animation: in .42s cubic-bezier(.18,.9,.28,1.15) both; }
-  .card.put { --c: #ef4444; --cs: rgba(239,68,68,.16); }
+  .card::before { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; z-index: 1;
+                  background: linear-gradient(125deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 22%, rgba(255,255,255,0) 42%); }
+  .card::after { content: ""; position: absolute; left: -12%; right: -12%; bottom: -36px; height: 100px; border-radius: 50%; pointer-events: none; z-index: 0;
+                 border-top: 2px solid color-mix(in srgb, var(--c) 70%, transparent); box-shadow: 0 -10px 28px color-mix(in srgb, var(--c) 30%, transparent); opacity: .5; }
+  .card.put { --c: #ef4444; --cs: rgba(239,68,68,.24); }
   .card.out { animation: out .28s ease-in both; }
-  .card.win { --c: #22c55e; } .card.loss { --c: #ef4444; } .card.draw { --c: #94a3b8; --cs: rgba(148,163,184,.1); }
-  .accent { height: 3px; background: linear-gradient(90deg, var(--c), transparent 85%); }
-  .pad { padding: 8px 14px 10px; }
-  .top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-  .brand { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: #9aa3c4; }
-  .tier { font-size: 10px; font-weight: 800; letter-spacing: .08em; padding: 2px 7px; border-radius: 999px; border: 1px solid; }
-  .tier.A { color: #c4b5fd; border-color: rgba(139,92,246,.55); background: rgba(139,92,246,.16); }
-  .tier.B { color: #fbbf24; border-color: rgba(245,158,11,.5); background: rgba(245,158,11,.12); }
-  .live { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: #9aa3c4; letter-spacing: .05em; }
-  .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 0 var(--c); animation: pulse 1.6s infinite; }
+  .card.win { --c: #22c55e; } .card.loss { --c: #ef4444; } .card.draw { --c: #94a3b8; --cs: rgba(148,163,184,.12); }
+  .bgc { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 86px; z-index: 0; pointer-events: none; opacity: .2; }
+  .bgc rect, .bgc line { fill: var(--c); stroke: var(--c); }
+  .accent { height: 3px; background: linear-gradient(90deg, var(--c), transparent 85%); position: relative; z-index: 2; }
+  .pad { position: relative; z-index: 2; padding: 13px 16px 11px; }
+  .top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .brand { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 800; letter-spacing: .1em; color: #e3e8fb; }
+  .brand svg { width: 14px; height: 14px; fill: #fb923c; filter: drop-shadow(0 0 4px rgba(251,146,60,.7)); }
+  .tier { font-size: 10px; font-weight: 800; letter-spacing: .08em; padding: 3px 9px; border-radius: 999px; border: 1px solid; }
+  .tier.A { color: #ddd6fe; border-color: rgba(139,92,246,.7); background: linear-gradient(180deg, rgba(139,92,246,.34), rgba(139,92,246,.14)); box-shadow: inset 0 1px 0 rgba(255,255,255,.16); }
+  .tier.B { color: #fde68a; border-color: rgba(245,158,11,.6); background: linear-gradient(180deg, rgba(245,158,11,.26), rgba(245,158,11,.1)); box-shadow: inset 0 1px 0 rgba(255,255,255,.14); }
+  .live { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: #b4bcd9; letter-spacing: .06em; }
+  .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); animation: pulse 1.6s infinite; }
+  .sig { display: inline-flex; align-items: flex-end; gap: 2px; height: 13px; margin-left: 2px; }
+  .sig i { width: 3px; border-radius: 1px; background: rgba(255,255,255,.2); } .sig i:nth-child(1) { height: 5px; } .sig i:nth-child(2) { height: 7px; } .sig i:nth-child(3) { height: 10px; } .sig i:nth-child(4) { height: 13px; }
+  .sig i.on { background: var(--c); box-shadow: 0 0 5px var(--c); }
   .x { all: unset; cursor: pointer; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: #8089ad; font-size: 16px; line-height: 1; }
-  .x:hover { background: rgba(255,255,255,.08); color: #fff; }
-  .main { display: flex; align-items: center; gap: 11px; }
-  .arrow { flex: none; width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; font-size: 20px; font-weight: 900; color: #fff;
-           background: linear-gradient(145deg, var(--c), color-mix(in srgb, var(--c) 55%, #000)); box-shadow: 0 8px 24px var(--cs), inset 0 1px 0 rgba(255,255,255,.25); }
+  .x:hover { background: rgba(255,255,255,.1); color: #fff; }
+  .main { display: flex; align-items: center; gap: 12px; }
+  .arrow { position: relative; flex: none; width: 56px; height: 56px; border-radius: 17px; display: grid; place-items: center; overflow: hidden;
+           background: linear-gradient(150deg, color-mix(in srgb, var(--c) 78%, #fff), var(--c) 45%, color-mix(in srgb, var(--c) 60%, #000));
+           border: 1px solid color-mix(in srgb, var(--c) 60%, #fff); box-shadow: 0 10px 28px var(--cs), 0 0 22px var(--cs), inset 0 1px 0 rgba(255,255,255,.55), inset 0 -8px 14px rgba(0,0,0,.18); }
+  .arrow::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 48%; background: linear-gradient(180deg, rgba(255,255,255,.34), rgba(255,255,255,0)); }
+  .arrow svg { position: relative; width: 26px; height: 26px; fill: #fff; filter: drop-shadow(0 2px 3px rgba(0,0,0,.3)); }
   .dirwrap { min-width: 0; flex: 1; }
-  .dir { font-size: 20px; font-weight: 900; letter-spacing: .02em; color: var(--c); line-height: 1.1; }
-  .sub { margin-top: 2px; color: #aab2d0; font-size: 11px; white-space: nowrap; }
-  .sub b { color: #fff; }
-  .ring { flex: none; position: relative; width: 50px; height: 50px; }
-  .ring svg { width: 50px; height: 50px; transform: rotate(-90deg); }
-  .ring .bg { stroke: rgba(255,255,255,.09); } .ring .fg { stroke: var(--c); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
-  .ring .cd { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-  .pair { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 9px 0 6px; }
-  .pair .name { font-size: 15px; font-weight: 800; letter-spacing: .01em; color: #fff; }
+  .dir { font-size: 25px; font-weight: 900; letter-spacing: .01em; color: #fff; line-height: 1.1; white-space: nowrap; text-shadow: 0 2px 10px rgba(0,0,0,.4); }
+  .dir b { color: var(--c); text-shadow: 0 0 14px var(--cs); }
+  .sub { margin-top: 3px; color: #b8c0dc; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub b { color: #fff; font-weight: 700; }
+  .ring { flex: none; position: relative; width: 62px; height: 62px; }
+  .ring svg { width: 62px; height: 62px; transform: rotate(-90deg); }
+  .ring .bg { stroke: rgba(255,255,255,.1); } .ring .fg { stroke: var(--c); stroke-linecap: round; transition: stroke-dashoffset .25s linear; filter: drop-shadow(0 0 5px var(--c)); }
+  .ring .cd { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; color: #fff; }
+  .pair { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 13px 0 9px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); }
+  .pair .name { font-size: 18px; font-weight: 800; letter-spacing: .005em; color: #fff; }
+  .chip svg { width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .cta { display: flex; align-items: center; justify-content: center; gap: 10px; height: 48px; margin: 4px 0 8px; border-radius: 15px; position: relative; overflow: hidden;
+         font-size: 19px; font-weight: 900; letter-spacing: .07em; color: #fff; text-shadow: 0 1px 6px rgba(0,0,0,.4); pointer-events: none; user-select: none;
+         background: linear-gradient(180deg, color-mix(in srgb, var(--c) 82%, #fff), var(--c) 40%, color-mix(in srgb, var(--c) 58%, #000));
+         border: 1px solid color-mix(in srgb, var(--c) 55%, #fff); box-shadow: 0 8px 24px var(--cs), 0 0 20px var(--cs), inset 0 1px 0 rgba(255,255,255,.5), inset 0 -6px 12px rgba(0,0,0,.18); }
+  .cta::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 50%; background: linear-gradient(180deg, rgba(255,255,255,.3), rgba(255,255,255,0)); }
+  .cta svg { position: relative; width: 22px; height: 22px; fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; } .cta span { position: relative; }
   .meta { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; min-width: 0; }
   .meta .chip.strat { flex: 0 1 auto; min-width: 0; max-width: 170px; }
   .meta .badge { margin-left: auto; }
-  .more { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 4px 0 2px;
-          border-top: 1px solid rgba(255,255,255,.07); color: #8089ad; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+  .more { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 6px 0 3px;
+          color: #aab2d0; font-size: 12px; font-weight: 700; letter-spacing: .03em; }
+  .more .ic { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid currentColor; font-size: 9px; font-weight: 800; line-height: 1; }
   .more:hover { color: #fff; } .more:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; border-radius: 6px; }
   .more .car { display: inline-block; transition: transform .2s; } .card.open .more .car { transform: rotate(180deg); }
   .details { display: none; padding-top: 8px; } .card.open .details { display: block; }
-  .chip { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,.07); color: #c5cbe6; border: 1px solid rgba(255,255,255,.07); }
-  .chip.pay { color: #86efac; background: rgba(34,197,94,.1); border-color: rgba(34,197,94,.25); }
+  .chip { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 11px; background: linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.04)); color: #d3d9ee; border: 1px solid rgba(255,255,255,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+  .chip.pay { color: color-mix(in srgb, var(--c) 55%, #fff); background: color-mix(in srgb, var(--c) 16%, transparent); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
   .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
   .m { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.06); border-radius: 11px; padding: 7px 9px; }
   .m .l { font-size: 9.5px; letter-spacing: .09em; color: #7f88ac; font-weight: 700; }
@@ -76,7 +102,7 @@
             border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
   .card.win .result, .card.loss .result, .card.draw .result { display: flex; }
   .card.win .main, .card.loss .main, .card.draw .main, .card.win .grid, .card.loss .grid, .card.draw .grid, .card.win .chips, .card.loss .chips, .card.draw .chips,
-  .card.win .meta, .card.loss .meta, .card.draw .meta { display: none; }
+  .card.win .meta, .card.loss .meta, .card.draw .meta, .card.win .cta, .card.loss .cta, .card.draw .cta { display: none; }
   .result .big { font-size: 22px; font-weight: 900; color: var(--c); letter-spacing: .03em; white-space: nowrap; flex: none; }
   .result .det { color: #cbd2ee; font-size: 12px; flex: 1; min-width: 0; }
   /* trading guard card */
@@ -129,6 +155,8 @@
   @keyframes shake { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
   @keyframes in { from { opacity: 0; transform: translateY(-18px) scale(.94); } to { opacity: 1; transform: none; } }
   @keyframes out { to { opacity: 0; transform: translateY(-12px) scale(.96); } }
+  @keyframes inb { from { opacity: 0; transform: translateY(18px) scale(.94); } to { opacity: 1; transform: none; } }
+  .stack.bl .card:not(.out), .stack.br .card:not(.out) { animation-name: inb; }
   @keyframes pulse { 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
   @media (prefers-reduced-motion: reduce) { .card, .live i, .dback, .dlg, .dlg .ic i, .dlg .livetag u { animation: none; } }
   `;
@@ -141,6 +169,11 @@
   const pct = (x) => (x * 100).toFixed(1) + '%';
   const TFN = { 60: '1 min', 300: '5 min', 900: '15 min' };
   const C = 2 * Math.PI * 25;
+  const BOLT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>';
+  const HOUR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12M6 21h12M7 3c0 5 4 6 5 9-1 3-5 4-5 9M17 3c0 5-4 6-5 9 1 3 5 4 5 9"/></svg>';
+  // a faint row of candles behind the card (decoration only; an inline SVG, so the page's CSP cannot block it)
+  const CANDLES = '<svg class="bgc" viewBox="0 0 344 86" preserveAspectRatio="none" aria-hidden="true">' + [[20, 52, 30], [46, 40, 26], [72, 58, 20], [98, 34, 34], [124, 46, 24], [150, 30, 30], [176, 52, 22], [202, 38, 32],
+    [228, 56, 18], [254, 28, 36], [280, 44, 26], [306, 32, 30], [332, 48, 22]].map(([x, y, h]) => `<line x1="${x}" x2="${x}" y1="${y - 8}" y2="${y + h + 8}" stroke-width="1.4"/><rect x="${x - 5}" y="${y}" width="10" height="${h}" rx="1.5"/>`).join('') + '</svg>';
 
   let host = null, root = null, stack = null, timer = null, settings = {}, detailsOpen = false, skew = null;
   const cards = new Map();   // signal id -> {el, ev, offset, dismissAt}
@@ -153,7 +186,7 @@
     try {                                   // constructable stylesheet: not subject to the page's CSP
       const sheet = new CSSStyleSheet(); sheet.replaceSync(CSS); root.adoptedStyleSheets = [sheet];
     } catch (_) { const st = document.createElement('style'); st.textContent = CSS; root.appendChild(st); }
-    stack = document.createElement('div'); stack.className = 'stack tc'; stack.setAttribute('aria-live', 'assertive'); root.appendChild(stack);
+    stack = document.createElement('div'); stack.className = 'stack bl'; stack.setAttribute('aria-live', 'assertive'); root.appendChild(stack);
     (document.documentElement || document.body).appendChild(host);
   }
 
@@ -178,23 +211,26 @@
     const also = (ev.also && ev.also.length)
       ? `<div class="also">Also agreeing: ${ev.also.slice(0, 3).map((a) => `<b>${esc(a.name)}</b> (${esc(a.tier)}·${a.strength})`).join(' · ')}${ev.also.length > 3 ? ` +${ev.also.length - 3}` : ''}</div>` : '';
     const chips = (ev.factors || []).map((f) => `<span class="f ${f.vote > 0 ? 'up' : 'dn'}" title="${esc(f.note)}">${esc(SHORT[f.name] || f.name)} ${f.vote > 0 ? '▲' : '▼'}</span>`).join('');
+    const bars = Math.max(1, Math.min(4, Math.ceil((typeof ev.strength === 'number' ? ev.strength : 60) / 25)));
+    const sig = `<span class="sig" title="${typeof ev.strength === 'number' ? 'Strength ' + ev.strength + '/100' : 'Signal'}">${[1, 2, 3, 4].map((n) => `<i${n <= bars ? ' class="on"' : ''}></i>`).join('')}</span>`;
     return `
-      <div class="accent"></div>
+      ${CANDLES}
       <div class="pad">
-        <div class="top"><span class="brand">${sess ? '⚡ LIVE SESSION' : '⚡ TRADZEN'}</span><span class="tier ${esc(ev.tier)}">${sess ? (ev.session_tier === 'premium' ? 'PREMIUM' : 'SESSION') : 'TIER ' + esc(ev.tier)}</span>
-          <span class="live"><i></i>LIVE</span><button class="x" title="Dismiss" aria-label="Dismiss">×</button></div>
+        <div class="top"><span class="brand">${BOLT}${sess ? 'LIVE SESSION' : 'TRADZEN'}</span><span class="tier ${esc(ev.tier)}">${sess ? (ev.session_tier === 'premium' ? 'PREMIUM' : 'SESSION') : 'TIER ' + esc(ev.tier)}</span>
+          <span class="live"><i></i>LIVE</span>${sig}<button class="x" title="Dismiss" aria-label="Dismiss">×</button></div>
         <div class="main">
-          <div class="arrow">${call ? '▲' : '▼'}</div>
-          <div class="dirwrap"><div class="dir">${call ? 'BUY / CALL' : 'SELL / PUT'}</div>
+          <div class="arrow"><svg viewBox="0 0 24 24" aria-hidden="true">${call ? '<path d="M12 4 22 19H2z"/>' : '<path d="M12 20 2 5h20z"/>'}</svg></div>
+          <div class="dirwrap"><div class="dir">${call ? 'BUY' : 'SELL'} / <b>${call ? 'CALL' : 'PUT'}</b></div>
             <div class="sub">${sess && ev.entry_mode !== 'current' ? `<b>Enter at ${hms(ev.entry_t || ev.target_t)}</b> · until ${hms(ev.expire_t)}` : `<b>Enter now</b> · until ${hms(ev.expire_t)}`}</div></div>
           <div class="ring"><svg viewBox="0 0 56 56"><circle class="bg" cx="28" cy="28" r="25" fill="none" stroke-width="4"/>
             <circle class="fg" cx="28" cy="28" r="25" fill="none" stroke-width="4" stroke-dasharray="${C}" stroke-dashoffset="0"/></svg><div class="cd">–</div></div>
         </div>
         <div class="result"><div class="big"></div><div class="det"></div></div>
         <div class="pair"><span class="name">${esc(ev.name)}</span>${ev.payout ? `<span class="chip pay">${ev.payout}% payout</span>` : ''}
-          <span class="chip">${esc(TFN[ev.tf] || ev.tf + 's')}</span></div>
+          <span class="chip">${HOUR}${esc(TFN[ev.tf] || ev.tf + 's')}</span></div>
         <div class="meta">${ev.strategy ? `<span class="chip strat" title="Strategy">${esc(ev.strategy)}</span>` : ''}<span class="badge mini ${acc.cls}" title="Measured accuracy of this tier: open Details">${acc.badge}</span></div>
-        <button class="more" aria-expanded="false"><span class="lbl">Details</span><span class="car">▾</span></button>
+        <div class="cta" aria-hidden="true">${call ? '<svg viewBox="0 0 24 24"><polyline points="3 17 9 11 13 15 21 6"/><polyline points="15 6 21 6 21 12"/></svg>' : '<svg viewBox="0 0 24 24"><polyline points="3 7 9 13 13 9 21 18"/><polyline points="15 18 21 18 21 12"/></svg>'}<span>${call ? 'HIGHER' : 'LOWER'}</span></div>
+        <button class="more" aria-expanded="false"><span class="ic">i</span><span class="lbl">Details</span><span class="car">▾</span></button>
         <div class="details">
         ${sess ? `<div class="grid">
           <div class="m"><div class="l">AREA</div><div class="v">${ev.area ? price(ev.area.lo) + ' – ' + price(ev.area.hi) : '–'}</div>${ev.area && ev.area.label ? `<div class="note">${esc(ev.area.label)}</div>` : ''}</div>
@@ -237,7 +273,7 @@
 
   function addSignal(ev) {
     mount();
-    stack.className = 'stack ' + ({ 'top-right': 'tr', 'bottom-right': 'br', 'bottom-left': 'bl' }[settings.position] || 'tc');
+    stack.className = 'stack ' + ({ 'top-center': 'tc', 'top-right': 'tr', 'bottom-right': 'br', 'bottom-left': 'bl' }[settings.position] || 'bl');
     if (cards.has(ev.id)) return;
     const el = document.createElement('div');
     el.className = 'card ' + (ev.direction === 'CALL' ? 'call' : 'put');
@@ -246,7 +282,7 @@
     el.querySelector('.x').addEventListener('click', () => dismiss(ev.id));
     el.querySelector('.more').addEventListener('click', () => setDetails(!detailsOpen));
     paintDetails(el);
-    stack.prepend(el);
+    stack.append(el);                                 // the newest card goes beside the older ones
     // The card counts down to the candle's end on the server's clock. A live session's signal is sent by hand at any moment, so `ev.now` is the server's clock at that moment and
     // `skew` (server clock minus this computer's, measured by the worker on every answer) is the better offset: it does not include the seconds the event spent on its way here.
     const offset = ev.session_id != null && skew !== null ? skew : ev.now ? ev.now - Date.now() / 1000 : 0;
@@ -285,7 +321,7 @@
   const GL = { success: ['✓', 'TARGET', 22], info: ['ℹ', 'HEADS-UP', 14], warn: ['!', 'WARNING', 30], danger: ['⛔', 'STOP', 60] };
   function addGuard(ev) {
     mount();
-    stack.className = 'stack ' + ({ 'top-right': 'tr', 'bottom-right': 'br', 'bottom-left': 'bl' }[settings.position] || 'tc');
+    stack.className = 'stack ' + ({ 'top-center': 'tc', 'top-right': 'tr', 'bottom-right': 'br', 'bottom-left': 'bl' }[settings.position] || 'bl');
     const key = 'g' + ev.id;
     if (cards.has(key)) return;
     const [icon, label, secs] = GL[ev.level] || GL.warn;
@@ -300,7 +336,7 @@
       <div class="gmain"><div class="gicon">${icon}</div><div><div class="gtitle">${esc(ev.title)}</div><div class="gmsg">${esc(ev.message)}</div></div></div>
       ${chips ? `<div class="gchips">${chips}</div>` : ''}${prog}</div><div class="life"></div>`;
     el.querySelector('.x').addEventListener('click', () => dismiss(key));
-    stack.prepend(el);
+    stack.append(el);
     cards.set(key, { el, ev, guard: true, dismissAt: Date.now() / 1000 + secs, secs });
     const gk = [...cards.keys()].filter((k) => cards.get(k).guard);
     while (gk.length > 3) dismiss(gk.shift());
