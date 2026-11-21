@@ -94,20 +94,20 @@ def test_signup_is_closed_until_opened_then_rate_limited():
     main, eng, adm = setup()
     anon = _client(main)
     assert anon.get("/api/auth/config").json() == {"signup_open": False}
-    assert anon.post("/api/auth/register", json={"username": "newbie", "password": "newbie-pass-12345"}, headers=H).status_code == 403
+    assert anon.post("/api/auth/register", json={"username": "newbie", "password": "newbie-pass-12345", "accept_terms": True}, headers=H).status_code == 403
     adm.put("/api/platform-admin/settings", json={"lock": False, "free_pairs": [], "signup_open": True}, headers=H)
     assert anon.get("/api/auth/config").json() == {"signup_open": True}
-    assert anon.post("/api/auth/register", json={"username": "newbie", "password": "short"}, headers=H).status_code == 400
-    assert anon.post("/api/auth/register", json={"username": "a b", "password": "newbie-pass-12345"}, headers=H).status_code == 400
-    ok = anon.post("/api/auth/register", json={"username": "newbie", "password": "newbie-pass-12345"}, headers=H)
+    assert anon.post("/api/auth/register", json={"username": "newbie", "password": "short", "accept_terms": True}, headers=H).status_code == 400
+    assert anon.post("/api/auth/register", json={"username": "a b", "password": "newbie-pass-12345", "accept_terms": True}, headers=H).status_code == 400
+    ok = anon.post("/api/auth/register", json={"username": "newbie", "password": "newbie-pass-12345", "accept_terms": True}, headers=H)
     assert ok.status_code == 200, ok.text
     me = anon.get("/api/me").json()
     assert me["user"]["username"] == "newbie" and me["user"]["role"] == "trader" and me["plan"]["name"] == "Standard", "signed in at once, on the default plan, never as staff"
-    assert _client(main).post("/api/auth/register", json={"username": "newbie", "password": "another-pass-12345"}, headers=H).status_code == 409
+    assert _client(main).post("/api/auth/register", json={"username": "newbie", "password": "another-pass-12345", "accept_terms": True}, headers=H).status_code == 409
     assert any(a["action"] == "signup" for a in main.auth.audit_tail(20))
-    got = [_client(main).post("/api/auth/register", json={"username": f"user{i}", "password": f"user{i}-pass-12345"}, headers=H).status_code for i in range(6)]
+    got = [_client(main).post("/api/auth/register", json={"username": f"user{i}", "password": f"user{i}-pass-12345", "accept_terms": True}, headers=H).status_code for i in range(6)]
     assert got == [200, 429, 429, 429, 429, 429], got                   # every attempt counts, valid or not: four were used above, the fifth succeeds, the rest wait
-    assert anon.post("/api/auth/register", json={"username": "x" * 61, "password": "newbie-pass-12345"}, headers=H).status_code in (422, 429)
+    assert anon.post("/api/auth/register", json={"username": "x" * 61, "password": "newbie-pass-12345", "accept_terms": True}, headers=H).status_code in (422, 429)
 
 
 def test_public_pricing_needs_no_sign_in_and_shows_no_payment_details():

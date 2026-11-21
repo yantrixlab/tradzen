@@ -103,7 +103,7 @@ _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile
     (r"^/ingest$", {"POST"}, "ingest", None),
     (r"^/api/auth/config$", {"GET"}, "public", None),                    # the sign-in page asks whether sign-up is open
     (r"^/api/auth/register$", {"POST"}, "public", None),                 # self sign-up (closed until the admin opens it: markets.py)
-    (r"^/api/public/plans$", {"GET"}, "public", None),                   # the plans and prices, visible before signing in
+    (r"^/api/public/(plans|legal)$", {"GET"}, "public", None),                   # the plans and prices, visible before signing in
     (r"^/api/auth/", None, "any", None),
     (r"^/api/me$", None, "any", None),
     (r"^/api/prefs$", {"GET", "PUT"}, "any", None),                      # the caller's own display preferences (chart switches ...)

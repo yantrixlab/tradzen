@@ -87,7 +87,7 @@ def test_the_whole_flow_over_http():
     assert anna.get(f"/api/pay/qr/{qr['qr']}").content == PNG and anna.get("/api/pay/qr/" + "0" * 20 + ".png").status_code == 404
 
     # submitting
-    base = {"plan_id": plan["id"], "method_id": upi["id"], "reference": UTR}
+    base = {"plan_id": plan["id"], "method_id": upi["id"], "reference": UTR, "accept_terms": True}
     assert anna.post("/api/pay/orders", json={**base, "reference": "123"}, headers=H).status_code == 400, "a UTR is 12 digits"
     assert anna.post("/api/pay/orders", json={**base, "method_id": 999}, headers=H).status_code == 400
     o = anna.post("/api/pay/orders", json={**base, "amount": 1, "currency": "EUR", "days": 9999, "proof": PNG_URL}, headers=H)
@@ -98,8 +98,8 @@ def test_the_whole_flow_over_http():
     assert anna.post("/api/pay/orders", json={**base, "reference": UTR2}, headers=H).status_code == 409, "one pending order per user"
     assert benny.post("/api/pay/orders", json=base, headers=H).status_code == 409, "a reference can be used once, whoever submits it"
     assert benny.post("/api/pay/orders", json={**base, "reference": UTR.upper()}, headers=H).status_code == 409
-    assert benny.post("/api/pay/orders", json={"plan_id": plan["id"], "method_id": usdt["id"], "reference": TRC}, headers=H).status_code == 400, "USDT needs the network"
-    assert benny.post("/api/pay/orders", json={"plan_id": plan["id"], "method_id": usdt["id"], "reference": TRC, "network": "TRC20"}, headers=H).status_code == 200
+    assert benny.post("/api/pay/orders", json={"accept_terms": True, "plan_id": plan["id"], "method_id": usdt["id"], "reference": TRC}, headers=H).status_code == 400, "USDT needs the network"
+    assert benny.post("/api/pay/orders", json={"accept_terms": True, "plan_id": plan["id"], "method_id": usdt["id"], "reference": TRC, "network": "TRC20"}, headers=H).status_code == 200
     mine = anna.get("/api/pay/orders").json()
     assert [x["status"] for x in mine] == ["pending"] and "username" not in mine[0] and "reviewer" not in mine[0]
 
@@ -139,7 +139,7 @@ def test_the_whole_flow_over_http():
     rj = adm.post(f"/api/pay-admin/orders/{b_id}/reject", json={"reason": "no such transaction"}, headers=H).json()
     assert rj["status"] == "rejected" and benny.get("/api/me").json()["plan"]["name"] != "Pro"
     assert benny.get("/api/pay/orders").json()[0]["review_note"] == "no such transaction"
-    assert benny.post("/api/pay/orders", json={"plan_id": plan["id"], "method_id": usdt["id"], "reference": TRC, "network": "TRC20"}, headers=H).status_code == 200, "a rejected reference may be corrected and sent again"
+    assert benny.post("/api/pay/orders", json={"accept_terms": True, "plan_id": plan["id"], "method_id": usdt["id"], "reference": TRC, "network": "TRC20"}, headers=H).status_code == 200, "a rejected reference may be corrected and sent again"
 
     # a method with orders is only switched off; an unused one is deleted
     assert "switched off" in adm.delete(f"/api/pay-admin/methods/{upi['id']}", headers=H).json()["result"]

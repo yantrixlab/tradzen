@@ -74,3 +74,6 @@ Decisions I need (my recommendation first):
 
 ## Before you take money
 Binary-options services and signal sellers are restricted or banned in some countries (including for sellers and for payments in India), reading or redistributing a broker's prices may breach its terms, and taking UPI / crypto payments brings tax and refund duties. Nothing in the app is financial advice. Check the rules that apply to you and your users, and put clear terms, a risk warning and a refund policy on the pricing page before the first sale.
+
+## Phase 5 - Trust and payments polish - BUILT
+Terms of use, risk warning and refund policy (editable templates, accepted at sign-up and checkout with the version recorded), a reminder banner when a paid plan is about to end, and an ADVISORY on-chain check of USDT payments (never auto-approves). Not built: a UPI payment gateway (UPI stays a manual statement check), automatic USDT approval, reminder e-mails (there is no e-mail provider).

@@ -7,7 +7,10 @@ export interface Order {
   id: number; user_id?: number; username?: string; plan_id: number; plan: string; method_id: number; method: string; kind: string; amount: number; currency: string; days: number;
   reference: string; network: string | null; note: string | null; proof: string | null; status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   reviewer?: string | null; review_note: string | null; created: number; reviewed: number | null; plan_from: number | null; plan_until: number | null;
+  chain?: ChainCheck | null; terms_version?: number | null;
 }
+
+export interface ChainCheck { status: 'confirmed' | 'mismatch' | 'not_found' | 'unreadable' | 'error'; summary: string; checks: { label: string; ok: boolean; detail: string }[]; checked_at: number; to?: string | null; amount?: number | null; confirmations?: number | null }
 
 export const NETWORKS = ['TRC20', 'BEP20', 'ERC20', 'other'] as const;
 export const STATUS_TONE: Record<string, string> = { pending: 'warn', approved: 'up', rejected: 'down', cancelled: 'mut' };

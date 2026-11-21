@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { ago, dateTime } from '../format';
 import { Badge, Card, Empty, ErrorBox, Field, PageTitle, Spinner } from '../components/ui';
+import { AcceptTerms } from '../components/LegalText';
 import { NETWORKS, STATUS_TONE, daysLeft, money, readImage, refProblem, type Catalog, type Order, type PayMethod } from '../lib/pay';
 
 function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
@@ -24,6 +25,7 @@ export default function Plans() {
   const [proofName, setProofName] = useState('');
   const [fileErr, setFileErr] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  const [accept, setAccept] = useState(false);
   const [sent, setSent] = useState<string | null>(null);
   const [zoom, setZoom] = useState(false);
   const form = useRef<HTMLDivElement>(null);
@@ -43,7 +45,7 @@ export default function Plans() {
 
   const problem = method ? refProblem(method.kind, method.kind === 'usdt' ? network : null, ref) : null;
   const submit = useMutation({
-    mutationFn: () => api<Order>('/api/pay/orders', { body: { plan_id: plan!.id, method_id: method!.id, reference: ref, network: method!.kind === 'usdt' ? network : null, note, proof } }),
+    mutationFn: () => api<Order>('/api/pay/orders', { body: { plan_id: plan!.id, method_id: method!.id, reference: ref, network: method!.kind === 'usdt' ? network : null, note, proof, accept_terms: accept } }),
     onSuccess: () => {
       setSent('Submitted. Your plan switches on as soon as the payment has been checked.');
       setRef(''); setNote(''); setProof(null); setProofName(''); setTouched(false);
@@ -116,7 +118,7 @@ export default function Plans() {
                   <li>Paste it below and send it. Each reference can be used once.</li></ol>
                 {sent && <div className="mb-3 rounded-lg border border-up/40 bg-up/10 p-3 text-sm text-up">{sent}</div>}
                 {pending ? <div className="rounded-lg border border-warn/40 bg-warn/10 p-3 text-sm text-warn">You already have a payment waiting for review. You can send another one after it has been checked, or cancel it in the list below.</div> : (
-                  <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); setTouched(true); setSent(null); if (!problem) submit.mutate(); }}>
+                  <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); setTouched(true); setSent(null); if (!problem && accept) submit.mutate(); }}>
                     {method.kind === 'usdt' && <Field label="Network"><select className="input" value={network} onChange={(e) => setNetwork(e.target.value)}>{NETWORKS.map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>}
                     <Field label={method.kind === 'upi' ? 'UTR / reference number' : 'Transaction hash (TXID)'} hint={touched && problem ? undefined : method.kind === 'upi' ? '12 digits, shown in your UPI app after the payment' : 'Copy it from the wallet or the exchange withdrawal details'}>
                       <input className="input font-mono" value={ref} onChange={(e) => setRef(e.target.value)} onBlur={() => setTouched(true)} autoComplete="off" spellCheck={false} inputMode={method.kind === 'upi' ? 'numeric' : 'text'} aria-invalid={touched && !!problem} />
@@ -132,6 +134,8 @@ export default function Plans() {
                       {fileErr && <span className="mt-1 block text-xs text-down">{fileErr}</span>}{proofName && <span className="note mt-1 block">{proofName}</span>}
                     </Field>
                     <Field label="Note (optional)"><input className="input" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="Anything that helps us find the payment" /></Field>
+                    <AcceptTerms id="acc-pay" checked={accept} onChange={setAccept} />
+                    {touched && !accept && <span className="block text-xs text-down">Tick the box to accept the terms before sending.</span>}
                     {submit.isError && <ErrorBox error={submit.error} />}
                     <button className="btn btn-primary" type="submit" disabled={submit.isPending || !!fileErr}>{submit.isPending ? 'Sending…' : 'Send the payment reference'}</button>
                   </form>)}

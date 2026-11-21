@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import json
 import re
 import sqlite3
 import time
@@ -198,19 +199,26 @@ class Payments:
 
     def _order(self, r) -> dict:
         keys = ("id", "user_id", "username", "plan_id", "plan", "method_id", "method", "kind", "amount", "currency", "days", "reference", "network", "note", "proof", "status", "reviewer",
-                "review_note", "created", "reviewed", "plan_from", "plan_until")
-        return dict(zip(keys, r))
+                "review_note", "created", "reviewed", "plan_from", "plan_until", "chain", "terms_version")
+        out = dict(zip(keys, r))
+        try:
+            out["chain"] = json.loads(out["chain"]) if out["chain"] else None
+        except ValueError:
+            out["chain"] = None
+        return out
 
     _OSQL = ("SELECT o.id, o.user_id, COALESCE(u.username, '#' || o.user_id), o.plan_id, COALESCE(p.name, '#' || o.plan_id), o.method_id, COALESCE(m.label, '#' || o.method_id), COALESCE(m.kind, ''), "
-             "o.amount, o.currency, o.days, o.reference, o.network, o.note, o.proof_file, o.status, o.reviewer, o.review_note, o.created, o.reviewed, o.plan_from, o.plan_until "
+             "o.amount, o.currency, o.days, o.reference, o.network, o.note, o.proof_file, o.status, o.reviewer, o.review_note, o.created, o.reviewed, o.plan_from, o.plan_until, o.chain_check, o.terms_version "
              "FROM pay_orders o LEFT JOIN users u ON u.id = o.user_id LEFT JOIN plans p ON p.id = o.plan_id LEFT JOIN pay_methods m ON m.id = o.method_id")
 
     def my_orders(self, uid: int) -> list[dict]:
         return [self._order(r) for r in self.db.execute(self._OSQL + " WHERE o.user_id=? ORDER BY o.id DESC LIMIT 100", (uid,))]
 
     # ------------------------------------------------------------------ submitting
-    def submit(self, user: dict, plan_id: int, method_id: int, reference: str, network: str | None = None, note: str = "", proof: str | None = None) -> dict:
+    def submit(self, user: dict, plan_id: int, method_id: int, reference: str, network: str | None = None, note: str = "", proof: str | None = None, terms_version: int | None = None) -> dict:
         uid = user["id"]
+        if terms_version is None:
+            raise PayError(400, "tick the box to accept the terms, the risk warning and the refund policy")
         if not self.db.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
             raise PayError(400, "plans are bought from a signed-in account")
         m = self.db.execute(f"SELECT {self._MCOLS} FROM pay_methods WHERE id=? AND active=1", (method_id,)).fetchone()
@@ -232,9 +240,10 @@ class Payments:
             raise PayError(429, f"at most {MAX_PER_DAY} submissions a day")
         proof_name = self.save_image(proof, "proof", PROOF_MAX) if proof else None
         try:
-            cur = self.db.execute("INSERT INTO pay_orders (user_id, plan_id, method_id, amount, currency, days, reference, ref_norm, network, note, proof_file, status, created) "
-                                  "VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?)",
-                                  (uid, plan_id, method_id, price[0], method["currency"], price[1], ref, key, network, (note or "").strip()[:300], proof_name, time.time()))
+            cur = self.db.execute("INSERT INTO pay_orders (user_id, plan_id, method_id, amount, currency, days, reference, ref_norm, network, note, proof_file, status, created, terms_version) "
+                                  "VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)",
+                                  (uid, plan_id, method_id, price[0], method["currency"], price[1], ref, key, network, (note or "").strip()[:300], proof_name, time.time(), terms_version))
+            self.db.execute("UPDATE users SET terms_version=?, terms_at=? WHERE id=?", (terms_version, time.time(), uid))
         except sqlite3.IntegrityError:
             raise PayError(409, "this reference was already submitted - each payment can be used once")
         self.db.commit()
@@ -296,6 +305,20 @@ class Payments:
         self.db.execute("UPDATE pay_orders SET status='rejected', reviewer=?, review_note=?, reviewed=? WHERE id=?", (reviewer, reason[:300], time.time(), oid))
         self.db.commit()
         return self._order(self.db.execute(self._OSQL + " WHERE o.id=?", (oid,)).fetchone())
+
+    def chain_check(self, oid: int, fetch=None) -> dict:
+        """The advisory on-chain check of a USDT order (chaincheck.py), stored on the order. Network I/O: call it off the event loop."""
+        from . import chaincheck
+        r = self.db.execute("SELECT o.network, o.reference, o.amount, o.created, m.address, m.kind FROM pay_orders o LEFT JOIN pay_methods m ON m.id = o.method_id WHERE o.id=?", (oid,)).fetchone()
+        if not r:
+            raise PayError(404, "no such order")
+        network, ref, amount, created, address, kind = r
+        if kind != "usdt" or network not in chaincheck.USDT:
+            raise PayError(400, "the on-chain check covers USDT payments on TRC20, BEP20 and ERC20")
+        res = chaincheck.check(network, ref, address or "", float(amount), float(created or time.time()), fetch)
+        self.db.execute("UPDATE pay_orders SET chain_check=? WHERE id=?", (json.dumps(res), oid))
+        self.db.commit()
+        return res
 
     def stats(self) -> dict:
         pending = self.db.execute("SELECT COUNT(*) FROM pay_orders WHERE status='pending'").fetchone()[0]

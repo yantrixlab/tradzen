@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { useLast } from '../lib/useLast';
+import { AcceptTerms, LegalSections, useLegal } from '../components/LegalText';
 
 interface PublicPlans { plans: { id: number; name: string; description: string; prices: { method: string; currency: string; amount: number; days: number }[] }[] }
 const price = (p: { currency: string; amount: number }) => `${p.currency === 'INR' ? '₹' : p.currency === 'USD' || p.currency === 'USDT' ? '$' : ''}${p.amount % 1 ? p.amount.toFixed(2) : p.amount}${p.currency === 'USDT' ? ' USDT' : p.currency === 'INR' || p.currency === 'USD' ? '' : ` ${p.currency}`}`;
@@ -15,6 +16,9 @@ export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [again, setAgain] = useState('');
+  const [accept, setAccept] = useState(false);
+  const [showLegal, setShowLegal] = useState(false);
+  const legal = useLegal();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // the app clears its query cache whenever any request comes back 401 (a session that ended): keep what was last known so the form does not change under the visitor's hands
@@ -25,10 +29,11 @@ export default function Login() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (up && password !== again) { setError('The two passwords are not the same.'); return; }
+    if (up && !accept) { setError('Tick the box to accept the terms, the risk warning and the refund policy.'); return; }
     setBusy(true);
     setError(null);
     try {
-      await api(up ? '/api/auth/register' : '/api/auth/login', { body: { username: username.trim(), password } });
+      await api(up ? '/api/auth/register' : '/api/auth/login', { body: up ? { username: username.trim(), password, accept_terms: accept } : { username: username.trim(), password } });
       qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });          // nothing of a previous user stays in the cache
       await qc.invalidateQueries({ queryKey: ['me'] });
     } catch (err) {
@@ -70,11 +75,14 @@ export default function Login() {
               <input id="p2" className="input" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} required />
               <span className="note mt-1 block">At least 10 characters, nothing common.</span>
             </div>)}
+          {up && <AcceptTerms id="acc" checked={accept} onChange={setAccept} />}
           {error && <div role="alert" className="rounded-lg border border-down/40 bg-down/10 px-3 py-2 text-sm text-down">{error}</div>}
-          <button className="btn btn-primary w-full py-2" disabled={busy || !username || !password || (up && !again)}>{busy ? (up ? 'Creating…' : 'Signing in…') : up ? 'Create account' : 'Sign in'}</button>
+          <button className="btn btn-primary w-full py-2" disabled={busy || !username || !password || (up && (!again || !accept))}>{busy ? (up ? 'Creating…' : 'Signing in…') : up ? 'Create account' : 'Sign in'}</button>
           {!signup && <p className="note text-center">No account yet? Accounts are created by the administrator.</p>}
         </form>
 
+        {legal && (
+          <div className="text-center"><button type="button" className="note underline" aria-expanded={showLegal} onClick={() => setShowLegal(!showLegal)}>{showLegal ? 'Hide' : 'Read'} the terms of use, risk warning and refund policy</button>{showLegal && <div className="text-left"><LegalSections doc={legal} /></div>}</div>)}
         {plansSeen && plansSeen.plans.length > 0 && (
           <section className="card space-y-3 p-5" aria-label="Plans">
             <h2 className="text-sm font-bold">Plans</h2>

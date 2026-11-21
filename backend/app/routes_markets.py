@@ -3,10 +3,12 @@
 switches are admin-only by the default-deny table)."""
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from . import feedsources
+from . import feedsources, legal
 from .auth import COOKIE, SESSION_DAYS, AuthError
 from .markets import Locked, Markets
 from .payments import Payments
@@ -15,6 +17,7 @@ from .payments import Payments
 class RegisterIn(BaseModel):
     username: str = Field(..., max_length=60)
     password: str = Field(..., max_length=200)
+    accept_terms: bool = False                                  # the terms of use, risk warning and refund policy (legal.py)
 
 
 class SourcesIn(BaseModel):
@@ -49,10 +52,17 @@ def bind(engine, auth, markets: Markets, pay: Payments) -> APIRouter:
                            "prices": [{"method": methods[x["method_id"]]["label"], "currency": methods[x["method_id"]]["currency"], "amount": x["amount"], "days": x["days"]}
                                       for x in p["prices"] if x["method_id"] in methods]} for p in cat["plans"]]}
 
+    @r.get("/api/public/legal")
+    async def public_legal() -> dict:
+        """The terms of use, risk warning and refund policy (and their version), readable before signing in."""
+        return legal.public(engine.db)
+
     @r.post("/api/auth/register")
     async def register(body: RegisterIn, request: Request, response: Response) -> dict:
         if not auth.enabled or not markets.signup_open():
             raise HTTPException(403, "sign-up is closed")
+        if not body.accept_terms:
+            raise HTTPException(400, "tick the box to accept the terms, the risk warning and the refund policy")
         ip = request.client.host if request.client else ""
         wait = markets.check_signup_rate(ip)
         if wait:
@@ -63,7 +73,10 @@ def bind(engine, auth, markets: Markets, pay: Payments) -> APIRouter:
             token = auth.login_finish(True, row, u["username"], ip, request.headers.get("user-agent", ""))
         except AuthError as e:
             raise HTTPException(e.status, e.message)
-        auth.audit("sign-up", "signup", u["username"], {"ip": ip})
+        ver = legal.version(engine.db)
+        engine.db.execute("UPDATE users SET terms_version=?, terms_at=? WHERE id=?", (ver, time.time(), u["id"]))
+        engine.db.commit()
+        auth.audit("sign-up", "signup", u["username"], {"ip": ip, "terms": ver})
         response.set_cookie(COOKIE, token, max_age=SESSION_DAYS * 86400, httponly=True, secure=auth.production, samesite="lax", path="/")
         return {"ok": True, "username": u["username"]}
 

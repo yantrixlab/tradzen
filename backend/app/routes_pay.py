@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from . import legal
 from .payments import PayError, Payments
 
 
@@ -16,6 +18,7 @@ class OrderIn(BaseModel):
     network: str | None = None
     note: str = Field("", max_length=400)
     proof: str | None = Field(None, max_length=2_200_000)        # optional screenshot, a data URL
+    accept_terms: bool = False                                    # the terms of use, risk warning and refund policy (legal.py)
 
 
 class MethodIn(BaseModel):
@@ -37,6 +40,12 @@ class PriceIn(BaseModel):
     method_id: int
     amount: float | None = None                                  # empty / 0 = not sold with this method
     days: int = 30
+
+
+class LegalIn(BaseModel):
+    terms: str = Field("", max_length=20000)
+    risk: str = Field("", max_length=20000)
+    refund: str = Field("", max_length=20000)
 
 
 class RejectIn(BaseModel):
@@ -71,7 +80,7 @@ def bind(engine, auth, pay: Payments) -> APIRouter:
     @r.post("/api/pay/orders")
     async def submit(body: OrderIn, request: Request) -> dict:
         u = user(request)
-        o = call(pay.submit, u, body.plan_id, body.method_id, body.reference, body.network, body.note, body.proof)
+        o = call(pay.submit, u, body.plan_id, body.method_id, body.reference, body.network, body.note, body.proof, legal.version(pay.db) if body.accept_terms else None)
         auth.audit(u.get("username", "?"), "pay-submit", str(o["id"]), {"plan": o["plan"], "method": o["method"], "amount": o["amount"], "currency": o["currency"]})
         return o
 
@@ -140,6 +149,26 @@ def bind(engine, auth, pay: Payments) -> APIRouter:
         o = call(pay.reject, oid, user(request)["username"], body.reason)
         auth.audit(user(request)["username"], "pay-reject", str(oid), {"user": o["username"], "reason": o["review_note"]})
         return o
+
+    @r.get("/api/pay-admin/legal")
+    async def legal_get() -> dict:
+        return legal.public(pay.db)
+
+    @r.put("/api/pay-admin/legal")
+    async def legal_put(body: LegalIn, request: Request) -> dict:
+        try:
+            out = legal.save(pay.db, body.model_dump())
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        auth.audit(user(request)["username"], "legal-save", "", {"version": out["version"]})
+        return out
+
+    @r.post("/api/pay-admin/orders/{oid}/chain-check")
+    async def chain_check(oid: int, request: Request) -> dict:
+        """The advisory on-chain look-up of a USDT payment (chaincheck.py): it shows ticks and crosses, it never approves."""
+        res = await run_in_threadpool(lambda: call(pay.chain_check, oid))
+        auth.audit(user(request)["username"], "pay-chain-check", str(oid), {"status": res["status"]})
+        return res
 
     @r.get("/api/pay-admin/proof/{name}")
     async def proof(name: str) -> FileResponse:

@@ -33,6 +33,7 @@ import Sessions from './pages/Sessions';
 import SessionConsole from './pages/SessionConsole';
 import MyTrades from './pages/MyTrades';
 import AccountBar from './components/AccountBar';
+import PlanBanner from './components/PlanBanner';
 import Guard from './pages/Guard';
 import MyStyle from './pages/MyStyle';
 import Login from './pages/Login';
@@ -159,6 +160,7 @@ function Shell({ me }: { me: Me }) {
       </aside>}
       <main className="pl-safe pr-safe pb-safe min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
         {!compact && on(me, 'menu.trades') && <AccountBar />}
+        {!compact && <PlanBanner />}
         <div className={`mx-auto max-w-[1280px] ${compact ? 'p-2' : 'p-3 sm:p-4 lg:p-6'}`}>
           <ErrorBoundary key={loc.pathname}>
           <Routes>

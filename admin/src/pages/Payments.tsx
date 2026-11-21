@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, qs } from '../api';
 import { ago, dateTime } from '../format';
 import { Badge, Card, Empty, ErrorBox, Field, PageTitle, Spinner, Stat, Tabs } from '../components/ui';
-import { STATUS_TONE, money, readImage, type Order, type PayMethod } from '../lib/pay';
+import { STATUS_TONE, money, readImage, type ChainCheck, type Order, type PayMethod } from '../lib/pay';
+import type { LegalDoc } from '../lib/legal';
 import { PairMultiSelect } from '../components/PairMultiSelect';
 
 interface Stats { pending: number; month: { currency: string; orders: number; amount: number }[]; all_time: { currency: string; orders: number; amount: number }[] }
@@ -24,6 +25,9 @@ function OrderCard({ o, onDone }: { o: Order; onDone: () => void }) {
   const approve = useMutation({ mutationFn: () => api<Order>(`/api/pay-admin/orders/${o.id}/approve`, { body: {} }), onSuccess: onDone });
   const reject = useMutation({ mutationFn: () => api<Order>(`/api/pay-admin/orders/${o.id}/reject`, { body: { reason } }), onSuccess: () => { setRejecting(false); onDone(); } });
   const pending = o.status === 'pending';
+  const usdt = o.kind === 'usdt' && !!o.network && o.network !== 'other';
+  const chain = useMutation({ mutationFn: () => api<ChainCheck>(`/api/pay-admin/orders/${o.id}/chain-check`, { method: 'POST', body: {} }), onSuccess: onDone });
+  const cc = o.chain ?? null;
   return (
     <div className="rounded-xl border border-line bg-panel2/50 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -33,6 +37,17 @@ function OrderCard({ o, onDone }: { o: Order; onDone: () => void }) {
           <div className="mt-1 text-xl font-extrabold tabular-nums">{money(o.amount, o.currency)}</div>
           <div className="mt-2 flex flex-wrap items-center gap-2"><span className="text-[10px] font-semibold uppercase tracking-wider text-mut">{o.kind === 'upi' ? 'UTR' : 'Reference'}</span><code className="break-all text-xs">{o.reference}</code><Copy text={o.reference} /></div>
           {o.note && <div className="mt-1 text-sm text-mut">“{o.note}”</div>}
+          {usdt && (
+            <div className="mt-2">
+              <button className="btn btn-sm" disabled={chain.isPending} onClick={() => chain.mutate()}>{chain.isPending ? 'Looking it up…' : cc ? 'Check on-chain again' : 'Check on-chain'}</button>
+              {chain.isError && <div className="mt-2"><ErrorBox error={chain.error} /></div>}
+              {cc && (
+                <div className="mt-2 rounded-lg border border-line bg-panel2/60 p-2 text-xs">
+                  <div className="mb-1 flex flex-wrap items-center gap-2"><Badge tone={cc.status === 'confirmed' ? 'up' : cc.status === 'mismatch' ? 'down' : 'warn'}>{cc.status.replace('_', ' ').toUpperCase()}</Badge><span>{cc.summary}</span></div>
+                  <ul className="space-y-0.5">{cc.checks.map((c, i) => <li key={i}><span className={c.ok ? 'text-up' : 'text-down'}>{c.ok ? '✓' : '✗'}</span> {c.label} <span className="text-mut">· {c.detail}</span></li>)}</ul>
+                  <div className="note mt-1">Advice only: it never approves a payment. Looked up {ago(cc.checked_at)}.</div>
+                </div>)}
+            </div>)}
           {!pending && <div className="note mt-1">{o.status === 'approved' && o.plan_until ? `Plan until ${dateTime(o.plan_until)} · ` : ''}{o.reviewer ? `by ${o.reviewer}` : ''}{o.reviewed ? ` · ${dateTime(o.reviewed)}` : ''}{o.review_note ? ` · “${o.review_note}”` : ''}</div>}
         </div>
         {o.proof && <a href={`/api/pay-admin/proof/${o.proof}`} target="_blank" rel="noreferrer" title="Open the screenshot"><img src={`/api/pay-admin/proof/${o.proof}`} alt="Payment screenshot" className="h-24 w-24 rounded-lg border border-line object-cover" /></a>}
@@ -131,6 +146,32 @@ function PriceGrid({ o, onDone }: { o: Overview; onDone: () => void }) {
 }
 
 
+
+/** The terms of use, risk warning and refund policy shown at sign-up and checkout. Templates until you change them; saving new wording raises the version, which is recorded with every acceptance. */
+function LegalEditor() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['legal-admin'], queryFn: () => api<LegalDoc>('/api/pay-admin/legal') });
+  const [draft, setDraft] = useState<Record<string, string> | null>(null);
+  const save = useMutation({
+    mutationFn: (d: Record<string, string>) => api<LegalDoc>('/api/pay-admin/legal', { method: 'PUT', body: d }),
+    onSuccess: () => { setDraft(null); qc.invalidateQueries({ queryKey: ['legal-admin'] }); qc.invalidateQueries({ queryKey: ['legal'] }); },
+  });
+  if (q.isError) return <ErrorBox error={q.error} />;
+  if (!q.data) return <Spinner />;
+  const cur = draft ?? Object.fromEntries(q.data.sections.map((s) => [s.key, s.text]));
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-warn/40 bg-warn/10 p-3 text-sm text-warn">These are plain-language <b>templates</b>, not legal advice. Selling signals, charts or access to a broker's prices is restricted or banned in some countries, and taking payments brings tax and refund duties. Have the wording read by someone who knows the rules where you and your users are.</div>
+      {q.data.sections.map((s) => (
+        <Card key={s.key} title={s.title}>
+          <textarea className="input min-h-[10rem] font-sans text-sm" rows={10} value={cur[s.key]} maxLength={20000} onChange={(e) => setDraft({ ...cur, [s.key]: e.target.value })} aria-label={s.title} />
+        </Card>))}
+      {save.isError && <ErrorBox error={save.error} />}
+      <div className="flex flex-wrap items-center gap-2"><button className="btn btn-primary" disabled={!draft || save.isPending} onClick={() => draft && save.mutate(draft)}>{save.isPending ? 'Saving…' : 'Save'}</button>{draft && <button className="btn" onClick={() => setDraft(null)}>Discard</button>}
+        <span className="note">Version {q.data.version}{q.data.edited ? '' : ' (template)'} · saving changed words raises the version; an empty box goes back to the template.</span></div>
+    </div>
+  );
+}
 interface Platform { lock: boolean; free_pairs: string[]; signup_open: boolean; pairs: { symbol: string; name: string; market: string | null }[] }
 
 /** The chart platform's switches: lock markets behind a paid plan (and which ones stay free) and let visitors create their own account. */
@@ -193,7 +234,7 @@ export default function Payments() {
         <Stat label="Approved this month" value={sums(st.month)} sub={st.month.map((r) => `${r.orders} order${r.orders === 1 ? '' : 's'}`).join(' · ') || 'none yet'} />
         <Stat label="Approved in total" value={sums(st.all_time)} sub={st.all_time.map((r) => `${r.orders} order${r.orders === 1 ? '' : 's'}`).join(' · ') || 'none yet'} />
       </div>
-      <Tabs tabs={[{ key: 'review', label: `To review (${st.pending})` }, { key: 'all', label: 'All orders' }, { key: 'setup', label: 'Methods & prices' }, { key: 'platform', label: 'Markets & sign-up' }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ key: 'review', label: `To review (${st.pending})` }, { key: 'all', label: 'All orders' }, { key: 'setup', label: 'Methods & prices' }, { key: 'platform', label: 'Markets & sign-up' }, { key: 'legal', label: 'Terms & policies' }]} value={tab} onChange={setTab} />
 
       {tab === 'review' && (pending.length === 0 ? <Card><Empty>Nothing is waiting for review.</Empty></Card> : <div className="space-y-3">{pending.map((x) => <OrderCard key={x.id} o={x} onDone={refresh} />)}</div>)}
 
@@ -204,6 +245,7 @@ export default function Payments() {
         </Card>)}
 
       {tab === 'platform' && <PlatformSettings />}
+      {tab === 'legal' && <LegalEditor />}
 
       {tab === 'setup' && (
         <div className="space-y-4">
