@@ -18,17 +18,18 @@ def _cover_reversal() -> dict:
     on its way back to it is tracked by the `weak` indicator (weaklevels.py: wk.hi_* / wk.lo_*); the colour of the setup candle does not matter. A signal needs ALL three factors on the
     candle that just closed (min_agree 3); [1] = the candle before it (the last candle of the run). Distances are in ATR, so it needs no per-pair number.
       1. SETUP  a pin bar armed a weak level (star: long UPPER wick of at least 2x the body and little wick below; hammer: the mirror) and a run has followed it.
-      2. RUN    the candle before the trigger ran toward the level (green for a star, red for a hammer), whether it stopped short, wicked into the level or broke through it.
-      3. TRIGGER the FIRST time the colour changes (wk.hi_ret / lo_ret == 1: a red candle straight after the green run for a star, a green after the red run for a hammer): it has a
+      2. RUN    price ran toward the level since the star (a green candle for a star, a red one for a hammer), whether it stopped short, wicked into the level or broke through it.
+                Flat / tiny-bodied candles (dojis) among the run candles are ignored.
+      3. TRIGGER the FIRST time the colour changes (wk.hi_ret / lo_ret == 1: the first real red candle after the green run for a star, the first real green after the red run for a hammer): it has a
                 real body (at least 30 % of its range, so a flat candle never triggers) and closes beyond the previous candle's close. That candle is the signal, one candle earlier
                 than waiting for a second confirming candle; the setup is spent after it.
     Early alert (`heads_up`): one candle or more before the signal, when the setup is armed and price runs toward the level (within 1 ATR) or has broken it with 2+ closes."""
     ind = [{"id": "a", "type": "atr", "n": 14}, {"id": "wk", "type": "weak"}]
     star = {"setup": "wk.hi_lvl > 0 and wk.hi_run >= 2",
-            "run": "green[1]",
+            "run": "wk.hi_ran == 1",
             "trig": "wk.hi_ret == 1 and red and -body >= 0.3 * range and close < close[1]"}
     ham = {"setup": "wk.lo_lvl > 0 and wk.lo_run >= 2",
-           "run": "red[1]",
+           "run": "wk.lo_ran == 1",
            "trig": "wk.lo_ret == 1 and green and body >= 0.3 * range and close > close[1]"}
     return {"engine": "spec/1", "kind": "factors", "timeframes": ALL_TFS, "indicators": ind,
             "factors": [

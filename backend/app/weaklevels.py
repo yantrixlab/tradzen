@@ -21,8 +21,8 @@ Fields (hi_* = the weak high above a star; lo_* = the weak low under a hammer; N
   hi_back    candles in a row, ending now, of the OPPOSITE colour to the run (red after a star), counted only after the level was broken: 1 = the first candle
              back, 2 = the second ... 0 = none yet or the run resumed
   hi_ran     1 once any candle of the run colour (green after a star) has printed since the star
-  hi_ret     1 on the FIRST candle back: a candle of the opposite colour (red after a star) straight after a run candle (green). When that candle also has a real body (at least
-             `turn` = 30 % of its range) and closes beyond the previous close, it is the turn: it is the last candle the setup reports and the signal is read from it
+  hi_ret     1 on the FIRST real candle back: a candle of the opposite colour (red after a star) with a real body (at least `turn` = 30 % of its range) after the run. Flat and
+             tiny-bodied candles (dojis) in between are ignored. When it also closes beyond the previous close it is the turn: the last candle the setup reports, the signal is read from it
   hi_ext     the far end of the star = its LOW (for lo_*: the hammer's HIGH). A close beyond it is a decisive move back
   hi_dist    ATRs between the close and the level (positive = still below the level; for lo_*: positive = still above it), rounded to 0.01
 Nothing here looks at later candles, so live trading and a backtest read the same values."""
@@ -47,7 +47,7 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
     armed = False
     s = 0
     level = s_low = 0.0
-    touch = closes = broke = back = ran = ret = past = 0
+    touch = closes = broke = back = ran = ret = past = lastd = 0
     loc_n, max_wait = int(p["loc_n"]), int(p["max_wait"])
     for i in range(n):
         ending = False
@@ -64,13 +64,15 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
                     broke = 1
                 if C[i] < s_low:
                     past = 1                                   # price has already closed through the star's far end
+                real = abs(C[i] - O[i]) >= p["turn"] * (H[i] - L[i])    # a real body; a flat or tiny-bodied candle (doji) is neutral: it neither runs nor turns
+                ret = 0
                 if C[i] > O[i]:                                # a candle of the run colour
-                    ran, ret = 1, 0
-                elif C[i] < O[i] and ran and i > 0 and C[i - 1] > O[i - 1]:   # the FIRST candle back: the colour changes after a run candle
+                    ran = 1
+                elif real and C[i] < O[i] and ran and lastd != -1 and i > 0:   # the FIRST real candle back: the colour changes after the run (dojis in between are ignored)
                     ret = 1
-                    ending = (O[i] - C[i]) >= p["turn"] * (H[i] - L[i]) and C[i] < C[i - 1]   # a real turn (body, closes lower): the last candle the setup reports, the signal is read from it
-                else:
-                    ret = 0
+                    ending = C[i] < C[i - 1]                   # it also closes lower than the candle before: a real turn, the last candle the setup reports (the signal is read from it)
+                if real:
+                    lastd = 1 if C[i] > O[i] else -1
         new = 0
         a = A[i]
         if a == a:                                             # ATR known
@@ -81,7 +83,7 @@ def _side(H: np.ndarray, L: np.ndarray, O: np.ndarray, C: np.ndarray, A: np.ndar
                         and p["min_body"] * rng <= body <= p["body"] * rng \
                         and H[i] >= H[max(0, i - loc_n + 1):i + 1].max() - p["loc_atr"] * a:
                     if not armed or (H[i] >= level and closes == 0) or past:
-                        armed, s, level, s_low, touch, closes, broke, back, new, ran, ret, past = True, i, H[i], L[i], 0, 0, 0, 0, 1, 0, 0, 0
+                        armed, s, level, s_low, touch, closes, broke, back, new, ran, ret, past, lastd = True, i, H[i], L[i], 0, 0, 0, 0, 1, 0, 0, 0, 0
         if armed:
             out["lvl"][i], out["new"][i], out["run"][i], out["touch"][i], out["closes"][i] = level, new, i - s, touch, closes
             out["broke"][i], out["back"][i] = broke, back

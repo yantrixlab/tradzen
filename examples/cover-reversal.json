@@ -43,8 +43,8 @@
       "name": "Price ran toward the level (stopped short, or broke it and k",
       "weight": 33,
       "kind": "expr",
-      "call": "red[1]",
-      "put": "green[1]",
+      "call": "wk.lo_ran == 1",
+      "put": "wk.hi_ran == 1",
       "vote": 1
     },
     {

@@ -128,7 +128,7 @@ def test_the_first_colour_change_is_the_signal_if_it_has_a_real_body():
     assert call_of(seq(HAMMER, run, (100.0, 100.3, 99.7, 100.05))) == "SKIP", "a body under 30 % of the range is not a real body"
     assert call_of(seq(HAMMER, run, (99.7, 99.98, 99.65, 99.95))) == "SKIP", "it must close beyond the previous candle's close"
     assert call_of(seq(HAMMER, run, back1, (100.15, 100.45, 100.1, 100.35))) == "SKIP", "one signal per setup: the second green is not another one"
-    assert call_of(seq(HAMMER, run, (100.0, 100.3, 99.7, 100.01), (100.01, 100.4, 100.0, 100.35))) == "SKIP", "a flat first candle back, then a green: the first colour change did not close positively"
+    assert call_of(seq(HAMMER, run, (100.0, 100.3, 99.7, 100.01), (100.01, 100.4, 100.0, 100.35))) == "CALL", "a flat candle between the run and the turn is ignored: the first REAL candle back is the signal"
 
 
 def test_the_users_hammer_case_two_reds_then_the_first_green():
@@ -137,6 +137,23 @@ def test_the_users_hammer_case_two_reds_then_the_first_green():
     assert call_of(seq(HAMMER, red1, red2)) == "SKIP"
     assert call_of(seq(HAMMER, red1, red2, g1)) == "CALL", "the first green after the red run is the CALL"
     assert call_of(mirror(seq(HAMMER, red1, red2, g1))) == "PUT"
+
+
+def test_the_users_top_a_star_two_greens_over_its_high_a_doji_then_the_first_red():
+    """Picture: a shooting star (tiny green body, long upper wick), a tall green and a doji with a long top wick both above the star's high, then a big red: the PUT is on that first red."""
+    def up(n=60, end=99.0):
+        rows, p = [], end - 0.25 * n
+        for i in range(n):
+            o, c = p, p + 0.25
+            rows.append(row(i, o, c + 0.1, o - 0.1, c))
+            p = c
+        return rows
+    star, g1 = (100.0, 100.74, 100.0, 100.08), (100.1, 100.9, 100.05, 100.85)
+    red1, red2 = (100.88, 100.9, 100.0, 100.1), (100.1, 100.15, 99.6, 99.7)
+    for name, doji in (("flat", (100.85, 101.2, 100.84, 100.85)), ("tiny red", (100.86, 101.2, 100.84, 100.85)), ("tiny green", (100.85, 101.2, 100.84, 100.86))):
+        assert call_of(seq(star, g1, doji, red1, base=up())) == "PUT", name + " doji before the first red"
+        assert call_of(seq(star, g1, doji, red1, red2, base=up())) == "SKIP", "one signal per setup: the second red is the entry candle, not another signal"
+    assert call_of(seq(star, g1, red1, base=up())) == "PUT"
 
 
 def test_the_setup_ends_when_it_is_overtaken_or_goes_stale():
