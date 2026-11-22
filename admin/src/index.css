@@ -19,6 +19,8 @@ img, svg, canvas, video { max-width: 100%; }
   .card-title { @apply mb-3 flex flex-wrap items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-mut; }
   .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-sm text-fg transition hover:border-acc disabled:cursor-not-allowed disabled:opacity-50; }
   .btn-primary { @apply border-acc bg-acc text-white hover:bg-acc2; }
+  /* the chosen one of a row of pills / tabs: the accent fill with DARK text (a white label on the light purple is hard to read) */
+  .btn-on { @apply border-acc bg-acc font-semibold text-bg hover:brightness-110; }
   .btn-danger { @apply border-down/50 text-down hover:border-down; }
   .btn-sm { @apply px-2 py-1 text-xs; }
   .input { @apply w-full rounded-lg border border-line bg-panel2 px-2.5 py-1.5 text-sm text-fg outline-none focus:border-acc; }

@@ -112,7 +112,7 @@ export function PnlCalendar({ account, tz, onShowDay }: { account: string; tz: n
       <Card title="Profit / loss calendar" className="lg:col-span-2"
         right={<div className="flex items-center gap-2"><button className="btn btn-sm" onClick={() => setWeekStart(weekStart === 1 ? 0 : 1)} title="Which day the week starts on">Week starts {weekStart === 1 ? 'Mon' : 'Sun'}</button></div>}>
         <div className="-mx-1 mb-3 flex max-w-full gap-1 overflow-x-auto px-1 pb-1" role="group" aria-label="Calendar period">
-          {MODES.map(([k, l]) => <button key={k} className={`btn btn-sm shrink-0 whitespace-nowrap ${mode === k ? 'btn-primary' : ''}`} aria-pressed={mode === k} onClick={() => setPill(k)}>{l}</button>)}
+          {MODES.map(([k, l]) => <button key={k} className={`btn btn-sm shrink-0 whitespace-nowrap ${mode === k ? 'btn-on' : ''}`} aria-pressed={mode === k} onClick={() => setPill(k)}>{l}</button>)}
         </div>
         {mode === 'custom' && (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">

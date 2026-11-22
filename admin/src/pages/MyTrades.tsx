@@ -194,10 +194,10 @@ export default function MyTrades() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex gap-1" role="group" aria-label="Account">
           {[['all', 'All accounts'], ['real', 'Real'], ['demo', 'Demo']].map(([k, l]) => (
-            <button key={k} className={`btn btn-sm ${account === k ? 'btn-primary' : ''}`} onClick={() => { setAccount(k); setShown(50); }}>{l}</button>))}
+            <button key={k} className={`btn btn-sm ${account === k ? 'btn-on' : ''}`} onClick={() => { setAccount(k); setShown(50); }}>{l}</button>))}
         </div>
         <div className="-mx-1 flex max-w-full gap-1 overflow-x-auto px-1 pb-1 max-md:order-last max-md:w-full" role="group" aria-label="Period">
-          {QUICK.map((k) => <button key={k} className={`btn btn-sm shrink-0 whitespace-nowrap ${range === k ? 'btn-primary' : ''}`} aria-pressed={range === k}
+          {QUICK.map((k) => <button key={k} className={`btn btn-sm shrink-0 whitespace-nowrap ${range === k ? 'btn-on' : ''}`} aria-pressed={range === k}
             onClick={() => { setRange(k); setShown(50); }}>{PRESETS.find((p) => p.key === k)!.label}</button>)}
           <select className={`input !w-auto shrink-0 !py-1 text-xs ${MORE.some((p) => p.key === range) ? '!border-acc' : ''}`} aria-label="More date ranges" value={MORE.some((p) => p.key === range) ? range : ''}
             onChange={(e) => { if (e.target.value) { setRange(e.target.value); setShown(50); } }}>

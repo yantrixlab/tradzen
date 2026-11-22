@@ -132,7 +132,7 @@ export default function TradeDetail({ id, onClose, onSelect, index, total, onPre
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-mut">Where you traded <span className="ml-1 normal-case tracking-normal text-mut">· 1-minute candles</span></div>
                 <div className="flex items-center gap-1" role="group" aria-label="Candles before the entry">
                   <span className="note mr-1">Show</span>
-                  {[12, 20, 40, 80].map((n) => <button key={n} className={`btn btn-sm ${before === n ? 'btn-primary' : ''}`} onClick={() => setBefore(n)}>{n} before</button>)}
+                  {[12, 20, 40, 80].map((n) => <button key={n} className={`btn btn-sm ${before === n ? 'btn-on' : ''}`} onClick={() => setBefore(n)}>{n} before</button>)}
                 </div>
               </div>
               <TradeChart candles={d.candles} tf={d.tf} signalT={t.signal && t.signal.created >= d.window[0] ? t.signal.created : null}
