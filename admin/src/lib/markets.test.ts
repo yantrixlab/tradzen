@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { prettyPair } from '../format';
 import { countdown, groupMarkets, secondsLeft, type MarketRow } from './markets';
 
 const row = (symbol: string, over: Partial<MarketRow> = {}): MarketRow => ({ symbol, name: symbol.replace('_otc', ' (OTC)'), market: symbol.endsWith('_otc') ? 'OTC' : 'LIVE', category: 'currency', payout: 80, open: true, streaming: false, last_price: null, locked: false, ...over });
@@ -16,6 +17,31 @@ describe('groupMarkets', () => {
     expect(groupMarkets(pairs, 'eur usd').flatMap((g) => g.pairs.map((p) => p.symbol))).toEqual(['EURUSD_otc']);
     expect(groupMarkets(pairs, 'btc').flatMap((g) => g.pairs.map((p) => p.symbol))).toEqual(['BTCUSD_otc']);
     expect(groupMarkets(pairs, 'zzz')).toEqual([]);
+  });
+});
+
+describe('crypto markets (Binance)', () => {
+  const btc = row('BTCUSDT_bn', { name: 'Bitcoin (BTC/USDT)', market: 'CRYPTO', category: 'cryptocurrency', payout: null });
+  const eth = row('ETHUSDT_bn', { name: 'Ethereum (ETH/USDT)', market: 'CRYPTO', category: 'cryptocurrency', payout: null, locked: true });
+  it('puts them in one section after the OTC and live markets, never among the live ones', () => {
+    const g = groupMarkets([btc, row('USDJPY'), row('EURUSD_otc'), eth]);
+    expect(g.map((x) => x.label)).toEqual(['OTC markets · Currencies', 'Live markets · Currencies', 'Crypto · Binance prices']);
+    expect(g[2].pairs.map((p) => p.symbol)).toEqual(['BTCUSDT_bn', 'ETHUSDT_bn']);
+    expect(g[1].pairs.map((p) => p.symbol)).toEqual(['USDJPY']);
+  });
+  it('lists the biggest coins first, then the rest alphabetically', () => {
+    const mk = (c: string) => row(`${c}USDT_bn`, { name: `${c} (${c}/USDT)`, market: 'CRYPTO', category: 'cryptocurrency', payout: null });
+    expect(groupMarkets([mk('DOT'), mk('ETH'), mk('ZZZ'), mk('BTC'), mk('AAA')])[0].pairs.map((p) => p.symbol)).toEqual(['BTCUSDT_bn', 'ETHUSDT_bn', 'DOTUSDT_bn', 'AAAUSDT_bn', 'ZZZUSDT_bn']);
+  });
+  it('finds them by their coin name or their pair', () => {
+    expect(groupMarkets([btc, eth], 'bitcoin').flatMap((x) => x.pairs.map((p) => p.symbol))).toEqual(['BTCUSDT_bn']);
+    expect(groupMarkets([btc, eth], 'eth/usdt').flatMap((x) => x.pairs.map((p) => p.symbol))).toEqual(['ETHUSDT_bn']);
+  });
+  it('writes their names as COIN/USDT, and leaves the other pairs as they were', () => {
+    expect(prettyPair('BTCUSDT_bn')).toBe('BTC/USDT');
+    expect(prettyPair('DOGEUSDT_bn')).toBe('DOGE/USDT');
+    expect(prettyPair('EURUSD_otc')).toBe('EUR/USD (OTC)');
+    expect(prettyPair('EURUSD')).toBe('EUR/USD');
   });
 });
 

@@ -19,6 +19,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from .candles import is_display_only
+
 SUFFIX = "_mkt"
 TF = 60
 SOURCE = "yahoo"
@@ -39,6 +41,8 @@ def payout_ok(sym: str, payouts: dict, min_payout: float, unknown: float = 85.0)
     """May this pair's candles be used for learning? Market-data pairs always; Quotex pairs when they pay at least `min_payout`.
     A closed live market shows a placeholder payout of 20 %, which says nothing about the pair, so a payout under 50 is treated as a normal 85 %.
     A pair with no payout on record at all counts as `unknown` (0 = leave it out)."""
+    if is_display_only(sym):                                   # shown-only markets (crypto from Binance) are never learned from
+        return False
     if sym.endswith(SUFFIX):
         return True
     p = payouts.get(sym)

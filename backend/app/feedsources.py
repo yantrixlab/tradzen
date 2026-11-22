@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import time
 
+from .candles import is_display_only
 from .control import get_setting, set_setting
 
 KEY = "sources.switches"
@@ -57,7 +58,7 @@ def status(engine, now: float | None = None) -> dict:
                         "age": round(age, 1), "alive": age < WORKER_ALIVE, "ticks": rec["ticks"], "batches": rec["batches"], "pairs_live": live, "since": rec["first"]})
     by = {"feed": 0, "lease": 0, "other": 0}
     for sym, lt in engine.last_tick.items():
-        if now - lt["recv"] >= STREAM_TIMEOUT:
+        if now - lt["recv"] >= STREAM_TIMEOUT or is_display_only(sym):
             continue
         if now - engine.feed_at.get(sym, 0.0) < FEEDER_TTL:
             by["feed"] += 1

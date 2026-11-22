@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from . import minigbm, vec
+from .candles import is_display_only
 from .backtest import BacktestError
 
 DEFAULTS = {"windows": [5, 10], "tf": 60, "test_fraction": 0.3, "min_test": 5000, "min_auc": 0.52, "alpha": 0.05, "max_rows": 400_000,
@@ -54,6 +55,8 @@ def window_features(o: np.ndarray, h: np.ndarray, l: np.ndarray, c: np.ndarray, 
 def build_dataset(conn, n: int, tf: int, max_rows: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
     xs, ys, ts, pairs = [], [], [], 0
     for (sym,) in conn.execute("SELECT DISTINCT symbol FROM candles WHERE tf=?", (tf,)).fetchall():
+        if is_display_only(sym):
+            continue
         rows = conn.execute("SELECT ts, o, h, l, c FROM candles WHERE symbol=? AND tf=? ORDER BY ts", (sym, tf)).fetchall()
         if len(rows) < n + 60:
             continue

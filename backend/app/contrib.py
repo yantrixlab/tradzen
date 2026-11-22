@@ -26,7 +26,7 @@ import re
 import statistics
 import time
 
-from .candles import TFS, infer_tf, rows_from_history
+from .candles import TFS, infer_tf, is_display_only, rows_from_history
 
 SYMBOL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{1,31}$")
 MAX_ROWS = 1000                  # candles in one history item
@@ -291,7 +291,7 @@ class Contributions:
             return self._want[1][:limit]
         out: list[dict] = []
         for sym, lt in list(self.engine.last_tick.items()):
-            if now - lt["recv"] > 60 or len(out) >= 12:
+            if now - lt["recv"] > 60 or len(out) >= 12 or is_display_only(sym):          # (a shown-only market has no holes to ask a browser for)
                 continue
             ts = [r[0] for r in self.db.execute("SELECT ts FROM candles WHERE symbol=? AND tf=60 AND ts>=? ORDER BY ts", (sym, int(now) - 86400))]
             holes = [(a, b) for a, b in zip(ts, ts[1:]) if b - a != 60]

@@ -100,7 +100,7 @@ export default function Markets() {
             <div className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-extrabold sm:text-2xl">{prettyPair(symbol)}</h1>
-                  {d && <Badge tone={d.market === 'OTC' ? 'acc' : 'mut'}>{d.market}</Badge>}{d?.payout ? <Badge tone="up">{d.payout}%</Badge> : null}
+                  {d && <Badge tone={d.market === 'OTC' ? 'acc' : d.market === 'CRYPTO' ? 'warn' : 'mut'}>{d.market}</Badge>}{d?.payout ? <Badge tone="up">{d.payout}%</Badge> : null}
                   <Badge tone={status === 'live' ? 'up' : status === 'closed' ? 'mut' : 'warn'} title={status === 'waiting' ? 'No live prices are arriving for this pair right now: the candles shown are the stored ones' : undefined}>
                     {status === 'live' ? '● ' : ''}{STATUS_TEXT[status]}</Badge></div>
                 <div className="mt-1 flex items-baseline gap-3"><span className="text-2xl font-bold tabular-nums sm:text-3xl">{price ?? '–'}</span></div>
@@ -114,6 +114,7 @@ export default function Markets() {
             </div>
             {live.isError && !locked && <div className="mb-3"><ErrorBox error={live.error} /></div>}
             <SmartChart key={`${symbol}-${tf}`} symbol={symbol} tf={tf} live={d ? { candles: d.candles, forming: d.forming, lastPrice: d.last_price } : undefined} height={420} initialCount={120} limit={1500} />
+            {d?.market === 'CRYPTO' && <p className="note mt-2">Crypto prices come from Binance's public market data, not from Quotex, and this market is for charting only: Tradzen sends no signals and keeps no record of trades for it.</p>}
             {status === 'waiting' && <p className="note mt-2">The server is not receiving live prices for this pair at the moment, so the chart shows the candles stored so far and will move again when prices resume.</p>}
           </Card>)}
       </div>

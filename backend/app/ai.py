@@ -27,6 +27,7 @@ import pandas as pd
 
 from . import engulf, evaluator, marketdata, minigbm, research, structure, vec
 from .backtest import BacktestError
+from .candles import is_display_only
 
 TF = 60
 DEFAULTS = {"folds": 4, "train_cap": 120_000, "rounds": 120, "depth": 3, "min_payout": 80.0, "min_auc": 0.52, "alpha": 0.05, "min_test": 5000,
@@ -366,7 +367,7 @@ class Advisor:
         now = now or time.time()
         db = self.engine.db
         for sym, lt in list(self.engine.last_tick.items()):
-            if now - lt["recv"] > 120:
+            if now - lt["recv"] > 120 or is_display_only(sym):
                 continue
             rows = self.engine._series(sym, TF).tail(1)
             if not rows:

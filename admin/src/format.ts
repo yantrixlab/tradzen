@@ -14,6 +14,10 @@ export const ago = (t: number | null | undefined, now = Date.now() / 1000): stri
 };
 export const bytes = (b: number): string => (b > 1e9 ? `${(b / 1e9).toFixed(2)} GB` : b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : b > 1e3 ? `${(b / 1e3).toFixed(0)} kB` : `${b} B`);
 export const prettyPair = (sym: string): string => {
+  if (sym.endsWith('_bn')) {                                   // a crypto market from Binance: BTCUSDT_bn -> BTC/USDT
+    const b = sym.slice(0, -3);
+    return b.endsWith('USDT') && b.length > 4 ? `${b.slice(0, -4)}/USDT` : b;
+  }
   const base = sym.replace('_otc', '');
   return base.length === 6 ? `${base.slice(0, 3)}/${base.slice(3)}${sym.endsWith('_otc') ? ' (OTC)' : ''}` : sym;
 };

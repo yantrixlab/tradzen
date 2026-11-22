@@ -5,6 +5,13 @@ from collections import Counter
 
 TFS = (60, 300, 900)
 MAX_ROWS = 1500
+# Markets that are only SHOWN (the crypto candles from Binance, see cryptofeed.py): their symbols end like this. They are charted and locked like any pair, but no strategy runs on them,
+# no signal, alert or settlement comes from them, and the AI, the Edge Lab, the research and the sweeps do not learn from them.
+DISPLAY_SUFFIXES = ("_bn",)
+
+
+def is_display_only(sym: str | None) -> bool:
+    return bool(sym) and sym.endswith(DISPLAY_SUFFIXES)
 
 
 def bucket(ts: float, tf: int) -> int:

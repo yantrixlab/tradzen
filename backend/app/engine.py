@@ -20,7 +20,7 @@ from . import clinic, control, evaluator, momentum_ai, mtg
 from . import features as feat_mod
 from . import sentiment as sentiment_mod
 from . import strategy
-from .candles import TFS, Series, aggregate, bucket, infer_tf, rows_from_history
+from .candles import TFS, Series, aggregate, bucket, infer_tf, is_display_only, rows_from_history
 from .db import DEFAULT_STRATEGY_KEY, open_db, open_user_db
 from .backtest import BacktestRunner
 from .ai import Advisor
@@ -234,6 +234,8 @@ class Engine:
                 del self._mute_state[sid]
 
     def _in_scope(self, spec: dict, sym: str) -> bool:
+        if is_display_only(sym):                      # a shown-only market (crypto from Binance): no strategy runs on it
+            return False
         sc = spec.get("scope") or {}
         if sc.get("symbols") and sym not in sc["symbols"]:
             return False
@@ -525,6 +527,34 @@ class Engine:
                 "payout=excluded.payout, open=excluded.open, last_seen=excluded.last_seen",
                 (sym, name, market, cat, payout, int(bool(is_open)), now, now))
         self.db.commit()
+
+    # ------------------------------------------------------------------ shown-only markets (crypto from Binance)
+    def register_display(self, sym: str, name: str, category: str, market: str) -> None:
+        """Put a shown-only market in the pair list (kept in the instruments table, so it is still there after a restart)."""
+        now = time.time()
+        self.instruments[sym] = {"symbol": sym, "name": name, "category": category, "payout": None, "open": True, "market": market}
+        self.db.execute(
+            "INSERT INTO instruments (symbol, name, market, category, payout, open, first_seen, last_seen) VALUES (?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(symbol) DO UPDATE SET name=excluded.name, market=excluded.market, category=excluded.category, open=1, last_seen=excluded.last_seen",
+            (sym, name, market, category, None, 1, now, now))
+        self.db.commit()
+
+    def feed_display(self, sym: str, tf: int, row: dict, closed: bool, ts: float | None = None) -> None:
+        """One candle of a shown-only market, exactly as its source reports it (open / high / low / close), so nothing is built from ticks. `closed`: it is finished and is stored
+        (and drawn with the history); otherwise it is the forming candle the chart keeps moving. Nothing else runs on it: no strategy, no signal, no settlement."""
+        if tf not in TFS or not is_display_only(sym):
+            return
+        cand = {"t": int(row["t"]), "o": float(row["o"]), "h": float(row["h"]), "l": float(row["l"]), "c": float(row["c"]), "n": int(row.get("n") or 0)}
+        if closed:
+            self._series(sym, tf).put(cand)
+            self._queue_candle(sym, tf, cand, "binance")
+            cur = self.open.get((sym, tf))
+            if cur is not None and cur["t"] <= cand["t"]:
+                del self.open[(sym, tf)]
+        else:
+            self.open[(sym, tf)] = {**cand, "first": float(cand["t"]), "last": ts or time.time(), "partial": False, "src": "binance"}
+        if tf == TFS[0] or sym not in self.last_tick:
+            self.last_tick[sym] = {"ts": ts or time.time(), "price": cand["c"], "recv": time.time()}
 
     # ------------------------------------------------------------------ ticks -> candles
     def on_tick(self, sym: str, ts: float, price: float, src: str = "tick") -> None:
@@ -1396,6 +1426,7 @@ class Engine:
     def feed_health(self, sel: dict | None, symbols: list[dict], now: float) -> dict:
         """Why are no signals coming? Plain-English reasons, worst first, each with what to do about it. Strategies only signal when the pair has an uninterrupted
         run of candles (indicators never span a data gap), so a feed that paused - almost always because the Quotex tab was hidden - means a wait."""
+        symbols = [s for s in symbols if not is_display_only(s["symbol"])]          # a shown-only market (crypto) says nothing about the Quotex feed
         reasons: list[dict] = []
         clock = lambda t: time.strftime("%H:%M", time.localtime(t))  # noqa: E731
 

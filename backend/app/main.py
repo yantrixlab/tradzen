@@ -20,6 +20,7 @@ from .auth import COOKIE as COOKIE_NAME, from_env
 from .strategy_access import Access, is_staff
 from .feature_flags import Features
 from .backtest import BacktestError
+from .cryptofeed import CryptoFeed
 from .engine import Engine
 from .marketdata import MarketData
 from .spec import BASE_NAMES, FILTERS, TFS as TFS_SPEC
@@ -47,6 +48,7 @@ BACKUP_KEEP = max(1, int(os.getenv("QXS_BACKUP_KEEP", "7") or 7))
 
 engine = Engine(DB_PATH)
 marketdata = MarketData(DB_PATH, enabled=os.getenv("QXS_MARKETDATA", "on").lower() != "off")   # real-market candles for the AI (QXS_MARKETDATA=off disables)
+cryptofeed = CryptoFeed(engine, enabled=os.getenv("QXS_CRYPTO", "on").lower() not in ("off", "0", "false", "no"))      # crypto markets for the chart platform, from Binance (QXS_CRYPTO=off disables)
 
 
 async def _research_scheduler() -> None:
@@ -95,8 +97,10 @@ async def _research_scheduler() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     task = asyncio.create_task(_research_scheduler())
+    crypto = asyncio.create_task(cryptofeed.run())              # returns at once when switched off
     yield
     task.cancel()
+    crypto.cancel()
     engine.close()                    # flush buffered candles/events before exit
 
 
@@ -1138,6 +1142,12 @@ async def data_market() -> dict:
 async def data_market_refresh() -> dict:
     """Fetch the missing real-market candles now (runs in the background; poll GET /api/data/market)."""
     return {"started": marketdata.start(), **marketdata.status()}
+
+
+@app.get("/api/platform-admin/crypto")
+async def crypto_status() -> dict:
+    """The crypto feed from Binance (shown-only markets on the Markets page): connected, which host, messages, last error, how much history it filled."""
+    return cryptofeed.status()
 
 
 @app.get("/api/data/gaps")

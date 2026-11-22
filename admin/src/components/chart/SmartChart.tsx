@@ -141,7 +141,7 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
 
   return (
     <>
-    {!compact && ind.data?.flow && <FlowPanel flow={ind.data.flow} tf={tf} />}
+    {!compact && ind.data?.flow && !symbol.endsWith('_bn') && <FlowPanel flow={ind.data.flow} tf={tf} />}{/* its track record is measured on Quotex OTC pairs: it does not apply to a crypto market */}
     <PriceChart
       candles={candles} forming={forming} lastPrice={live?.lastPrice ?? null} tf={tf}
       overlays={overlays} panes={panes} zones={ind.data?.zones} swings={ind.data?.swings} breaks={ind.data?.breaks} markers={overlay?.markers} bands={overlay?.bands} areas={overlay?.areas} trades={q.data?.trades ?? []} payout={q.data?.payout ?? null} splitT={q.data?.split_t ?? null} mtg={q.data?.mtg ?? null}

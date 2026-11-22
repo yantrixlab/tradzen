@@ -13,17 +13,21 @@ const CAT_LABEL: Record<string, string> = { currency: 'Currencies', cryptocurren
 const CAT_ORDER = ['currency', 'cryptocurrency', 'commodity', 'stock'];
 const norm = (s: string) => s.toLowerCase().replace(/[\s/_()-]/g, '');
 
-/** The sidebar's sections: OTC markets first, then live markets, each split by category; a search keeps only the pairs that match; open pairs and pairs the person can open come first. */
+/** The sidebar's sections: OTC markets first, then live markets, each split by category, then the crypto markets (Binance prices, one section); a search keeps only the pairs that match;
+ *  open pairs and pairs the person can open come first. */
+const CRYPTO_ORDER = ['BTC', 'ETH', 'BNB', 'XRP', 'SOL', 'ADA', 'DOGE', 'AVAX', 'LINK', 'LTC', 'TRX', 'DOT'];          // the crypto list starts with the biggest coins
+const cryptoRank = (p: MarketRow) => { const i = CRYPTO_ORDER.findIndex((c) => p.symbol.startsWith(`${c}USDT`)); return i < 0 ? CRYPTO_ORDER.length : i; };
+const marketOf = (p: MarketRow): 'OTC' | 'LIVE' | 'CRYPTO' => (p.market === 'OTC' ? 'OTC' : p.market === 'CRYPTO' ? 'CRYPTO' : 'LIVE');
 export function groupMarkets(pairs: MarketRow[], query = ''): MarketGroup[] {
   const q = norm(query.trim());
   const keep = pairs.filter((p) => !q || norm(`${p.symbol}${p.name}`).includes(q));
   const out: MarketGroup[] = [];
-  for (const [mk, ml] of [['OTC', 'OTC markets'], ['LIVE', 'Live markets']] as const) {
-    const inMarket = keep.filter((p) => (p.market === 'OTC' ? 'OTC' : 'LIVE') === mk);
+  for (const [mk, ml] of [['OTC', 'OTC markets'], ['LIVE', 'Live markets'], ['CRYPTO', 'Crypto · Binance prices']] as const) {
+    const inMarket = keep.filter((p) => marketOf(p) === mk);
     const cats = [...new Set(inMarket.map((p) => p.category || 'other'))].sort((a, b) => (CAT_ORDER.indexOf(a) + 99) % 99 - (CAT_ORDER.indexOf(b) + 99) % 99 || a.localeCompare(b));
     for (const c of cats) {
-      const list = inMarket.filter((p) => (p.category || 'other') === c).sort((a, b) => Number(b.open) - Number(a.open) || Number(a.locked) - Number(b.locked) || a.name.localeCompare(b.name));
-      if (list.length) out.push({ key: `${mk}-${c}`, label: `${ml} · ${CAT_LABEL[c] ?? 'Other'}`, pairs: list });
+      const list = inMarket.filter((p) => (p.category || 'other') === c).sort((a, b) => Number(b.open) - Number(a.open) || Number(a.locked) - Number(b.locked) || (mk === 'CRYPTO' ? cryptoRank(a) - cryptoRank(b) : 0) || a.name.localeCompare(b.name));
+      if (list.length) out.push({ key: `${mk}-${c}`, label: mk === 'CRYPTO' ? ml : `${ml} · ${CAT_LABEL[c] ?? 'Other'}`, pairs: list });
     }
   }
   return out;

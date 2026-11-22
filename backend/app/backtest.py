@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from . import evaluator, mtg, vec
+from .candles import is_display_only
 from .spec import validate_spec
 from .stats_util import summarize
 
@@ -36,7 +37,7 @@ def compute_trades(conn: sqlite3.Connection, spec: dict, config: dict, payouts: 
     tfs = [t for t in tfs if t in spec["timeframes"]]
     if not tfs:
         raise BacktestError("none of the requested timeframes is enabled for this strategy")
-    pairs = [(s, tf) for s, tf in conn.execute("SELECT DISTINCT symbol, tf FROM candles").fetchall() if tf in tfs]
+    pairs = [(s, tf) for s, tf in conn.execute("SELECT DISTINCT symbol, tf FROM candles").fetchall() if tf in tfs and not is_display_only(s)]
     if config.get("symbols"):
         pairs = [p for p in pairs if p[0] in config["symbols"]]
     sc = spec.get("scope") or {}

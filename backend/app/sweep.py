@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from . import mtg
+from .candles import is_display_only
 from .backtest import DEFAULT_PAYOUT, BacktestError, compute_trades
 from .spec import validate_spec
 from .stats_util import wilson
@@ -233,7 +234,7 @@ def select_pairs(conn, tfs: list[int], symbols: list[str] | None, min_payout: fl
     if not min_payout:
         return symbols
     have = [r[0] for r in conn.execute("SELECT DISTINCT symbol FROM candles WHERE tf IN (%s)" % ",".join("?" * len(tfs)), tfs).fetchall()]
-    keep = [s for s in have if (not symbols or s in symbols) and float(payouts.get(s) or DEFAULT_PAYOUT) >= float(min_payout)]
+    keep = [s for s in have if not is_display_only(s) and (not symbols or s in symbols) and float(payouts.get(s) or DEFAULT_PAYOUT) >= float(min_payout)]
     if not keep:
         raise BacktestError(f"no stored pair pays {min_payout:g}% or more right now - lower the minimum payout")
     return keep
