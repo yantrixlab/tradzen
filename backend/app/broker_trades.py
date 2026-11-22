@@ -470,6 +470,32 @@ class BrokerTrades:
         pairs_out = sorted(({"symbol": k, **self._stats(v)} for k, v in g.items()), key=lambda x: (-x["net"], -x["n"]))
         return {"days": days, "summary": summary, "pairs": pairs_out[:30]}
 
+    def hours(self, account: str = "all", since: float | None = None, until: float | None = None, tz_min: int = 0) -> dict:
+        """When you trade: the finished trades between `since` and `until` (seconds; `until` exclusive) grouped by the weekday and the hour they were OPENED, on your own clock
+        (`tz_min` = your UTC offset in minutes). `cells` has one entry per slot that has trades: d = 0 (Sunday) .. 6 (Saturday), h = 0..23, plus the usual stats (n, wins, losses,
+        draws, win_rate, staked, net, roi). Slots without trades are absent. Draws count as trades but not as wins or losses. `summary` covers every trade of the range."""
+        where, args = ["hidden = 0", "status IN ('win', 'loss', 'draw')"], []
+        if account == "real":
+            where.append("COALESCE(is_demo, 0) = 0")
+        elif account == "demo":
+            where.append("is_demo = 1")
+        if since:
+            where.append("COALESCE(open_t, first_seen) >= ?")
+            args.append(since)
+        if until:
+            where.append("COALESCE(open_t, first_seen) < ?")
+            args.append(until)
+        rows = [dict(zip(("amount", "profit", "status", "t"), r)) for r in self.db.execute(
+            f"SELECT amount, profit, status, COALESCE(open_t, first_seen) FROM broker_trades WHERE {' AND '.join(where)}", args)]
+        slots: dict[tuple[int, int], list[dict]] = {}
+        for r in rows:
+            if not r["t"]:
+                continue
+            at = datetime.fromtimestamp(r["t"] + tz_min * 60, tz=timezone.utc)
+            slots.setdefault(((at.weekday() + 1) % 7, at.hour), []).append(r)         # Python's Monday = 0 -> Sunday = 0
+        cells = [{"d": d, "h": h, **self._stats(rs)} for (d, h), rs in sorted(slots.items())]
+        return {"cells": cells, "summary": self._stats([r for rs in slots.values() for r in rs])}
+
     def _pairs(self, settled: list[dict]) -> list[dict]:
         g: dict[str, list[dict]] = {}
         for r in settled:

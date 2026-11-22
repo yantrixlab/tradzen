@@ -7,6 +7,7 @@ import { usePersisted, useMoney } from '../hooks';
 import { Badge, Card, DirBadge, Empty, ErrorBox, PageTitle, Spinner, Stat } from '../components/ui';
 import TradeDetail from '../components/TradeDetail';
 import { PnlCalendar } from '../components/PnlCalendar';
+import { HourlyMatrix } from '../components/HourlyMatrix';
 import { useBoxWidth } from '../lib/useBoxWidth';
 import UndoToasts, { UndoItem } from '../components/UndoToasts';
 import { SortSelect, SortTh, sortRows, useSortState } from '../components/SortHead';
@@ -257,6 +258,8 @@ export default function MyTrades() {
           </>}
         </Card>
       </div>
+
+      <HourlyMatrix account={account} from={span.from} to={span.to} tz={tz} rangeText={describeRange(span)} breakEven={s.break_even} />
 
       <MtgCard m={d.mtg} onOpen={setSel} last={last} />
 

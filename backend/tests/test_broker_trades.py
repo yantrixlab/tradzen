@@ -1,6 +1,7 @@
 """Your own broker trades: order events -> one row per trade, win / loss / draw with the right profit, and whether the trade followed a signal."""
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -234,6 +235,34 @@ def test_the_calendar_groups_by_your_own_day_and_ranks_the_pairs():
     narrow = b.calendar("real", day0 + 86400, day0 + 2 * 86400, 0)                                 # a range keeps only its own days
     assert list(narrow["days"]) == ["2026-11-15"] and narrow["summary"]["n"] == 1
     assert b.calendar("real", day0 + 10 * 86400, day0 + 20 * 86400, 0)["summary"]["trading_days"] == 0, "an empty range is a valid answer"
+
+
+def _open_at(b, tid, sym, amount, profit, open_t, demo=0):
+    b.on_item(ev("s_orders/close", {"deals": [{"id": tid, "asset": sym, "amount": amount, "command": 0, "profit": profit, "openPrice": 1.0, "closePrice": 1.1, "isDemo": demo,
+                                                "openTime": open_t, "closeTimestamp": open_t + 60}]}, open_t + 61))
+
+
+def test_the_hours_group_by_weekday_and_hour_of_your_own_clock():
+    db, b = fresh()
+    sun = 1_794_700_800                        # 2026-11-15 00:00 UTC, a Sunday
+    assert datetime.fromtimestamp(sun, tz=timezone.utc).weekday() == 6
+    _open_at(b, "h1", "A_otc", 1, 0.8, sun + 10 * 3600 + 120)                      # Sunday 10:02: win
+    _open_at(b, "h2", "A_otc", 1, 0, sun + 10 * 3600 + 1800)                      # Sunday 10:30: loss (profit 0 on a stake = lost)
+    _open_at(b, "h3", "B_otc", 2, 1.6, sun + 86400 + 15 * 3600)                    # Monday 15:00: win
+    _open_at(b, "h4", "B_otc", 1, 1.0, sun + 86400 + 15 * 3600 + 600, demo=1)      # Monday 15:10 on the demo account: a draw
+    _open_at(b, "h5", "C_otc", 1, 0.8, sun + 23 * 3600 + 3000)                    # Sunday 23:50 UTC = Monday 05:20 at UTC+5:30
+    h = b.hours("real", sun, sun + 7 * 86400, 0)
+    cells = {(c["d"], c["h"]): c for c in h["cells"]}
+    assert sorted(cells) == [(0, 10), (0, 23), (1, 15)], "slots without trades are absent, the demo trade is excluded"
+    c = cells[(0, 10)]
+    assert (c["n"], c["wins"], c["losses"], c["net"], c["win_rate"]) == (2, 1, 1, -0.2, 0.5) and c["staked"] == 2.0
+    assert cells[(1, 15)]["net"] == 1.6 and h["summary"]["n"] == 4 and h["summary"]["net"] == 2.2
+    both = b.hours("all", sun, sun + 7 * 86400, 0)
+    assert {(c["d"], c["h"]): c for c in both["cells"]}[(1, 15)]["draws"] == 1, "a draw counts as a trade, not as a win or a loss"
+    ist = {(c["d"], c["h"]) for c in b.hours("real", sun, sun + 7 * 86400, 330)["cells"]}
+    assert (1, 5) in ist and (0, 23) not in ist, "at UTC+5:30 the 23:50 UTC trade is Monday 05:20"
+    assert b.hours("real", sun + 86400, sun + 2 * 86400, 0)["summary"]["n"] == 1, "a range keeps only the trades opened inside it"
+    assert b.hours("real", sun + 20 * 86400, sun + 30 * 86400, 0) == {"cells": [], "summary": b._stats([])}, "an empty range is a valid answer"
 
 
 if __name__ == "__main__":

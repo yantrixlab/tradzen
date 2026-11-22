@@ -935,6 +935,15 @@ async def my_trades_calendar(request: Request, account: str = "all", tz: int = 0
     return _ctx(request).trades.calendar(account, since if since > 0 else None, until if until > 0 else None, tz)
 
 
+@app.get("/api/trades/hours")
+async def my_trades_hours(request: Request, account: str = "all", tz: int = 0, since: float = 0, until: float = 0) -> dict:
+    """When you trade: the finished trades by the weekday and hour they were opened, on your own clock (`tz` = your UTC offset in minutes): per slot the trades, wins, losses,
+    staked and net. since / until: epoch seconds (until exclusive)."""
+    if account not in ("all", "real", "demo"):
+        raise HTTPException(400, "account must be all, real or demo")
+    return _ctx(request).trades.hours(account, since if since > 0 else None, until if until > 0 else None, tz)
+
+
 class GuardSettings(BaseModel):
     """Any subset of the guard's settings (see app/guard.py DEFAULTS); the server clamps every value."""
     enabled: bool | None = None
