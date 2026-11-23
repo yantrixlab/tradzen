@@ -58,6 +58,7 @@ REGISTRY: list[F] = [
     F("menu.generate", "Trade generator", "Menus", "One-off trade ideas from the stored market.", min_role="admin", enforced=False, trader_soon=True),
     F("menu.trades", "My trades", "Menus", "The user's own real Quotex trades, profit and balance (private to them).", min_role="trader"),
     F("menu.guard", "Trading guard", "Menus", "Daily target, loss limit, streak and overtrading alerts, on the user's own trades.", min_role="trader"),
+    F("menu.moneymgmt", "Money management", "Menus", "The stake to put on the next trade from the user's balance and today's results, with daily limits (advice only).", min_role="trader"),
     F("menu.style", "My style", "Menus", "Learns the user's habits from their own trades and runs a paper rule.", min_role="trader"),
     F("menu.alerts", "Alerts", "Menus", "Which strategies alert, and the alert log.", min_role="editor"),
     F("menu.research", "Research", "Menus", "The nightly edge check.", min_role="admin"),

@@ -119,6 +119,7 @@ _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile
     # Private data of the signed-in user (their own database): open to every role, each behind its own switch.
     (r"^/api/(trades|account)(/|$)", None, "any", "menu.trades"),
     (r"^/api/guard(/|$)", None, "any", "menu.guard"),
+    (r"^/api/moneymgmt(/|$)", None, "any", "menu.moneymgmt"),
     (r"^/api/style(/|$)", None, "any", "menu.style"),
     # Strategies, signals and backtests are open to every role: each handler only shows and changes what the caller owns or receives (strategy_access.py).
     (r"^/api/(signal-pairs|signals(/\d+)?|stats|equity)$", {"GET"}, "any", "menu.signals"),

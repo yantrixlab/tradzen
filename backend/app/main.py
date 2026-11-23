@@ -23,6 +23,7 @@ from .backtest import BacktestError
 from .cryptofeed import CryptoFeed
 from .engine import Engine
 from .marketdata import MarketData
+from .moneymgmt import MoneyMgmt
 from .spec import BASE_NAMES, FILTERS, TFS as TFS_SPEC
 from .strategy import FN_FACTORS
 from .strategy_repo import STATUSES, RepoError
@@ -1008,6 +1009,39 @@ async def guard_test(request: Request, level: str = "warn") -> dict:
     t, m = samples[level]
     ev = engine._emit_guard({"level": level, "rule": "test", "title": t, "message": m, "chips": [{"l": "Today", "v": "sample"}], "progress": 0.8, "sound": True}, request.state.user["id"])
     return {"ok": True, "seq": ev["seq"]}
+
+
+class MoneySettings(BaseModel):
+    """Any subset of the money-management settings (see app/moneymgmt.py DEFAULTS); the server clamps every value."""
+    account: str | None = None
+    base_pct: float | None = None
+    max_pct: float | None = None
+    min_stake: float | None = None
+    recovery: dict | None = None
+    loss: dict | None = None
+    target: dict | None = None
+    streak: dict | None = None
+
+
+def _money(request: Request) -> MoneyMgmt:
+    c = _ctx(request)
+    return MoneyMgmt(c.db, c.trades, c.guard)
+
+
+@app.get("/api/moneymgmt")
+async def moneymgmt_status(request: Request, account: str | None = None, tz: int | None = None) -> dict:
+    """The stake to put on your NEXT trade and why: from the live balance and the trades you placed today on the chosen account (real | demo), with today's result, the
+    streak, the daily limits, a risk ladder and a what-if for the next trade. Advice only - nothing here places or changes a trade."""
+    if account not in (None, "real", "demo"):
+        raise HTTPException(400, "account must be real or demo")
+    return _money(request).status(tz_min=tz, account=account)
+
+
+@app.put("/api/moneymgmt/settings")
+async def moneymgmt_save(body: MoneySettings, request: Request, tz: int | None = None) -> dict:
+    m = _money(request)
+    m.save_settings(body.model_dump(exclude_none=True))
+    return m.status(tz_min=tz)
 
 
 class StyleSettings(BaseModel):

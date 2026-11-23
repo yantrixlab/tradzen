@@ -1,10 +1,11 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { ago, pct } from '../format';
 import { currencySymbol, useAccount, useMoney } from '../hooks';
 import { Badge, Card, Empty, ErrorBox, PageTitle, Spinner } from '../components/ui';
 import { useBoxWidth } from '../lib/useBoxWidth';
+import { Num, Row, Seg, Toggle } from '../components/settingsControls';
 
 // ------------------------------------------------------------------ shapes (see backend/app/guard.py)
 interface Lim { on: boolean; value: number; unit: 'amount' | 'percent' }
@@ -90,44 +91,6 @@ function Spark({ series }: { series: [number, number][] }) {
     </svg>
   );
 }
-
-const Toggle = ({ on, onChange, label, hint }: { on: boolean; onChange: (v: boolean) => void; label: ReactNode; hint?: ReactNode }) => (
-  <label className="flex cursor-pointer items-start gap-3">
-    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)}
-      className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full border transition ${on ? 'border-acc bg-acc' : 'border-line bg-panel2'}`}>
-      <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
-    </button>
-    <span className="min-w-0"><span className="block text-sm font-medium text-fg">{label}</span>{hint && <span className="block text-xs text-mut">{hint}</span>}</span>
-  </label>
-);
-
-function Num({ value, onChange, prefix, suffix, min = 0, max, step = 1, disabled, w = 'w-28' }: {
-  value: number; onChange: (v: number) => void; prefix?: string; suffix?: string; min?: number; max?: number; step?: number; disabled?: boolean; w?: string;
-}) {
-  return (
-    <div className={`flex items-center overflow-hidden rounded-lg border border-line bg-panel2 focus-within:border-acc ${disabled ? 'opacity-50' : ''} ${w}`}>
-      {prefix && <span className="pl-2 text-sm text-mut">{prefix}</span>}
-      <input type="number" className="w-full bg-transparent px-2 py-1.5 text-sm tabular-nums text-fg outline-none" value={Number.isFinite(value) ? value : ''} min={min} max={max} step={step} disabled={disabled}
-        onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))} />
-      {suffix && <span className="pr-2 text-sm text-mut">{suffix}</span>}
-    </div>
-  );
-}
-
-function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: [T, string][]; onChange: (v: T) => void; label: string }) {
-  return (
-    <div className="inline-flex overflow-hidden rounded-lg border border-line" role="group" aria-label={label}>
-      {options.map(([k, l]) => <button key={k} type="button" className={`px-2.5 py-1.5 text-xs font-semibold transition ${value === k ? 'bg-acc text-white' : 'bg-panel2 text-mut hover:text-fg'}`} onClick={() => onChange(k)}>{l}</button>)}
-    </div>
-  );
-}
-
-const Row = ({ children, label, hint }: { children: ReactNode; label: ReactNode; hint?: ReactNode }) => (
-  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-3 first:border-t-0">
-    <div className="min-w-[180px] flex-1"><div className="text-sm font-medium">{label}</div>{hint && <div className="text-xs text-mut">{hint}</div>}</div>
-    <div className="flex flex-wrap items-center gap-2">{children}</div>
-  </div>
-);
 
 // ------------------------------------------------------------------ the page
 export default function Guard() {

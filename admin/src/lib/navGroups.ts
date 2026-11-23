@@ -6,7 +6,7 @@ export interface NavGroup { id: string; label: string; icon: string; items: NavI
 /** The groups, in menu order. `open` = whether the group starts open for somebody who has not chosen yet. A page that is not listed here lands in "More". */
 export const GROUP_DEFS: { id: string; label: string; icon: string; open: boolean; paths: string[] }[] = [
   { id: 'trade', label: 'Trade', icon: '⚡', open: true, paths: ['/markets', '/chart', '/sessions', '/session', '/live', '/generate'] },
-  { id: 'mine', label: 'My trading', icon: '$', open: true, paths: ['/trades', '/guard', '/style', '/signals'] },
+  { id: 'mine', label: 'My trading', icon: '$', open: true, paths: ['/trades', '/moneymgmt', '/guard', '/style', '/signals'] },
   { id: 'strategy', label: 'Strategies', icon: '⚙', open: false, paths: ['/library', '/strategies', '/backtests', '/sweeps', '/clinic'] },
   { id: 'research', label: 'Research & data', icon: '◎', open: false, paths: ['/research', '/edgelab', '/ai', '/data'] },
   { id: 'admin', label: 'Administration', icon: '⌘', open: false, paths: ['/alerts', '/system', '/users', '/features', '/payments'] },

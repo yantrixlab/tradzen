@@ -38,6 +38,7 @@ import AccountBar from './components/AccountBar';
 import PlanBanner from './components/PlanBanner';
 import { CheckoutProvider } from './components/CheckoutHost';
 import Guard from './pages/Guard';
+import MoneyManagement from './pages/MoneyManagement';
 import MyStyle from './pages/MyStyle';
 import Login from './pages/Login';
 import Account, { PasswordForm } from './pages/Account';
@@ -52,7 +53,7 @@ type Role = Me['user']['role'];
 // [path, label, icon, lowest role, feature key]. The feature key is the switch on the Features page (backend/app/features.py).
 const NAV: [string, string, string, 'trader' | 'editor' | 'admin', string][] = [
   ['/', 'Overview', '◈', 'editor', 'menu.overview'], ['/markets', 'Markets', '◫', 'trader', 'menu.markets'], ['/sessions', 'Live sessions', '◉', 'trader', 'menu.sessions'], ['/session', 'Session console', '▶', 'admin', 'menu.sessionconsole'], ['/chart', 'Live chart', '◔', 'trader', 'menu.chart'], ['/live', 'Quotex Signal', '⚡', 'admin', 'menu.live'], ['/generate', 'Trade generator', '✦', 'admin', 'menu.generate'],
-  ['/trades', 'My trades', '$', 'trader', 'menu.trades'], ['/guard', 'Trading guard', '🛡', 'trader', 'menu.guard'], ['/style', 'My style', '✎', 'trader', 'menu.style'],
+  ['/trades', 'My trades', '$', 'trader', 'menu.trades'], ['/moneymgmt', 'Money management', '⚖', 'trader', 'menu.moneymgmt'], ['/guard', 'Trading guard', '🛡', 'trader', 'menu.guard'], ['/style', 'My style', '✎', 'trader', 'menu.style'],
   ['/signals', 'Signal history', '≣', 'trader', 'menu.signals'], ['/library', 'Strategy library', '❖', 'trader', 'menu.library'], ['/strategies', 'Strategies', '⚙', 'trader', 'menu.strategies'],
   ['/backtests', 'Backtest lab', '↺', 'trader', 'menu.backtests'],
   ['/sweeps', 'Sweeps', '⇄', 'editor', 'menu.sweeps'], ['/research', 'Research', '◎', 'admin', 'menu.research'], ['/edgelab', 'Edge Lab', '⌖', 'admin', 'menu.edgelab'],
@@ -184,6 +185,7 @@ function Shell({ me }: { me: Me }) {
             <Route path="/live" element={gate('admin', <LiveSignal />)} />
             <Route path="/generate" element={gate('admin', <TradeGenerator />)} />
             <Route path="/trades" element={gate('trader', <MyTrades />)} />
+            <Route path="/moneymgmt" element={gate('trader', <MoneyManagement />)} />
             <Route path="/guard" element={gate('trader', <Guard />)} />
             <Route path="/style" element={gate('trader', <MyStyle />)} />
             <Route path="/library" element={gate('trader', <Library />)} />

@@ -2,7 +2,8 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 import { ago } from '../format';
-import { useAccount, useAmountsVisible, useMoney } from '../hooks';
+import { useAccount, useAmountsVisible, useMe, useMoney } from '../hooks';
+import { theme, type MoneyMgmt } from '../lib/moneyMgmt';
 
 const Eye = ({ off }: { off: boolean }) => (
   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -24,6 +25,15 @@ function GuardChip() {
   return <Link to="/guard" className={`chip ${cls} hover:brightness-125`} title={`${data.headline} - open the Trading guard`}>{label}</Link>;
 }
 
+/** The stake the Money management page advises for the next trade, on every page (opens that page). */
+function StakeChip() {
+  const money = useMoney();
+  const { data } = useQuery({ queryKey: ['moneymgmt'], queryFn: () => api<MoneyMgmt>(`/api/moneymgmt?tz=${-new Date().getTimezoneOffset()}`), refetchInterval: 5000 });
+  if (!data || data.balance.value === null) return null;
+  const a = data.advice, th = theme(a.status, a.kind), cls = { up: 'border-up/50 bg-up/10 text-up', warn: 'border-warn/50 bg-warn/10 text-warn', down: 'border-down/50 bg-down/10 text-down', mut: 'border-line bg-panel2 text-mut' }[th.tone];
+  return <Link to="/moneymgmt" className={`chip ${cls} hover:brightness-125`} title={`${a.headline}: ${a.reason}`}>{a.status === 'stop' && a.kind !== 'target' ? '⛔ Stop for today' : a.status === 'stop' ? '🎯 Target reached' : `Next stake ${money(a.stake)}`}</Link>;
+}
+
 /** Download of the Chrome extension for this server (the server packages it; hidden where it is not offered, e.g. a local server). */
 export function useExtension() {
   return useQuery({ queryKey: ['extension-info'], queryFn: () => api<{ available: boolean; version: string | null }>('/download/extension.json'), staleTime: 600000 });
@@ -42,6 +52,8 @@ function GetExtension() {
 /** Slim bar on top of every page: the Quotex account balances in the account's own currency. */
 export default function AccountBar() {
   const { data } = useAccount();
+  const me = useMe();
+  const stakeOn = me.data?.features?.['menu.moneymgmt'] !== false;
   const money = useMoney();
   const [visible, toggle] = useAmountsVisible();
   const seen = !!data && (data.live !== null || data.demo !== null);
@@ -62,6 +74,7 @@ export default function AccountBar() {
             <span className="flex items-baseline gap-2" title="Your Quotex demo account"><span className="text-[11px] font-semibold uppercase tracking-wide text-mut">Demo balance</span>
               <b className="tabular-nums text-mut">{money(data!.demo)}</b></span>
             {code && <span className="chip border-line bg-panel2 text-mut" title="Currency of the account">{code}</span>}
+            {stakeOn && <StakeChip />}
             <GuardChip />
             <span className="note ml-auto">seen {ago(at)}</span>
             <GetExtension />

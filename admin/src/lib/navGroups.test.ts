@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildGroups, filterItems, groupOf, isOpen, matches, NavItem, pinned, restorable, togglePin, MAX_PINS } from './navGroups';
 
 const item = (to: string, label = to): NavItem => ({ to, label, icon: '•' });
-const ALL = ['/', '/markets', '/chart', '/sessions', '/session', '/live', '/generate', '/trades', '/guard', '/style', '/signals', '/library', '/strategies', '/backtests', '/sweeps', '/clinic',
+const ALL = ['/', '/markets', '/chart', '/sessions', '/session', '/live', '/generate', '/trades', '/moneymgmt', '/guard', '/style', '/signals', '/library', '/strategies', '/backtests', '/sweeps', '/clinic',
   '/research', '/edgelab', '/ai', '/data', '/alerts', '/system', '/users', '/features', '/payments', '/plans', '/account'].map((p) => item(p));
 
 describe('buildGroups', () => {
