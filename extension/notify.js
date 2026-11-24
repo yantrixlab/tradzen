@@ -98,13 +98,17 @@
   .chips .f { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 8px; background: rgba(255,255,255,.05); color: #cbd2ee; }
   .chips .f.up { color: #86efac; } .chips .f.dn { color: #fca5a5; }
   .foot { display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; color: #6f7899; }
-  .result { display: none; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--c) 16%, transparent);
+  .result { display: none; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--c) 16%, transparent);
             border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
   .card.win .result, .card.loss .result, .card.draw .result { display: flex; }
   .card.win .main, .card.loss .main, .card.draw .main, .card.win .grid, .card.loss .grid, .card.draw .grid, .card.win .chips, .card.loss .chips, .card.draw .chips,
   .card.win .meta, .card.loss .meta, .card.draw .meta, .card.win .cta, .card.loss .cta, .card.draw .cta { display: none; }
   .result .big { font-size: 22px; font-weight: 900; color: var(--c); letter-spacing: .03em; white-space: nowrap; flex: none; }
   .result .det { color: #cbd2ee; font-size: 12px; flex: 1; min-width: 0; }
+  .result .rec { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: -2px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--c) 28%, transparent); font-size: 11.5px; color: #b8c0dc; }
+  .result .rec b { color: #fff; font-weight: 800; }
+  .result .rec .v { font-size: 13px; font-weight: 800; } .result .rec .v.good { color: #86efac; } .result .rec .v.bad { color: #fca5a5; } .result .rec .v.mid { color: #e2e8f0; } .result .rec .v.wait { color: #fcd34d; }
+  .result .rec .nm { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* trading guard card */
   .card.g-success { --c: #22c55e; --cs: rgba(34,197,94,.16); } .card.g-info { --c: #38bdf8; --cs: rgba(56,189,248,.14); }
   .card.g-warn { --c: #f59e0b; --cs: rgba(245,158,11,.16); } .card.g-danger { --c: #ef4444; --cs: rgba(239,68,68,.2); }
@@ -204,6 +208,16 @@
     return { value: base + (be != null ? ` <small>· break-even ${pct(be)}</small>` : ''), sub: pairLine, badge, cls };
   }
 
+  // after a result: how accurate the strategy that gave this signal has been (this tier of it, its settled signals including this one), and this pair
+  function recordHtml(ev, acc) {
+    const t = ev.tier_stats || { n: 0 }, p = ev.pair_stats || { n: 0 }, sess = ev.session_id != null;
+    const who = esc(ev.strategy || 'Strategy');
+    if (!t.n) return `<span class="nm"><b>${who}</b></span><span class="v wait">building sample</span>`;
+    const be = ev.breakeven != null ? ` <span>· break-even ${pct(ev.breakeven)}</span>` : '';
+    const pair = p.n ? `<span>· this pair ${p.wins}W / ${p.losses}L</span>` : '';
+    return `<span class="nm"><b>${who}</b>${sess ? ' · this session' : ''}</span><span class="v ${acc.cls}" title="Share of its settled signals that won">${pct(t.acc)}</span><span>accuracy · n=${t.n}</span>${be}${pair}`;
+  }
+
   function signalHtml(ev) {
     const sess = ev.session_id != null;                       // a live session's signal: same card, with the session's own words
     const call = ev.direction === 'CALL';
@@ -225,7 +239,7 @@
           <div class="ring"><svg viewBox="0 0 56 56"><circle class="bg" cx="28" cy="28" r="25" fill="none" stroke-width="4"/>
             <circle class="fg" cx="28" cy="28" r="25" fill="none" stroke-width="4" stroke-dasharray="${C}" stroke-dashoffset="0"/></svg><div class="cd">–</div></div>
         </div>
-        <div class="result"><div class="big"></div><div class="det"></div></div>
+        <div class="result"><div class="big"></div><div class="det"></div><div class="rec"></div></div>
         <div class="pair"><span class="name">${esc(ev.name)}</span>${ev.payout ? `<span class="chip pay">${ev.payout}% payout</span>` : ''}
           <span class="chip">${HOUR}${esc(TFN[ev.tf] || ev.tf + 's')}</span></div>
         <div class="meta">${ev.strategy ? `<span class="chip strat" title="Strategy">${esc(ev.strategy)}</span>` : ''}<span class="badge mini ${acc.cls}" title="Measured accuracy of this tier: open Details">${acc.badge}</span></div>
@@ -311,6 +325,7 @@
       `${ev.direction === 'CALL' ? 'BUY' : 'SELL'} settled: price ${price(ev.entry)} → ${price(ev.exit)} (${up ? '▲' : '▼'})${profit}`;
     c.el.querySelector('.live').innerHTML = '<i></i>SETTLED';
     const acc = accuracy(ev);
+    c.el.querySelector('.result .rec').innerHTML = recordHtml(ev, acc);
     c.el.querySelector('.acc .v').innerHTML = acc.value;
     c.el.querySelectorAll('.badge').forEach((b) => { b.className = 'badge ' + acc.cls + (b.classList.contains('mini') ? ' mini' : ''); b.textContent = acc.badge; });
     c.dismissAt = Date.now() / 1000 + 10;
