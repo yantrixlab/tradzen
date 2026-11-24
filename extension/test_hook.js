@@ -207,6 +207,35 @@ assert.strictEqual(JSON.stringify(win.__qxs.drainFeed().filter((i) => i.k === 'a
   assert.deepStrictEqual(h3[0].rows.map((r) => r[0]), [T0 - 60, T0 - 120, T0, T0 + 60], 'millisecond timestamps are read; a minute whose ticks stop 30 s early is still built (a quiet market), and the running one');
 }
 
+// the currency sign the page shows next to the balance
+{
+  const cf = win.__qxs._currencyFromText;
+  assert.strictEqual(cf('₹1,397.03'), '₹');
+  assert.strictEqual(cf('₹ 21,435.19'), '₹');
+  assert.strictEqual(cf('$1,397.03'), '$');
+  assert.strictEqual(cf('2,461.85 ₹'), '₹');
+  assert.strictEqual(cf('R$ 12.50'), 'R$');
+  assert.strictEqual(cf('€9,999.00'), '€');
+  assert.strictEqual(cf('DEMO ACCOUNT'), null);
+  assert.strictEqual(cf('USD/BRL (OTC)'), null);
+  assert.strictEqual(cf('78%'), null);
+  assert.strictEqual(cf('Balance is $5 today and more words here'), null);
+  const node = (text, top, parent) => ({ nodeValue: text, parentElement: parent || { textContent: text, parentElement: null, getBoundingClientRect: () => ({ top, height: 18 }) } });
+  const fake = (nodes) => ({ visibilityState: 'visible', addEventListener() {}, body: {}, createTreeWalker: () => { let i = 0; return { nextNode: () => nodes[i++] || null }; } });
+  const real = win.document;
+  win.document = fake([node('Trades', 500), node('+1.89 $', 640), node('₹1,397.03', 40)]);      // an amount low on the page is a single trade, the one in the top bar is the balance
+  win.__qxs.drainFeed(); win.__qxs._scanCurrency();
+  let b = JSON.parse(JSON.stringify(win.__qxs.drainFeed())).filter((i) => i.k === 'b');
+  assert.strictEqual(b.length, 1); assert.strictEqual(b[0].d.currency.symbol, '₹'); assert.strictEqual(b[0].d.page, true);
+  win.__qxs._scanCurrency();                                                                    // unchanged: nothing is sent again
+  assert.strictEqual(win.__qxs.drainFeed().filter((i) => i.k === 'b').length, 0);
+  win.document = fake([node('$', 40, { textContent: '$1,397.03', parentElement: null, getBoundingClientRect: () => ({ top: 40, height: 18 }) })]);   // sign and number in separate elements
+  win.__qxs._scanCurrency();
+  b = JSON.parse(JSON.stringify(win.__qxs.drainFeed())).filter((i) => i.k === 'b');
+  assert.strictEqual(b.length, 1); assert.strictEqual(b[0].d.currency.symbol, '$');
+  win.document = real;
+}
+
 // heartbeat with no sockets + worker tracking
 const w = new win.Worker('https://qxbroker.com/js/chart.worker.js?v=1');
 assert(w instanceof MockWorker && w.url.includes('?v=1'), 'worker must be created normally');

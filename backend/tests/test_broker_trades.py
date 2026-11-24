@@ -136,6 +136,25 @@ def test_account_balance_and_currency():
     assert again.account_info()["live"] == 1650.25 and again.account_info()["currency"]["code"] == "INR"
 
 
+def test_currency_follows_what_the_quotex_page_shows():
+    db, b = fresh()
+    b.on_item(ev("s_orders/open", {"id": 1, "asset": "A_otc", "amount": 1, "command": 0, "isDemo": 0, "currency": "USD", "accountBalance": 50, "openTimestamp": T}, T))
+    assert b.account_info()["currency"]["code"] == "USD"
+    # the account was switched to rupees: the page shows a rupee sign, which wins over the dollar orders
+    b.on_balance({"k": "b", "n": "page:currency", "dir": "in", "ts": T + 5, "d": {"currency": {"symbol": "₹"}, "page": True}})
+    c = b.account_info()["currency"]
+    assert c["code"] == "INR" and c["symbol"] == "₹"
+    # an old trade list still says USD: it must not flip the account back
+    b.on_item(ev("orders/closed/list", [{"id": 2, "asset": "A_otc", "amount": 1, "profit": 0.8, "isDemo": 0, "currency": "USD", "openTimestamp": T - 99, "closeTimestamp": T - 39}], T + 6))
+    assert bt.BrokerTrades(db).account_info()["currency"]["code"] == "INR"
+    # back to dollars on the page
+    b.on_balance({"k": "b", "n": "page:currency", "dir": "in", "ts": T + 9, "d": {"currency": {"symbol": "$"}, "page": True}})
+    assert b.account_info()["currency"]["code"] == "USD"
+    # '$' keeps a known dollar code (CAD), a symbol with no code and no match stays a symbol
+    b.on_balance({"k": "b", "n": "page:currency", "dir": "in", "ts": T + 10, "d": {"currency": {"symbol": "X$"}, "page": True}})
+    assert b.account_info()["currency"]["symbol"] == "X$" and b.account_info()["currency"]["code"] is None
+
+
 def test_trade_detail_has_candles_position_and_cycle():
     db, b = fresh()
     base = T - T % 60

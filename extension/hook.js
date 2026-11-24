@@ -411,7 +411,48 @@
     };
   }
 
-  root.__qxs = { snapshot, reset: () => { S = fresh(); }, _redact: redact, drainFeed: () => feed.splice(0) };
+  // ---- the currency the Quotex page itself shows next to the balance (header, top of the page). Balance messages carry no currency and orders can be old trades in the
+  // account's earlier currency, so after the account is switched (say USD -> INR) only the page knows. Only the symbol is read (a short text such as "₹1,397.03"), never a name or an id.
+  const SYM = 'R\\$|Rs\\.?|RM|Rp|zł|Kč|[₹€£¥₽₺₦₴₸฿₫₱৳₪₩$]';
+  const MONEY_BEFORE = new RegExp('^(' + SYM + ')\\s?-?\\d[\\d,.\\s]*$'), MONEY_AFTER = new RegExp('^-?\\d[\\d,.\\s]*\\s?(' + SYM + ')$');
+  function currencyFromText(t) {
+    if (typeof t !== 'string') return null;
+    t = t.replace(/[\s\u00a0]+/g, ' ').trim();
+    if (t.length < 2 || t.length > 24 || !/\d/.test(t)) return null;
+    const m = MONEY_BEFORE.exec(t) || MONEY_AFTER.exec(t);
+    return m ? m[1].replace(/\.$/, '') : null;
+  }
+  let pageCur = { sym: null, sent: 0 };
+  function scanCurrency() {
+    try {
+      const d = root.document;
+      const body = d && d.body;
+      if (!body || typeof d.createTreeWalker !== 'function') return;
+      const w = d.createTreeWalker(body, 4 /* NodeFilter.SHOW_TEXT */);
+      let n, seen = 0, found = null;
+      while ((n = w.nextNode()) && seen < 4000) {
+        seen++;
+        const raw = n.nodeValue;
+        if (!raw || raw.length > 24) continue;
+        const el = n.parentElement;
+        if (!el) continue;
+        let sym = currencyFromText(raw);
+        if (!sym && el.textContent && el.textContent.length <= 24) sym = currencyFromText(el.textContent);          // the sign and the number in two elements
+        if (!sym && el.parentElement && el.parentElement.textContent && el.parentElement.textContent.length <= 24) sym = currencyFromText(el.parentElement.textContent);
+        if (!sym) continue;
+        const r = el.getBoundingClientRect();
+        if (r.height > 0 && r.top >= 0 && r.top < 110) { found = sym; break; }                                     // the balance sits in the top bar; amounts further down are single trades
+      }
+      const now = Date.now();
+      if (found && (found !== pageCur.sym || now - pageCur.sent > 120000)) {
+        pageCur = { sym: found, sent: now };
+        pushFeed({ k: 'b', n: 'page:currency', dir: 'in', d: { currency: { symbol: found }, page: true }, ts: now / 1000 });
+      }
+    } catch (_) { /* a page that changes under us: try again next time */ }
+  }
+  if (root.document && root.top === root && typeof root.setInterval === 'function') root.setInterval(scanCurrency, 4000);
+
+  root.__qxs = { snapshot, reset: () => { S = fresh(); }, _redact: redact, drainFeed: () => feed.splice(0), _currencyFromText: currencyFromText, _scanCurrency: scanCurrency };
 
   // Page lifecycle: explains feed pauses (tab hidden / throttled / frozen by Chrome's Memory Saver).
   const doc = root.document;

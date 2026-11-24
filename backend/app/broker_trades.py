@@ -108,6 +108,12 @@ def parse_currency(v) -> dict | None:
     return {"code": code, "symbol": symbol} if code or symbol else None
 
 
+# What the Quotex page shows next to the balance -> the ISO code. '$' is shared by several currencies, so it keeps a dollar code that is already known.
+SYMBOL_CODES = {"₹": "INR", "€": "EUR", "£": "GBP", "R$": "BRL", "¥": "JPY", "₽": "RUB", "₺": "TRY", "₦": "NGN", "₴": "UAH", "₸": "KZT", "฿": "THB", "₫": "VND",
+                "₱": "PHP", "৳": "BDT", "Rp": "IDR", "RM": "MYR", "zł": "PLN", "Kč": "CZK", "₪": "ILS", "₩": "KRW", "Rs": "PKR"}
+DOLLAR_CODES = {"USD", "CAD", "AUD", "NZD", "MXN", "SGD", "HKD", "ARS", "CLP", "COP"}
+
+
 def _deals(d) -> list[tuple[dict, bool]]:
     """(deal dict, came inside a `deals` list) for every order in an event payload."""
     out: list[tuple[dict, bool]] = []
@@ -147,12 +153,23 @@ class BrokerTrades:
         self.account[which], self.account[which + "_at"] = v, ts
         return changed
 
-    def _set_currency(self, v) -> bool:
+    def _set_currency(self, v, page: bool = False) -> bool:
+        """A currency from an order (`currency: 'USD'`, which can be an old trade in the account's earlier currency) or, with page=True, the symbol the Quotex page itself
+        shows next to the balance - that is what the account is in right now, so once it has been seen an order can no longer change it."""
         c = parse_currency(v)
         if not c:
             return False
         old = self.account.get("currency") or {}
-        merged = {"code": c["code"] or old.get("code"), "symbol": c["symbol"] or old.get("symbol")}
+        if page:
+            sym = c["symbol"]
+            if not sym:
+                return False
+            code = c["code"] or SYMBOL_CODES.get(sym) or ((old.get("code") if old.get("code") in DOLLAR_CODES else "USD") if sym == "$" else None)
+            merged = {"code": code, "symbol": sym, "page": True}
+        elif old.get("page"):
+            return False
+        else:
+            merged = {"code": c["code"] or old.get("code"), "symbol": c["symbol"] or old.get("symbol")}
         if merged == old:
             return False
         self.account["currency"] = merged
@@ -172,7 +189,7 @@ class BrokerTrades:
             changed |= self._set_balance("demo" if d.get("isDemo") else "live", d.get("balance"), ts)
         for k in ("currency", "currencySymbol"):
             if d.get(k) is not None:
-                changed |= self._set_currency(d.get(k))
+                changed |= self._set_currency(d.get(k), page=bool(d.get("page")))
         self._log(ts, item.get("dir"), "balance:" + str(item.get("n")), d)
         self._save(changed, ts)
 
