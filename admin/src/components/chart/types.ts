@@ -104,6 +104,7 @@ export interface PriceChartProps {
   toolbarLeft?: ReactNode;                // page controls placed in the toolbar (e.g. the strategy picker)
   toolbarRight?: ReactNode;
   tooltipExtra?: (i: number) => ReactNode;
+  chipsExtra?: (i: number) => { text: string; color: string }[];     // short chips shown next to the readout while the pointer is on a candle
   footer?: ReactNode;
   emptyText?: string;
 }

@@ -120,6 +120,11 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
     return <div className="mt-1 border-t border-line pt-1">{here.slice(0, 6).map((h) => <div key={h.key} className="font-semibold" style={{ color: h.color }}>{h.name}<span className="ml-1 font-normal text-mut">{BIAS_WORD[h.bias]}</span></div>)}{here.length > 6 && <div className="text-mut">+{here.length - 6} more</div>}</div>;
   }, [candles, highlights]);
 
+  const patternChips = useCallback((i: number) => {
+    const t = candles[i]?.t;
+    return t === undefined ? [] : highlights.filter((h) => t >= h.t0 && t <= h.t1).map((h) => ({ text: h.name, color: h.color }));
+  }, [candles, highlights]);
+
   const [toasts, setToasts] = useState<PatternToast[]>([]);
   const dismissToast = useCallback((key: string) => setToasts((ts) => ts.filter((x) => x.key !== key)), []);
   const baseline = useRef<{ chart: string; seen: Set<string> } | null>(null);
@@ -197,7 +202,7 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
     <PriceChart
       candles={candles} forming={forming} lastPrice={live?.lastPrice ?? null} tf={tf}
       overlays={overlays} panes={panes} zones={ind.data?.zones} swings={ind.data?.swings} breaks={ind.data?.breaks} markers={overlay?.markers} bands={overlay?.bands} areas={overlay?.areas} trades={q.data?.trades ?? []} payout={q.data?.payout ?? null} splitT={q.data?.split_t ?? null} mtg={q.data?.mtg ?? null}
-      highlights={highlights} tooltipExtra={patternTip}
+      highlights={highlights} tooltipExtra={patternTip} chipsExtra={patternChips}
       height={height} initialCount={initialCount} compact={compact} resetKey={`${symbol}-${tf}`} toolbarLeft={toolbarLeft}
       emptyText="Not enough stored candles for this pair and timeframe yet."
       footer={<>

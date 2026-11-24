@@ -85,7 +85,7 @@ const Seg = ({ children }: { children: React.ReactNode }) => <div className="inl
 
 export function PriceChart(props: PriceChartProps) {
   const { candles, forming = null, lastPrice = null, overlays = [], panes = [], markers = [], bands = [], areas = [], boxes = [], highlights = NONE as ChartHighlight[], zones = NONE as ChartZone[], swings = NONE as ChartSwing[], breaks = NONE as ChartBreak[], trades = [], payout = null, splitT = null, mtg = null,
-    height = 320, initialCount = 150, compact = false, resetKey = '', toolbarLeft, toolbarRight, tooltipExtra, footer, emptyText = 'No candles to show yet.' } = props;
+    height = 320, initialCount = 150, compact = false, resetKey = '', toolbarLeft, toolbarRight, tooltipExtra, chipsExtra, footer, emptyText = 'No candles to show yet.' } = props;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const root = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
@@ -98,6 +98,7 @@ export function PriceChart(props: PriceChartProps) {
   const [vh, setVh] = useState(typeof window === 'undefined' ? 900 : window.innerHeight);
   const [view, setView] = useState<View>(() => ({ start: Math.max(0, n - Math.min(n, initialCount)), count: Math.max(1, Math.min(n, initialCount)) }));
   const [hover, setHover] = useState<{ i: number; y: number } | null>(null);
+  const [infoOpen, setInfoOpen] = usePref('chart.info', false);          // the details panel (explanations of zones, swings ...); off: only the short chips on hover
   const [drag, setDrag] = useState(false);
   const [yr, setYr] = useState<{ lo: number; hi: number } | null>(null);   // a price range the person set by hand (stretch / move up and down); null = fit the visible candles
   const [layersOpen, setLayersOpen] = useState(false);                    // phones: the layer switches fold away (they are always shown from the sm width up)
@@ -502,10 +503,16 @@ export function PriceChart(props: PriceChartProps) {
   }
 
   const hc = hover ? all[hover.i] : null;
-  const hTrade = hover ? tradeAt.get(hover.i) : undefined;
-  const hSettles = hover ? tradeAt.get(hover.i - 1) : undefined;
-  const hMtg = hover && showMtg ? mtgAt.get(hover.i) : undefined;
-  const hMarker = hover ? markerAt.get(hover.i) : undefined;
+  // what the info panel explains: the candle under the pointer, and - once the pointer has left (to reach the panel) - the last one it was on
+  const heldRef = useRef<{ i: number; y: number } | null>(null);
+  if (hover) heldRef.current = hover;
+  const hvRaw = hover ?? heldRef.current;
+  const hv = hvRaw && hvRaw.i < all.length ? hvRaw : null;
+  const dc = hv ? all[hv.i] : null;
+  const hTrade = hv ? tradeAt.get(hv.i) : undefined;
+  const hSettles = hv ? tradeAt.get(hv.i - 1) : undefined;
+  const hMtg = hv && showMtg ? mtgAt.get(hv.i) : undefined;
+  const hMarker = hv ? markerAt.get(hv.i) : undefined;
   const lastIdx = n - 1;
   const priceNow = lastPrice ?? (forming ? forming.c : null);
   const rangeBtn = (label: string, count: number) => {
@@ -521,21 +528,33 @@ export function PriceChart(props: PriceChartProps) {
   const anyTrades = tradeIdx.length > 0, anySignals = anyTrades || markers.length > 0;
   const clipId = `clip-${uid}`;
 
-  const hZones = hover ? zoneSpans.flatMap(({ z, a, e, closed, base, dep }) => {
+  const hZones = hv ? zoneSpans.flatMap(({ z, a, e, closed, base, dep }) => {
     const out: { z: ChartZone; what: string; closed: boolean }[] = [];
-    const px = hover.y <= mainH ? yInv(hover.y) : null;
-    if (px !== null && hover.i >= a && hover.i <= e && px >= z.lo - (z.hi - z.lo) * 0.2 && px <= z.hi + (z.hi - z.lo) * 0.2 && !(base && hover.i >= base.a && hover.i <= base.b) && !(dep && hover.i >= dep.a && hover.i <= dep.b)) {
+    const px = hv.y <= mainH ? yInv(hv.y) : null;
+    if (px !== null && hv.i >= a && hv.i <= e && px >= z.lo - (z.hi - z.lo) * 0.2 && px <= z.hi + (z.hi - z.lo) * 0.2 && !(base && hv.i >= base.a && hv.i <= base.b) && !(dep && hv.i >= dep.a && hv.i <= dep.b)) {
       out.push({ z, closed, what: z.src === 'engulf' && z.why === 'used' ? 'inside this zone (the first visit already used it up for the strategy; it stands until a candle closes through it)' : 'inside this zone' });
     }
     const eng = isEng(z), swingEng = z.src === 'swing_engulf';
     const colour = z.kind === 'demand' ? 'red' : 'green';
-    if (base && hover.i >= base.a && hover.i <= base.b) out.push({ z, closed, what: swingEng ? `part of the swing of ${colour} candles that was engulfed: the whole swing's high-low range is the zone` : eng ? `the ENGULFED ${colour} candle: its full high-low range is the zone`
+    if (base && hv.i >= base.a && hv.i <= base.b) out.push({ z, closed, what: swingEng ? `part of the swing of ${colour} candles that was engulfed: the whole swing's high-low range is the zone` : eng ? `the ENGULFED ${colour} candle: its full high-low range is the zone`
       : z.src === 'swing' ? `the ${z.tag} swing candle: price left it fast, so its wick and body are the zone` : 'a BASE candle: the tight candles that built this zone' });
-    else if (dep && hover.i >= dep.a && hover.i <= dep.b) out.push({ z, closed, what: eng ? `the candle(s) that ENGULFED it (${z.run === 1 ? 'one candle' : `${z.run} candles`}): they closed beyond the ${swingEng ? 'whole swing' : 'zone'}` : 'the DEPARTURE candle: the strong move away that made it a zone' });
+    else if (dep && hv.i >= dep.a && hv.i <= dep.b) out.push({ z, closed, what: eng ? `the candle(s) that ENGULFED it (${z.run === 1 ? 'one candle' : `${z.run} candles`}): they closed beyond the ${swingEng ? 'whole swing' : 'zone'}` : 'the DEPARTURE candle: the strong move away that made it a zone' });
     return out;
   }) : [];
-  const hSwing = hover ? swings.find((s) => idxOf.get(s.t) === hover.i) : undefined;
-  const hBreak = hover ? breaks.find((b) => idxOf.get(b.t1) === hover.i) : undefined;
+  const hSwing = hv ? swings.find((s) => idxOf.get(s.t) === hv.i) : undefined;
+  const hBreak = hv ? breaks.find((b) => idxOf.get(b.t1) === hv.i) : undefined;
+  // the short version of the details, shown next to the readout while the pointer is on a candle: one small chip per thing found on it
+  const chips: { text: string; color: string }[] = [];
+  if (hover && hv) {
+    const seenZ = new Set<string>();
+    for (const { z, closed } of hZones) { const t = `${z.kind === 'supply' ? 'Supply' : 'Demand'} zone${closed ? ' (old)' : ''}`; if (!seenZ.has(t)) { seenZ.add(t); chips.push({ text: t, color: zoneColor(z) }); } }
+    if (hSwing) chips.push({ text: `${hSwing.label || 'Swing'} ${hSwing.kind}`, color: SWING_COLOR[hSwing.label] ?? MUTED });
+    if (hBreak) chips.push({ text: `${hBreak.type} ${hBreak.dir > 0 ? '↑' : '↓'}${hBreak.strong ? ' ✓' : ''}`, color: hBreak.type === 'CHoCH' ? '#fbbf24' : hBreak.dir > 0 ? '#4ade80' : '#f87171' });
+    if (hMarker) chips.push({ text: hMarker.dir > 0 ? '▲ BUY' : '▼ SELL', color: hMarker.dir > 0 ? UP : DOWN });
+    if (hTrade) chips.push({ text: `${hTrade.dir > 0 ? '▲' : '▼'} ${(RESULT[hTrade.result] ?? RESULT.draw).label} ${signed(hTrade.profit, 2)}`, color: (RESULT[hTrade.result] ?? RESULT.draw).text });
+    if (hMtg) chips.push({ text: `MTG-${hMtg.st.k}`, color: SKY });
+    for (const c of chipsExtra?.(hv.i) ?? []) chips.push(c);
+  }
 
   return (
     <div ref={root} className={fs ? 'fixed inset-0 z-[200] flex flex-col overflow-auto bg-bg p-4' : ''}>
@@ -771,13 +790,24 @@ export function PriceChart(props: PriceChartProps) {
               </div>);
           })()}
 
-          {hc && hover && !drag && (
-            <div className="pointer-events-none absolute top-2 z-10 w-60 rounded-lg border border-line bg-panel2/95 p-2 text-[11px] shadow-xl" style={{ left: x(hover.i) > w / 2 ? Math.max(4, x(hover.i) - 252) : Math.min(w - 248, x(hover.i) + 16) }}>
-              <div className="font-semibold">{full(hc.t)}{forming && hover.i === lastIdx && <span className="ml-1 font-normal text-mut">forming</span>}</div>
-              {hc.syn
-                ? <div className="mt-0.5 text-warn">Never received (the connection to Quotex dropped here): drawn flat at the previous close {fmt(hc.c, hi)}. The real candle replaces it when Quotex re-sends its history (switch the timeframe or pair on the Quotex tab and back).</div>
-                : <div className="mt-0.5 font-mono text-mut">O {fmt(hc.o, hi)} H {fmt(hc.h, hi)}<br />L {fmt(hc.l, hi)} C {fmt(hc.c, hi)}</div>}
-              {[...overlays, ...panes].filter((g) => !hid[g.id]).map((g) => <div key={g.id} className="mt-0.5 flex justify-between gap-2"><span style={{ color: g.color }}>{g.label}</span><span className="font-mono">{groupValue(g, hover.i)}</span></div>)}
+          {!compact && w >= 360 && (
+            <button type="button" aria-pressed={infoOpen} aria-label="What is under the pointer: details" title="Details about the candle you point at: zones, swings, breaks of structure, signals"
+              onClick={() => setInfoOpen(!infoOpen)} className={`absolute top-2 z-[7] grid h-7 w-7 place-items-center rounded-full border text-xs font-bold italic transition ${infoOpen ? 'border-acc bg-acc text-white' : 'border-line bg-panel2/90 text-mut hover:text-fg'}`} style={{ right: PAD_R + 8 }}>i</button>)}
+          {hover && !drag && !infoOpen && chips.length > 0 && (
+            <div className="pointer-events-none absolute left-3 top-[34px] z-[5] flex max-w-[70%] flex-wrap gap-1">
+              {chips.slice(0, 6).map((c, k) => <span key={k} className="rounded-full border px-1.5 py-px text-[10px] font-semibold leading-4 backdrop-blur-sm" style={{ color: c.color, borderColor: c.color + '66', background: '#0b1126cc' }}>{c.text}</span>)}
+              {chips.length > 6 && <span className="rounded-full bg-[#0b1126]/80 px-1.5 text-[10px] leading-4 text-mut">+{chips.length - 6}</span>}
+            </div>)}
+          {infoOpen && (
+            <div className="absolute top-11 z-[6] max-h-[72%] w-64 max-w-[78%] overflow-y-auto overscroll-contain rounded-lg border border-line bg-panel2/95 p-2 text-[11px] shadow-xl backdrop-blur-sm" style={{ right: PAD_R + 8 }} role="region" aria-label="Candle details">
+              {!dc || !hv
+                ? <div className="text-mut">Point at a candle (or tap one) to see what it is: its prices, and any zone, swing, break of structure, signal or pattern on it.</div>
+                : <>
+              <div className="font-semibold">{full(dc.t)}{forming && hv.i === lastIdx && <span className="ml-1 font-normal text-mut">forming</span>}</div>
+              {dc.syn
+                ? <div className="mt-0.5 text-warn">Never received (the connection to Quotex dropped here): drawn flat at the previous close {fmt(dc.c, hi)}. The real candle replaces it when Quotex re-sends its history (switch the timeframe or pair on the Quotex tab and back).</div>
+                : <div className="mt-0.5 font-mono text-mut">O {fmt(dc.o, hi)} H {fmt(dc.h, hi)}<br />L {fmt(dc.l, hi)} C {fmt(dc.c, hi)}</div>}
+              {[...overlays, ...panes].filter((g) => !hid[g.id]).map((g) => <div key={g.id} className="mt-0.5 flex justify-between gap-2"><span style={{ color: g.color }}>{g.label}</span><span className="font-mono">{groupValue(g, hv.i)}</span></div>)}
               {hZones.map(({ z, what, closed }, k) => <div key={`hz${k}`} className="mt-1 border-t border-line pt-1" style={{ color: zoneColor(z) }}>
                 <b>This is {what}.</b><div className="text-mut">{zoneName(z)} {fmt(z.lo, hi)} – {fmt(z.hi, hi)} · {zoneState(z, closed)}{!closed && ` · strength ${Math.round(zoneStrength(z) * 100)}%`} · departure {z.move.toFixed(1)} ATR</div></div>)}
               {hSwing && <div className="mt-1 font-semibold" style={{ color: SWING_COLOR[hSwing.label] }}>{hSwing.major === false ? 'Minor swing' : 'Swing'} {hSwing.kind} {hSwing.label && `(${hSwing.label})`} at {fmt(hSwing.price, hi)}</div>}
@@ -795,9 +825,9 @@ export function PriceChart(props: PriceChartProps) {
                 <div className="font-bold" style={{ color: SKY }}>MTG-{hMtg.st.k} · stake ×{hMtg.st.stake} · {hMtg.tr.dir > 0 ? 'BUY' : 'SELL'} from {hhmm(hMtg.tr.t)}</div>
                 <div className="text-mut">Re-entry after the previous step lost: <b style={{ color: (RESULT[hMtg.st.result] ?? RESULT.draw).text }}>{(RESULT[hMtg.st.result] ?? RESULT.draw).label}</b>. Ladder: {ladderText(hMtg.tr.mtg!)}</div></div>}
               {hSettles && <div className="mt-1 border-t border-line pt-1 text-mut">This candle settles the {hSettles.dir > 0 ? 'BUY' : 'SELL'} from {hhmm(hSettles.t)}: <b style={{ color: (RESULT[hSettles.result] ?? RESULT.draw).text }}>{(RESULT[hSettles.result] ?? RESULT.draw).label}</b></div>}
-              {tooltipExtra?.(hover.i)}
-            </div>
-          )}
+              {tooltipExtra?.(hv.i)}
+              </>}
+            </div>)}
         </div>
 
         {!compact && n > view.count && (
