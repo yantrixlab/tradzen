@@ -183,6 +183,79 @@ def test_runner_storage_and_guard():
     assert eng.research.running_id is None
 
 
+# ------------------------------------------------------------------ the check runs in its own process (a stuck run once froze the whole server: 11 hours at 100 % of a core)
+def _file_engine(d: str, rows: int = 0) -> Engine:
+    eng = Engine(Path(d) / "r.db", seed_builtins=False)
+    if rows:
+        put_candles(eng, "R_otc", candles(rows, 5, planted))
+    return eng
+
+
+def _wait_idle(eng: Engine, seconds: float = 180.0) -> None:
+    import time
+    end = time.time() + seconds
+    while time.time() < end:
+        if not eng.research.status()["running"]:
+            return
+        time.sleep(0.5)
+    raise AssertionError("the research process did not finish")
+
+
+def test_the_check_runs_in_a_separate_process_and_stores_its_result():
+    with tempfile.TemporaryDirectory() as d:
+        eng = _file_engine(d, 6000)
+        rid = eng.research.start({"windows": [3]}, source="manual")                      # not sync, a file database: a separate process
+        assert eng.research._proc is not None and eng.research.status()["running"] is True
+        _wait_idle(eng)
+        run = eng.research.get(rid)
+        assert run["status"] == "done" and run["result"]["verdict"] in ("need_data", "no_signal", "weak", "signal"), run
+        assert eng.research.running_id is None and eng.research._proc is None
+        eng.db.close()
+
+
+def test_a_stuck_process_is_killed_after_the_time_limit():
+    import time
+    with tempfile.TemporaryDirectory() as d:
+        eng = _file_engine(d, 4000)
+        eng.research._command = lambda run_id, cfg: [sys.executable, "-c", "import time; time.sleep(120)"]
+        os.environ["QXS_RESEARCH_MAX_MIN"] = "0.02"                                       # 1.2 seconds
+        try:
+            rid = eng.research.start({"windows": [3]}, source="nightly")
+            proc = eng.research._proc
+            assert eng.research.status()["running"] is True
+            time.sleep(1.6)
+            st = eng.research.status()
+            assert st["running"] is False and proc.poll() is not None, "the process is gone and the runner is free"
+            run = eng.research.get(rid)
+            assert run["status"] == "error" and "longer than" in run["error"], run
+        finally:
+            os.environ.pop("QXS_RESEARCH_MAX_MIN", None)
+        eng.db.close()
+
+
+def test_a_crashed_process_is_recorded():
+    with tempfile.TemporaryDirectory() as d:
+        eng = _file_engine(d, 4000)
+        eng.research._command = lambda run_id, cfg: [sys.executable, "-c", "import sys; sys.exit(3)"]
+        rid = eng.research.start({"windows": [3]}, source="manual")
+        _wait_idle(eng, 30)
+        run = eng.research.get(rid)
+        assert run["status"] == "error" and "exit code 3" in run["error"], run
+        eng.db.close()
+
+
+def test_a_run_left_running_by_a_restart_is_closed():
+    with tempfile.TemporaryDirectory() as d:
+        eng = _file_engine(d)
+        eng.db.execute("INSERT INTO research_runs (created, source, config, status, progress) VALUES (?,?,?,?,?)", (1.0, "nightly", "{}", "running", 0.4))
+        eng.db.commit()
+        eng.db.close()
+        again = Engine(Path(d) / "r.db", seed_builtins=False)
+        row = again.db.execute("SELECT status, error FROM research_runs").fetchone()
+        assert row[0] == "error" and "restart" in row[1], row
+        again.db.close()
+
+
 def test_api():
     from fastapi.testclient import TestClient
     with tempfile.TemporaryDirectory() as d:

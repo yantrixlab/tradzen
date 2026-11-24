@@ -16,13 +16,17 @@ import datetime as dt
 import json
 import math
 import os
+import subprocess
+import sys
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from . import minigbm, vec
+from . import sentiment as sentiment_mod
 from .candles import is_display_only
 from .backtest import BacktestError
 
@@ -193,17 +197,105 @@ def next_and_due(now: float, hour: int | None, last_created: float | None) -> tu
     return nxt, due
 
 
+def max_run_seconds() -> float:
+    """A run that takes longer than this is killed (QXS_RESEARCH_MAX_MIN, default 90 minutes): a normal run is minutes, and a stuck one must never hold the machine."""
+    try:
+        return max(1.0, float(os.getenv("QXS_RESEARCH_MAX_MIN", "90")) * 60)
+    except ValueError:
+        return 90 * 60.0
+
+
+def execute_run(conn, run_id: int, cfg: dict, sentiment) -> None:
+    """The work of one run, on `conn` (its own connection): progress and result go to the research_runs row; a failure is recorded on the row, never raised.
+    `sentiment`: a function returning the sentiment-study dict (the server passes its engine's, the separate process builds it from the database)."""
+    try:
+        def progress(p):
+            conn.execute("UPDATE research_runs SET progress=? WHERE id=?", (round(p, 3), run_id))
+            conn.commit()
+
+        res = run_check(conn, cfg, progress)
+        try:                                                      # the one other information source: how far the sentiment test has got
+            s = sentiment()
+            res["sentiment"] = {"matched": s["matched"], "edge_found": s["edge_found"], "needed_per_bucket": s["needed_per_bucket"]}
+        except Exception:                                         # noqa: BLE001 - a side note must never fail the run
+            res["sentiment"] = None
+        conn.execute("UPDATE research_runs SET status='done', progress=1, finished=?, result=?, verdict=?, best_auc=? WHERE id=?",
+                     (time.time(), json.dumps(res), res["verdict"], res["best"]["auc_test"], run_id))
+        conn.execute("DELETE FROM research_runs WHERE id <= (SELECT MAX(id) FROM research_runs) - 200")      # keep the last 200 runs
+        conn.commit()
+    except Exception as e:                                         # noqa: BLE001 - report, never crash the server
+        conn.rollback()
+        conn.execute("UPDATE research_runs SET status='error', finished=?, error=? WHERE id=?", (time.time(), str(e)[:500], run_id))
+        conn.commit()
+
+
 class ResearchRunner:
     def __init__(self, engine) -> None:
         self.engine = engine
         self._lock = threading.Lock()
         self.running_id: int | None = None
+        self._proc: subprocess.Popen | None = None
+        self._started = 0.0
+        # a run that was going when the server stopped can never finish: close it, or it would show as running for ever
+        try:
+            engine.db.execute("UPDATE research_runs SET status='error', error='interrupted by a restart', finished=? WHERE status='running'", (time.time(),))
+            engine.db.commit()
+        except Exception:                                          # noqa: BLE001 - no table yet / read-only: nothing to close
+            pass
 
     def _last_created(self) -> float | None:
         r = self.engine.db.execute("SELECT MAX(created) FROM research_runs").fetchone()
         return r[0]
 
+    def _command(self, run_id: int, cfg: dict) -> list[str]:
+        return [sys.executable, "-m", "app.research", "--db", str(self.engine.db_path), "--run-id", str(run_id), "--cfg", json.dumps(cfg)]
+
+    def _fail(self, run_id: int | None, why: str) -> None:
+        if run_id is not None:
+            self.engine.db.execute("UPDATE research_runs SET status='error', error=?, finished=? WHERE id=? AND status='running'", (why[:500], time.time(), run_id))
+            self.engine.db.commit()
+
+    def _reap(self) -> None:
+        """Called every minute (and by status): notice a finished, crashed or overlong research process. The row is closed here only when the process could not do it itself."""
+        p = self._proc
+        if p is None:
+            return
+        rc = p.poll()
+        if rc is None:
+            limit = max_run_seconds()
+            if time.time() - self._started <= limit:
+                return
+            p.kill()
+            try:
+                p.wait(timeout=10)
+            except Exception:                                      # noqa: BLE001
+                pass
+            self._fail(self.running_id, f"stopped: it ran longer than {limit / 60:.0f} minutes (QXS_RESEARCH_MAX_MIN)")
+            self.engine._log("research-timeout", f"run {self.running_id} stopped after {limit / 60:.0f} minutes")
+        elif rc != 0:
+            self._fail(self.running_id, f"the research process stopped (exit code {rc}); see data/ai/research.log")
+        else:
+            self._fail(self.running_id, "the research process ended without a result; see data/ai/research.log")     # no-op when it wrote its result
+        self._proc = None
+        self.running_id = None
+
+    def stop(self) -> bool:
+        """Stop the running check (the process is killed; the run is recorded as stopped). False when none is running. A thread run (tests) cannot be stopped."""
+        p = self._proc
+        if p is None or self.running_id is None:
+            return False
+        p.kill()
+        try:
+            p.wait(timeout=10)
+        except Exception:                                          # noqa: BLE001
+            pass
+        self._fail(self.running_id, "stopped by an administrator")
+        self._proc = None
+        self.running_id = None
+        return True
+
     def status(self, now: float | None = None) -> dict:
+        self._reap()
         now = now or time.time()
         hour = schedule_hour()
         nxt, due = next_and_due(now, hour, self._last_created())
@@ -211,6 +303,7 @@ class ResearchRunner:
 
     def tick(self) -> int | None:
         """Called every minute by the server: starts the nightly run when it is due and none is running."""
+        self._reap()
         if self.running_id is None and self.status()["due"]:
             try:
                 return self.start({}, source="nightly")
@@ -233,30 +326,30 @@ class ResearchRunner:
         if sync or self.engine.db_path == ":memory:":
             self._execute(run_id, run_cfg)
         else:
-            threading.Thread(target=self._execute, args=(run_id, run_cfg), daemon=True, name=f"research-{run_id}").start()
+            self._spawn(run_id, run_cfg)
         return run_id
 
+    def _spawn(self, run_id: int, cfg: dict) -> None:
+        """The run goes to a SEPARATE low-priority process: the check is heavy pure-Python/numpy work, and in a thread of the server it starves the web server of the CPU."""
+        try:
+            self.engine._flush(force=True)                         # the process reads the database: everything buffered must be in it
+            log_dir = Path(str(self.engine.db_path)).parent / "ai"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            flags = 0x00004000 | (0x08000000 if os.name == "nt" else 0)      # BELOW_NORMAL priority, no console window
+            log = open(log_dir / "research.log", "ab")
+            self._proc = subprocess.Popen(self._command(run_id, cfg), cwd=str(Path(__file__).resolve().parent.parent), stdout=log, stderr=log,
+                                          creationflags=flags if os.name == "nt" else 0, preexec_fn=(lambda: os.nice(10)) if os.name != "nt" else None)
+            self._started = time.time()
+        except Exception as e:                                     # noqa: BLE001
+            self._fail(run_id, f"could not start the research process: {e}")
+            self.running_id = None
+            raise BacktestError(f"could not start the research process: {e}") from e
+
     def _execute(self, run_id: int, cfg: dict) -> None:
+        """In this process (tests and an in-memory database)."""
         conn, owned = self.engine.backtests._connect()
         try:
-            def progress(p):
-                conn.execute("UPDATE research_runs SET progress=? WHERE id=?", (round(p, 3), run_id))
-                conn.commit()
-
-            res = run_check(conn, cfg, progress)
-            try:                                                      # the one other information source: how far the sentiment test has got
-                s = self.engine.sentiment_study(60, 30, None)
-                res["sentiment"] = {"matched": s["matched"], "edge_found": s["edge_found"], "needed_per_bucket": s["needed_per_bucket"]}
-            except Exception:                                         # noqa: BLE001 - a side note must never fail the run
-                res["sentiment"] = None
-            conn.execute("UPDATE research_runs SET status='done', progress=1, finished=?, result=?, verdict=?, best_auc=? WHERE id=?",
-                         (time.time(), json.dumps(res), res["verdict"], res["best"]["auc_test"], run_id))
-            conn.execute("DELETE FROM research_runs WHERE id <= (SELECT MAX(id) FROM research_runs) - 200")      # keep the last 200 runs
-            conn.commit()
-        except Exception as e:                                         # noqa: BLE001 - report, never crash the server thread
-            conn.rollback()
-            conn.execute("UPDATE research_runs SET status='error', finished=?, error=? WHERE id=?", (time.time(), str(e)[:500], run_id))
-            conn.commit()
+            execute_run(conn, run_id, cfg, lambda: self.engine.sentiment_study(60, 30, None))
         finally:
             self.running_id = None
             if owned:
@@ -279,3 +372,29 @@ class ResearchRunner:
             out.append({"id": id_, "created": created, "finished": finished, "source": source, "status": status, "progress": progress, "error": error, "verdict": verdict,
                         "best_auc": best_auc, "rows": (res.get("data") or {}).get("rows"), "test": (res.get("data") or {}).get("test"), "summary": res.get("summary")})
         return out
+
+
+# ----------------------------------------------------------------------------------------------- the separate process
+def _main() -> None:
+    """python -m app.research --db signals.db --run-id N --cfg '{...}': run one check on its own connection and store it in the run's row (started by ResearchRunner._spawn)."""
+    import argparse
+    import sqlite3
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--db", required=True)
+    ap.add_argument("--run-id", type=int, required=True)
+    ap.add_argument("--cfg", default="{}")
+    a = ap.parse_args()
+    conn = sqlite3.connect(a.db, timeout=60)
+    conn.execute("PRAGMA busy_timeout=60000")
+    try:
+        payouts = {s: p for s, p in conn.execute("SELECT symbol, payout FROM instruments WHERE payout IS NOT NULL") if p}
+    except sqlite3.Error:
+        payouts = {}
+    try:
+        execute_run(conn, a.run_id, json.loads(a.cfg), lambda: sentiment_mod.study(conn, 60, 30, payouts, None))
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    _main()

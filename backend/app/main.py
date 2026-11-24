@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import backup, candleadmin, expr, extpack, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_markets, routes_pay, routes_sessions, payments as payments_mod, markets as markets_mod, feedsources
+from . import backup, candleadmin, expr, extpack, jobs as jobs_mod, prefs as prefs_mod, seed as seedmod, indreg, routes_auth, routes_control, routes_markets, routes_pay, routes_sessions, payments as payments_mod, markets as markets_mod, feedsources
 from .auth import COOKIE as COOKIE_NAME, from_env
 from .strategy_access import Access, is_staff
 from .feature_flags import Features
@@ -53,7 +53,7 @@ cryptofeed = CryptoFeed(engine, enabled=os.getenv("QXS_CRYPTO", "on").lower() no
 
 
 async def _research_scheduler() -> None:
-    """Once a minute: start the nightly research check when it is due (see app/research.py). It runs in its own thread, never on the event loop."""
+    """Once a minute: start the nightly research check when it is due (see app/research.py). It runs in its own low-priority process (killed after QXS_RESEARCH_MAX_MIN, 90 by default), never in the server."""
     while True:
         await asyncio.sleep(60)
         try:
@@ -1042,6 +1042,26 @@ async def moneymgmt_save(body: MoneySettings, request: Request, tz: int | None =
     m = _money(request)
     m.save_settings(body.model_dump(exclude_none=True))
     return m.status(tz_min=tz)
+
+
+@app.get("/api/jobs")
+async def jobs_list(request: Request) -> dict:
+    """What is running in the background right now (research, AI training, risk analysis, Edge Lab, backtests, sweeps ...): the menu's running indicator and its panel.
+    Everyone may ask; each role sees only its own jobs (see app/jobs.py)."""
+    return {"now": time.time(), "jobs": jobs_mod.snapshot(engine, marketdata, _user(request))}
+
+
+@app.post("/api/jobs/{kind}/{ref}/stop")
+async def jobs_stop(kind: str, ref: str, request: Request) -> dict:
+    u = _user(request)
+    try:
+        done = jobs_mod.stop(engine, kind, ref, u)
+    except LookupError as e:
+        raise HTTPException(404, str(e)) from e
+    except (BacktestError, ValueError) as e:
+        raise HTTPException(400, str(e)) from e
+    auth.audit(u.get("username", "local"), "job-stop", f"{kind}:{ref}", {"result": done})
+    return {"ok": True, "result": done, "jobs": jobs_mod.snapshot(engine, marketdata, u)}
 
 
 class StyleSettings(BaseModel):

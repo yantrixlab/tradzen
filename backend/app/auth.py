@@ -120,6 +120,7 @@ _RULES: list[tuple[re.Pattern, set[str] | None, str, str | None]] = [(re.compile
     (r"^/api/(trades|account)(/|$)", None, "any", "menu.trades"),
     (r"^/api/guard(/|$)", None, "any", "menu.guard"),
     (r"^/api/moneymgmt(/|$)", None, "any", "menu.moneymgmt"),
+    (r"^/api/jobs(/|$)", None, "any", None),                              # what is running in the background: the handler shows each role only its own jobs and refuses a stop it may not do
     (r"^/api/style(/|$)", None, "any", "menu.style"),
     # Strategies, signals and backtests are open to every role: each handler only shows and changes what the caller owns or receives (strategy_access.py).
     (r"^/api/(signal-pairs|signals(/\d+)?|stats|equity)$", {"GET"}, "any", "menu.signals"),

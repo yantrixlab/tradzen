@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { clearPrefs, usePref } from './prefs';
 import SideNav from './components/SideNav';
+import RunningJobs, { RunningChip } from './components/RunningJobs';
 import { restorable } from './lib/navGroups';
 import { LiveBadge, SessionDialogs } from './components/SessionDialogs';
 import { useSessionStatus } from './sessions';
@@ -141,6 +142,7 @@ function Shell({ me }: { me: Me }) {
             </button>
             <div className="min-w-0 flex-1 truncate text-[15px] font-bold">{navFor(loc.pathname)?.[1] ?? 'Tradzen'}</div>
             {live?.live && <NavLink to="/sessions" className="shrink-0 pr-2"><LiveBadge /></NavLink>}
+            <RunningChip onOpen={() => setMenu(true)} />
             {staff && <span className="shrink-0 pr-2"><FeedPill short /></span>}
           </div>
         </header>
@@ -159,6 +161,7 @@ function Shell({ me }: { me: Me }) {
           </button>
         </div>
         <SideNav items={navItems} live={!!live?.live} rail={rail} />
+        <RunningJobs rail={rail} />
         <div className={`space-y-2 border-t border-line p-3 ${rail ? 'lg:flex lg:flex-col lg:items-center lg:p-2' : ''}`}>
           {staff && <div className={rail ? 'lg:hidden' : ''}><FeedPill /></div>}
           {staff && rail && <div className="hidden lg:block"><FeedPill short /></div>}

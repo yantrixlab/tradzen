@@ -305,6 +305,22 @@ class RiskBook:
                                       preexec_fn=(lambda: os.nice(10)) if os.name != "nt" else None)
         return True
 
+    def stop(self) -> bool:
+        """Stop the running analysis and drop what was queued behind it (the next nightly run queues them again). False when none is running."""
+        if not self._job.get("running"):
+            return False
+        p = self._proc
+        if p is not None and p.poll() is None:
+            p.kill()
+            try:
+                p.wait(timeout=10)
+            except Exception:  # noqa: BLE001
+                pass
+        self._proc = None
+        self._queue.clear()
+        self._job.update(running=False, error="analysis stopped by an administrator")
+        return True
+
     def _store(self, sid: int, res: dict, pack: dict | None) -> None:
         self.reports[sid] = res
         if pack:

@@ -354,6 +354,21 @@ class EdgeLab:
                                       preexec_fn=(lambda: os.nice(10)) if os.name != "nt" else None)
         return True
 
+    def stop(self) -> bool:
+        """Stop the running search (its process is killed). False when none is running."""
+        if not self._job.get("running"):
+            return False
+        p = self._proc
+        if p is not None and p.poll() is None:
+            p.kill()
+            try:
+                p.wait(timeout=10)
+            except Exception:  # noqa: BLE001
+                pass
+        self._proc = None
+        self._job.update(running=False, stage="Stopped", error="search stopped by an administrator")
+        return True
+
     def _keep(self, run_id: str, res: dict) -> None:
         self._mem = getattr(self, "_mem", {})
         self._mem[run_id] = res

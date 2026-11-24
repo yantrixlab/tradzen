@@ -297,6 +297,21 @@ class Advisor:
 
     _proc = None
 
+    def stop(self) -> bool:
+        """Stop a running training (its process is killed; the model in use stays as it was). False when none is running."""
+        p = self._proc
+        if p is None or not self.state.get("running"):
+            return False
+        if p.poll() is None:
+            p.kill()
+            try:
+                p.wait(timeout=10)
+            except Exception:  # noqa: BLE001
+                pass
+        self._proc = None
+        self.state.update(running=False, error="training stopped by an administrator")
+        return True
+
     def _proc_alive(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
 
