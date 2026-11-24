@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+try { $('ver').textContent = 'v' + chrome.runtime.getManifest().version + ' · read-only'; } catch (_) { /* keeps the plain text */ }          // the real version, never a number typed into the page
 let tabId = null;
 let last = [];
 
