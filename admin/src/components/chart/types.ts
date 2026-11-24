@@ -60,7 +60,7 @@ export interface ChartBox { t0: number; t1: number; color: string; label: string
 
 /** A candlestick or chart pattern found on the candles (lib/chartPatterns.ts): a box round the candles it covers, with its short name, and (chart patterns) the lines that draw its shape. */
 export interface ChartHighlight {
-  key: string; id: string; name: string; label: string; bias: 'bull' | 'bear' | 'neutral'; color: string; chart: boolean; t0: number; t1: number; lo: number; hi: number;
+  key: string; id: string; name: string; label: string; bias: 'bull' | 'bear' | 'neutral'; structure: 'up' | 'down' | 'side'; color: string; chart: boolean; t0: number; t1: number; lo: number; hi: number;
   lines?: { t0: number; p0: number; t1: number; p1: number; dash?: boolean }[];
 }
 

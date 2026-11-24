@@ -13,13 +13,25 @@ export interface PatternDef {
   id: string; name: string; short: string; group: Group; bias: Bias; section: string; size: number; about: string; sketch: Sketch;
 }
 
+export type Structure = 'up' | 'down' | 'side';
+export const STRUCTURE_WORD: Record<Structure, string> = { up: 'Uptrend', down: 'Downtrend', side: 'Sideways' };
+
 export interface Detection {
-  id: string; bias: Bias; i0: number; i1: number; at: number; t0: number; t1: number; tAt: number; lo: number; hi: number;
+  id: string; bias: Bias; structure: Structure; i0: number; i1: number; at: number; t0: number; t1: number; tAt: number; lo: number; hi: number;
   lines: { t0: number; p0: number; t1: number; p1: number; dash?: boolean }[];
 }
 
 export const BIAS_COLOR: Record<Bias, string> = { bull: '#22c55e', bear: '#ef4444', neutral: '#a78bfa' };
 export const BIAS_WORD: Record<Bias, string> = { bull: 'Bullish', bear: 'Bearish', neutral: 'Neutral' };
+
+/** What the market structure around a pattern says about it, in a few words: a bullish pattern at the low of a downtrend is a possible reversal, in an uptrend it goes with the trend, in a range it is weaker. */
+export function contextText(d: { bias: Bias; structure: Structure }): string {
+  const w = STRUCTURE_WORD[d.structure];
+  if (d.structure === 'side') return `${w} - inside a range, weaker`;
+  if (d.bias === 'neutral') return `${w} - indecision`;
+  const with_ = (d.bias === 'bull') === (d.structure === 'up');
+  return `${w} - ${with_ ? 'goes with the trend' : d.bias === 'bull' ? 'possible reversal up' : 'possible reversal down'}`;
+}
 
 const K = (o: number, c: number, h: number, l: number): [number, number, number, number] => [o, c, h, l];
 
@@ -118,15 +130,18 @@ function context(cs: PCandle[]): Ctx {
 
 /** how far the five candles before `s` moved, in average candle ranges: > 1 = rose, < -1 = fell */
 const lead = (cs: PCandle[], s: number, x: Ctx): number => (s >= 6 && x.ar[s] > 0 ? (cs[s - 1].c - cs[s - 6].c) / x.ar[s] : 0);
-const wasDown = (cs: PCandle[], s: number, x: Ctx) => lead(cs, s, x) < -1;
-const wasUp = (cs: PCandle[], s: number, x: Ctx) => lead(cs, s, x) > 1;
+// A bullish reversal needs the move before it not to have been a clear rise; a bearish one not a clear fall (a flat lead is allowed: a hammer shape is still a hammer, and
+// the market structure shown with it says how much it is worth). The hammer family is split by direction instead: after a rise it is a hanging man / shooting star.
+const wasDown = (cs: PCandle[], s: number, x: Ctx) => lead(cs, s, x) <= 0.6;
+const wasUp = (cs: PCandle[], s: number, x: Ctx) => lead(cs, s, x) >= -0.6;
+const rising = (cs: PCandle[], s: number, x: Ctx) => lead(cs, s, x) > 0;
 
 type Test = (cs: PCandle[], i: number, x: Ctx) => boolean;
 const isDoji = (c: PCandle) => rng(c) > 0 && body(c) <= 0.1 * rng(c);
 const big = (c: PCandle, i: number, x: Ctx) => body(c) >= x.ab[i] && body(c) >= 0.5 * rng(c);
 
-const hammerShape = (c: PCandle) => rng(c) > 0 && body(c) <= 0.4 * rng(c) && lower(c) >= 2 * Math.max(body(c), rng(c) * 0.05) && upper(c) <= 0.25 * rng(c);
-const starShape = (c: PCandle) => rng(c) > 0 && body(c) <= 0.4 * rng(c) && upper(c) >= 2 * Math.max(body(c), rng(c) * 0.05) && lower(c) <= 0.25 * rng(c);
+const hammerShape = (c: PCandle) => rng(c) > 0 && body(c) <= 0.4 * rng(c) && lower(c) >= 2 * Math.max(body(c), rng(c) * 0.05) && upper(c) <= 0.3 * rng(c) && lower(c) >= 0.5 * rng(c);
+const starShape = (c: PCandle) => rng(c) > 0 && body(c) <= 0.4 * rng(c) && upper(c) >= 2 * Math.max(body(c), rng(c) * 0.05) && lower(c) <= 0.3 * rng(c) && upper(c) >= 0.5 * rng(c);
 const meaningful = (c: PCandle, i: number, x: Ctx) => rng(c) >= 0.5 * x.ar[i];            // a candle must not be tiny against the recent ones
 
 const CANDLE_TESTS: Record<string, Test> = {
@@ -134,10 +149,10 @@ const CANDLE_TESTS: Record<string, Test> = {
   dragonfly: (cs, i, x) => isDoji(cs[i]) && upper(cs[i]) <= 0.1 * rng(cs[i]) && lower(cs[i]) >= 0.6 * rng(cs[i]) && meaningful(cs[i], i, x),
   gravestone: (cs, i, x) => isDoji(cs[i]) && lower(cs[i]) <= 0.1 * rng(cs[i]) && upper(cs[i]) >= 0.6 * rng(cs[i]) && meaningful(cs[i], i, x),
   longleg: (cs, i, x) => isDoji(cs[i]) && upper(cs[i]) >= 0.3 * rng(cs[i]) && lower(cs[i]) >= 0.3 * rng(cs[i]) && rng(cs[i]) >= 1.2 * x.ar[i],
-  hammer: (cs, i, x) => hammerShape(cs[i]) && meaningful(cs[i], i, x) && wasDown(cs, i, x),
-  hangman: (cs, i, x) => hammerShape(cs[i]) && meaningful(cs[i], i, x) && wasUp(cs, i, x),
-  invhammer: (cs, i, x) => starShape(cs[i]) && meaningful(cs[i], i, x) && wasDown(cs, i, x),
-  shootstar: (cs, i, x) => starShape(cs[i]) && meaningful(cs[i], i, x) && wasUp(cs, i, x),
+  hammer: (cs, i, x) => hammerShape(cs[i]) && meaningful(cs[i], i, x) && !rising(cs, i, x),
+  hangman: (cs, i, x) => hammerShape(cs[i]) && meaningful(cs[i], i, x) && rising(cs, i, x),
+  invhammer: (cs, i, x) => starShape(cs[i]) && meaningful(cs[i], i, x) && !rising(cs, i, x),
+  shootstar: (cs, i, x) => starShape(cs[i]) && meaningful(cs[i], i, x) && rising(cs, i, x),
   bullmaru: (cs, i, x) => up(cs[i]) && body(cs[i]) >= 0.9 * rng(cs[i]) && rng(cs[i]) >= 0.8 * x.ar[i],
   bearmaru: (cs, i, x) => dn(cs[i]) && body(cs[i]) >= 0.9 * rng(cs[i]) && rng(cs[i]) >= 0.8 * x.ar[i],
   spinning: (cs, i, x) => rng(cs[i]) > 0 && body(cs[i]) > 0.1 * rng(cs[i]) && body(cs[i]) <= 0.3 * rng(cs[i]) && upper(cs[i]) >= 0.25 * rng(cs[i]) && lower(cs[i]) >= 0.25 * rng(cs[i]) && meaningful(cs[i], i, x),
@@ -199,7 +214,7 @@ export function pivots(cs: PCandle[], k = PIVOT_K): Pivot[] {
   return out;
 }
 
-const MIN_SPAN = 10, MAX_SPAN = 140;
+const MIN_SPAN = 14, MAX_SPAN = 140;
 const highs = (v: Pivot[]) => v.filter((p) => p.hi), lows = (v: Pivot[]) => v.filter((p) => !p.hi);
 const spread = (v: Pivot[]) => (v.length ? Math.max(...v.map((p) => p.p)) - Math.min(...v.map((p) => p.p)) : 0);
 const flat = (v: Pivot[], tol: number) => v.length >= 2 && spread(v) <= tol;
@@ -270,6 +285,9 @@ defChart('bearflag', [4, 5], (v, tol, ar) => {
   return pole >= 4 * ar && v[1].i - v[0].i <= 12 && rl.length >= 1 && rh.length >= 1 && back > 0 && back <= 0.5 * pole && rl.every((p) => p.p >= v[1].p) && (rl.length < 2 || rl[rl.length - 1].p > rl[0].p - tol * 0.3) && rest[rest.length - 1].i - v[1].i >= 4;
 });
 
+/** chart patterns that reverse a move: the direction price must have come from (the swing before the first point is at least as big as the pattern itself) */
+const APPROACH: Record<string, 'up' | 'down'> = { dtop: 'up', ttop: 'up', hns: 'up', dbottom: 'down', tbottom: 'down', ihns: 'down' };
+
 /** the lines that draw a chart pattern */
 function drawLines(id: string, v: Pivot[]): [number, number, number, number, boolean?][] {
   const [H, L] = hl(v);
@@ -287,6 +305,21 @@ function drawLines(id: string, v: Pivot[]): [number, number, number, number, boo
   }
 }
 
+// ------------------------------------------------------------------ market structure
+/** The market structure just BEFORE candle `s`, from the swing points already confirmed then: higher highs and higher lows = uptrend, lower highs and lower lows = downtrend,
+ *  anything else (or too little history) = sideways. Differences smaller than a fifth of the average candle range count as equal. */
+export function structureAt(pv: Pivot[], s: number, ar: number): Structure {
+  let n = 0;
+  while (n < pv.length && pv[n].at < s) n++;                       // pivots confirmed before s (pv is in time order)
+  const h: number[] = [], l: number[] = [];
+  for (let k = n - 1; k >= 0 && (h.length < 2 || l.length < 2); k--) { const t = pv[k].hi ? h : l; if (t.length < 2) t.push(pv[k].p); }
+  if (h.length < 2 || l.length < 2) return 'side';
+  const tol = 0.2 * ar;                                             // h[0] / l[0] are the newest swings
+  if (h[0] > h[1] + tol && l[0] > l[1] + tol) return 'up';
+  if (h[0] < h[1] - tol && l[0] < l[1] - tol) return 'down';
+  return 'side';
+}
+
 // ------------------------------------------------------------------ the finder
 /** Every wanted pattern found on the candles. `ids` = the patterns to look for (default: all). Candles that were filled in (`syn`) never take part in a pattern. */
 export function detect(cs: PCandle[], ids?: ReadonlySet<string> | string[]): Detection[] {
@@ -294,6 +327,7 @@ export function detect(cs: PCandle[], ids?: ReadonlySet<string> | string[]): Det
   const out: Detection[] = [];
   if (cs.length < 3) return out;
   const x = context(cs);
+  const pv = pivots(cs);
   const defs = new Map(PATTERNS.map((p) => [p.id, p]));
   const any = (s: number, e: number) => { for (let i = s; i <= e; i++) if (cs[i].syn) return true; return false; };
 
@@ -311,13 +345,12 @@ export function detect(cs: PCandle[], ids?: ReadonlySet<string> | string[]): Det
       for (let j = s; j <= i; j++) { lo = Math.min(lo, cs[j].l); hi = Math.max(hi, cs[j].h); }
       let bias = def.bias;
       if (def.id === 'haramicross') bias = dn(cs[i - 1]) ? 'bull' : 'bear';
-      out.push({ id: def.id, bias, i0: s, i1: i, at: i, t0: cs[s].t, t1: cs[i].t, tAt: cs[i].t, lo, hi, lines: [] });
+      out.push({ id: def.id, bias, structure: structureAt(pv, s, x.ar[s] || x.ar[i]), i0: s, i1: i, at: i, t0: cs[s].t, t1: cs[i].t, tAt: cs[i].t, lo, hi, lines: [] });
     }
   }
 
   const chartIds = CHART.filter((c) => !want || want.has(c.id));
   if (chartIds.length) {
-    const pv = pivots(cs);
     const lastEnd = new Map<string, number>();
     for (let e = 0; e < pv.length; e++) {
       for (const c of chartIds) {
@@ -331,15 +364,22 @@ export function detect(cs: PCandle[], ids?: ReadonlySet<string> | string[]): Det
           const ar = x.ar[v[v.length - 1].i] || 0;
           if (ar <= 0) continue;
           const height = spread(v);
-          if (height < 3 * ar) continue;                                           // a shape smaller than a few candles' range is noise
+          if (height < 4 * ar) continue;                                           // a shape smaller than a few candles' range is noise
           const tol = Math.max(0.12 * height, 0.5 * ar);
           let ok = false;
           try { ok = c.test(v, tol, ar); } catch { ok = false; }
           if (!ok) continue;
+          const need = APPROACH[c.id];                                         // a reversal shape (M, W, head and shoulders) only counts after a move into it
+          if (need) {
+            let ext = need === 'up' ? Infinity : -Infinity;
+            for (let j = Math.max(0, v[0].i - 25); j <= v[0].i; j++) ext = need === 'up' ? Math.min(ext, cs[j].l) : Math.max(ext, cs[j].h);
+            const moved = need === 'up' ? v[0].p - ext : ext - v[0].p;
+            if (!(moved >= 0.9 * height)) continue;
+          }
           const def = defs.get(c.id)!;
           const lines = drawLines(c.id, v).map(([a, p0, b, p1, d]) => ({ t0: cs[a].t, p0, t1: cs[b].t, p1, dash: !!d }));
           const at = Math.min(cs.length - 1, v[v.length - 1].at);
-          out.push({ id: c.id, bias: def.bias, i0: v[0].i, i1: v[v.length - 1].i, at, t0: cs[v[0].i].t, t1: cs[v[v.length - 1].i].t, tAt: cs[at].t, lo: Math.min(...v.map((p) => p.p)), hi: Math.max(...v.map((p) => p.p)), lines });
+          out.push({ id: c.id, bias: def.bias, structure: structureAt(pv, v[0].i, ar), i0: v[0].i, i1: v[v.length - 1].i, at, t0: cs[v[0].i].t, t1: cs[v[v.length - 1].i].t, tAt: cs[at].t, lo: Math.min(...v.map((p) => p.p)), hi: Math.max(...v.map((p) => p.p)), lines });
           lastEnd.set(c.id, v[v.length - 1].i);
           break;
         }

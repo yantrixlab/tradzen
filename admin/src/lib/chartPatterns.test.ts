@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { completedAt, countFound, detect, PATTERNS, patternDef, pivots, SECTIONS, type PCandle } from './chartPatterns';
+import { completedAt, contextText, countFound, detect, PATTERNS, patternDef, pivots, SECTIONS, structureAt, type PCandle } from './chartPatterns';
 
 let T = 1_000_000;
 const mk = (o: number, c: number, h?: number, l?: number): PCandle => ({ t: (T += 60), o, c, h: h ?? Math.max(o, c) + 0.3, l: l ?? Math.min(o, c) - 0.3 });
@@ -35,8 +35,10 @@ describe('candle patterns', () => {
     const hit = detect(cs, ['bullengulf']);
     expect(hit).toHaveLength(1);
     expect(hit[0]).toMatchObject({ bias: 'bull', at: cs.length - 1, i0: cs.length - 2 });
+    const rose = [...base(), ...drift(100, 0.8, 6), mk(104.8, 104.3, 105, 104.1), mk(104.1, 105.8, 106, 103.9)];
+    expect(detect(rose, ['bullengulf']).some((d) => d.at === rose.length - 1)).toBe(false);          // after a clear rise it is not a reversal
     const flatLead = [...base(), mk(95.2, 94.7, 95.4, 94.5), mk(94.5, 96.2, 96.4, 94.3)];
-    expect(ids(flatLead, ['bullengulf'])).toEqual([]);
+    expect(detect(flatLead, ['bullengulf']).some((d) => d.at === flatLead.length - 1)).toBe(true);                  // with no clear move before it, the shape is still reported
   });
   it('hammer after a fall is bullish, the same shape after a rise is a hanging man', () => {
     const shape = (c0: number) => mk(c0, c0 + 0.3, c0 + 0.4, c0 - 2.4);
@@ -44,6 +46,20 @@ describe('candle patterns', () => {
     expect(ids(down, ['hammer', 'hangman'])).toEqual(['hammer']);
     const upc = [...base(), ...drift(100, 0.8, 6), shape(104.8)];
     expect(ids(upc, ['hammer', 'hangman'])).toEqual(['hangman']);
+  });
+  it('a hammer is found even when no clear fall came before it', () => {
+    const flatHammer = [...base(), mk(100, 100.4, 100.6, 97.6)];
+    expect(ids(flatHammer, ['hammer', 'hangman'])).toEqual(['hammer']);
+    const flatStar = [...base(), mk(100.4, 100, 103.2, 99.8)];
+    expect(ids(flatStar, ['invhammer', 'shootstar'])).toEqual(['invhammer']);
+    const slightlyWeak = [...base(), mk(100, 100.9, 101.1, 97.7)];                   // body a third of the range, lower wick twice the body
+    expect(ids(slightlyWeak, ['hammer'])).toEqual(['hammer']);
+  });
+  it('every hammer-shaped candle is a hammer or a hanging man, never neither', () => {
+    for (const lead of [-1, -0.3, 0, 0.3, 1]) {
+      const cs = [...base(), ...drift(100, lead * 0.8, 6), mk(100 + lead * 4.8, 100.3 + lead * 4.8, 100.5 + lead * 4.8, 97.6 + lead * 4.8)];
+      expect(detect(cs, ['hammer', 'hangman']).filter((d) => d.at === cs.length - 1)).toHaveLength(1);
+    }
   });
   it('doji, dragonfly and gravestone', () => {
     const d = [...base(), mk(100, 100.05, 101, 99)];
@@ -128,9 +144,9 @@ describe('chart patterns', () => {
     expect(ids(cs, ['dtop'])).toEqual([]);
   });
   it('head and shoulders and its inverse', () => {
-    const cs = walk([[0, 100], [8, 108], [16, 102], [24, 114], [32, 102], [40, 108.2], [48, 100]]);
+    const cs = walk([[0, 92], [8, 108], [16, 102], [24, 114], [32, 102], [40, 108.2], [48, 100]]);
     expect(ids(cs, ['hns', 'ihns', 'dtop'])).toContain('hns');
-    const inv = walk([[0, 120], [8, 112], [16, 118], [24, 106], [32, 118], [40, 112.2], [48, 120]]);
+    const inv = walk([[0, 128], [8, 112], [16, 118], [24, 106], [32, 118], [40, 112.2], [48, 120]]);
     expect(ids(inv, ['hns', 'ihns'])).toEqual(['ihns']);
   });
   it('triple top', () => {
@@ -174,6 +190,36 @@ describe('chart patterns', () => {
   it('reports a stretch once, not at every swing', () => {
     const cs = walk([[0, 100], [10, 110], [20, 102], [30, 110.2], [40, 101]]);
     expect(detect(cs, ['dtop'])).toHaveLength(1);
+  });
+});
+
+describe('market structure', () => {
+  const upWalk = () => walk([[0, 100], [8, 108], [14, 104], [22, 114], [28, 110], [36, 120], [42, 116]]);
+  it('is an uptrend after higher highs and higher lows, a downtrend after lower ones, and sideways otherwise', () => {
+    const cs = upWalk();
+    const pv = pivots(cs);
+    expect(structureAt(pv, cs.length, 2)).toBe('up');
+    const dn = walk([[0, 120], [8, 112], [14, 116], [22, 106], [28, 110], [36, 100], [42, 104]]);
+    expect(structureAt(pivots(dn), dn.length, 2)).toBe('down');
+    const range = walk([[0, 105], [8, 115], [16, 100], [24, 115.1], [32, 100.1], [40, 115], [48, 105]]);
+    expect(structureAt(pivots(range), range.length, 2)).toBe('side');
+    expect(structureAt([], 50, 2)).toBe('side');
+  });
+  it('is attached to every detection and explained in words', () => {
+    const cs = upWalk();
+    const last = cs[cs.length - 1];
+    cs.push(mk(last.c, last.c + 0.3, last.c + 0.4, last.c - 2.4));                     // a hammer-shaped candle at the end of the climb
+    const d = detect(cs, ['hammer', 'hangman']).filter((x) => x.at === cs.length - 1);
+    expect(d).toHaveLength(1);
+    expect(d[0].structure).toBe('up');
+    expect(contextText({ bias: 'bull', structure: 'down' })).toContain('possible reversal up');
+    expect(contextText({ bias: 'bear', structure: 'up' })).toContain('possible reversal down');
+    expect(contextText({ bias: 'bull', structure: 'up' })).toContain('with the trend');
+    expect(contextText({ bias: 'bull', structure: 'side' })).toContain('range');
+  });
+  it('a double top needs a move up into it: the same shape inside a range is not one', () => {
+    const rangey = walk([[0, 104], [6, 110], [12, 102], [18, 110.2], [24, 101], [30, 105]]);
+    expect(ids(rangey, ['dtop'])).toEqual([]);
   });
 });
 

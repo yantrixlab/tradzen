@@ -9,7 +9,7 @@ import { PriceChart } from './PriceChart';
 import { FlowPanel } from './FlowPanel';
 import { catalogItem, IndicatorMenu } from './IndicatorMenu';
 import { PatternMenu, type PatternToast } from './PatternMenu';
-import { BIAS_COLOR, BIAS_WORD, detect, patternDef, countFound, completedAt, type Detection } from '../../lib/chartPatterns';
+import { BIAS_COLOR, BIAS_WORD, STRUCTURE_WORD, contextText, detect, patternDef, countFound, completedAt, type Detection } from '../../lib/chartPatterns';
 import { SOUNDS, tone } from '../../lib/ping';
 import { usePref } from '../../prefs';
 import type { BtTrade, ChartArea, ChartBand, ChartCandle, ChartHighlight, ChartMarker, MtgSummary, SeriesGroup } from './types';
@@ -109,7 +109,7 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
     if (!want.size) return [];
     return found.filter((d) => want.has(d.id)).map((d) => {
       const def = patternDef(d.id)!;
-      return { key: `${d.id}@${d.t1}`, id: d.id, name: def.name, label: def.short, bias: d.bias, color: BIAS_COLOR[d.bias], chart: def.group === 'chart', t0: d.t0, t1: d.t1, lo: d.lo, hi: d.hi, lines: d.lines };
+      return { key: `${d.id}@${d.t1}`, id: d.id, name: def.name, label: def.short, bias: d.bias, structure: d.structure, color: BIAS_COLOR[d.bias], chart: def.group === 'chart', t0: d.t0, t1: d.t1, lo: d.lo, hi: d.hi, lines: d.lines };
     });
   }, [found, pats]);
   const patternTip = useCallback((i: number) => {
@@ -117,12 +117,12 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
     if (t === undefined || !highlights.length) return null;
     const here = highlights.filter((h) => t >= h.t0 && t <= h.t1);
     if (!here.length) return null;
-    return <div className="mt-1 border-t border-line pt-1">{here.slice(0, 6).map((h) => <div key={h.key} className="font-semibold" style={{ color: h.color }}>{h.name}<span className="ml-1 font-normal text-mut">{BIAS_WORD[h.bias]}</span></div>)}{here.length > 6 && <div className="text-mut">+{here.length - 6} more</div>}</div>;
+    return <div className="mt-1 border-t border-line pt-1">{here.slice(0, 6).map((h) => <div key={h.key} className="font-semibold" style={{ color: h.color }}>{h.name}<span className="ml-1 font-normal text-mut">{BIAS_WORD[h.bias]} · {contextText(h)}</span></div>)}{here.length > 6 && <div className="text-mut">+{here.length - 6} more</div>}</div>;
   }, [candles, highlights]);
 
   const patternChips = useCallback((i: number) => {
     const t = candles[i]?.t;
-    return t === undefined ? [] : highlights.filter((h) => t >= h.t0 && t <= h.t1).map((h) => ({ text: h.name, color: h.color }));
+    return t === undefined ? [] : highlights.filter((h) => t >= h.t0 && t <= h.t1).map((h) => ({ text: `${h.name} · ${STRUCTURE_WORD[h.structure].toLowerCase()}`, color: h.color }));
   }, [candles, highlights]);
 
   const [toasts, setToasts] = useState<PatternToast[]>([]);
@@ -141,11 +141,12 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
     const fresh = completedAt(mine, newest).filter((d) => !baseline.current!.seen.has(`${d.id}@${d.tAt}`));
     if (!fresh.length) return;
     for (const d of fresh) baseline.current.seen.add(`${d.id}@${d.tAt}`);
-    const out: PatternToast[] = fresh.map((d) => { const def = patternDef(d.id)!; return { key: `${d.id}@${d.tAt}`, title: `${def.name} · ${BIAS_WORD[d.bias]}`, text: `${prettyPair(symbol)} · ${tfName(tf)} · ${new Date(d.tAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, bias: d.bias }; });
+    const out: PatternToast[] = fresh.map((d) => { const def = patternDef(d.id)!; return { key: `${d.id}@${d.tAt}`, title: `${def.name} · ${BIAS_WORD[d.bias]}`, text: `${prettyPair(symbol)} · ${tfName(tf)} · ${new Date(d.tAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, context: `Market structure: ${contextText(d)}`, bias: d.bias }; });
     setToasts((ts) => [...ts, ...out].slice(-4));
     if (patSound) tone(SOUNDS[fresh[0].bias]);
     try {
-      if (typeof document !== 'undefined' && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') for (const t of out.slice(0, 3)) new Notification(t.title, { body: t.text, tag: t.key });
+      if (typeof document !== 'undefined' && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') for (const t of out.slice(0, 3)) new Notification(t.title, { body: `${t.context}
+${t.text}`, tag: t.key });
     } catch { /* notifications are not available */ }
     for (const t of out) window.setTimeout(() => setToasts((ts) => ts.filter((x) => x.key !== t.key)), 20000);
   }, [found, pats, patAlerts, patSound, canAlert, candles, symbol, tf]);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BIAS_COLOR, BIAS_WORD, PATTERNS, SECTIONS, type Bias, type Group, type PatternDef } from '../../lib/chartPatterns';
 
-export interface PatternToast { key: string; title: string; text: string; bias: Bias }
+export interface PatternToast { key: string; title: string; text: string; context: string; bias: Bias }
 
 const TABS: { group: Group; label: string; hint: string }[] = [
   { group: 'candle', label: 'Candles', hint: 'One to five candles in a row' },
@@ -154,7 +154,7 @@ export function PatternMenu({ picked, onChange, alerts, onAlerts, sound, onSound
               <Switch on={alerts} set={turnAlerts} label="Alert me when a selected pattern forms" hint="A message (and a sound) when a picked pattern is completed by the newest closed candle of a live chart" />
               {alerts && <label className="flex min-h-[40px] cursor-pointer items-center gap-1.5 text-sm text-mut"><input type="checkbox" checked={sound} onChange={(e) => onSound(e.target.checked)} /> Sound</label>}
               <span className="note min-w-0 flex-1 basis-56">
-                {!canAlert ? 'Alerts work on live charts (Markets, Live signal).' : alerts && picked.length === 0 ? 'Pick at least one pattern to be alerted about.' : alerts ? 'Alerts show on this page while it is open; a desktop notification too when the tab is in the background.' : 'Off: patterns are only highlighted.'}
+                {!canAlert ? 'Alerts work on live charts (Markets, Live signal).' : alerts && picked.length === 0 ? 'Pick at least one pattern to be alerted about.' : alerts ? 'Each alert names the pattern and the market structure it formed in (uptrend, downtrend or sideways). Shown on this page while it is open; a desktop notification too when the tab is in the background.' : 'Off: patterns are only highlighted.'}
               </span>
               <button type="button" className="btn ml-auto" onClick={() => setOpen(false)}>Done{picked.length ? ` · ${picked.length} selected` : ''}</button>
             </div>
@@ -166,7 +166,7 @@ export function PatternMenu({ picked, onChange, alerts, onAlerts, sound, onSound
           {toasts.map((t) => (
             <div key={t.key} className="pointer-events-auto flex items-start gap-2 rounded-xl border bg-panel p-3 shadow-2xl" style={{ borderColor: BIAS_COLOR[t.bias] }}>
               <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: BIAS_COLOR[t.bias] }} />
-              <div className="min-w-0 flex-1"><div className="text-sm font-bold">{t.title}</div><div className="note">{t.text}</div></div>
+              <div className="min-w-0 flex-1"><div className="text-sm font-bold">{t.title}</div><div className="text-xs font-semibold" style={{ color: BIAS_COLOR[t.bias] }}>{t.context}</div><div className="note">{t.text}</div></div>
               <button type="button" className="grid h-7 w-7 shrink-0 place-items-center rounded text-mut hover:text-fg" aria-label="Dismiss" onClick={() => onDismiss(t.key)}>✕</button>
             </div>))}
         </div>)}
