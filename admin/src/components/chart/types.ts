@@ -58,6 +58,12 @@ export interface ChartBand { t0: number; t1: number; color: string; opacity?: nu
 /** A numbered box round a run of candles (a step of a candle pattern). */
 export interface ChartBox { t0: number; t1: number; color: string; label: string }
 
+/** A candlestick or chart pattern found on the candles (lib/chartPatterns.ts): a box round the candles it covers, with its short name, and (chart patterns) the lines that draw its shape. */
+export interface ChartHighlight {
+  key: string; id: string; name: string; label: string; bias: 'bull' | 'bear' | 'neutral'; color: string; chart: boolean; t0: number; t1: number; lo: number; hi: number;
+  lines?: { t0: number; p0: number; t1: number; p1: number; dash?: boolean }[];
+}
+
 export interface MtgStep { k: number; t: number; result: string; stake: number }
 export interface MtgLadder { outcome: string; steps: MtgStep[]; pl: number; stake_max: number }
 
@@ -83,6 +89,7 @@ export interface PriceChartProps {
   bands?: ChartBand[];
   areas?: ChartArea[];
   boxes?: ChartBox[];
+  highlights?: ChartHighlight[];          // the patterns picked in the Patterns dialog
   zones?: ChartZone[];
   swings?: ChartSwing[];
   breaks?: ChartBreak[];

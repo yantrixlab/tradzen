@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { pct, signed } from '../../format';
 import { usePref } from '../../prefs';
-import type { BtTrade, ChartBreak, ChartCandle, ChartSwing, ChartZone, MtgLadder, MtgSummary, PriceChartProps, SeriesGroup } from './types';
+import type { BtTrade, ChartBreak, ChartHighlight, ChartCandle, ChartSwing, ChartZone, MtgLadder, MtgSummary, PriceChartProps, SeriesGroup } from './types';
 
 /**
  * THE chart of the app. Everything a trader expects, in one component used by every screen:
@@ -84,7 +84,7 @@ function Pill({ on, set, color, title, children }: { on: boolean; set: (v: boole
 const Seg = ({ children }: { children: React.ReactNode }) => <div className="inline-flex items-stretch overflow-hidden rounded-lg border border-line bg-panel2 [&>button]:border-0 [&>button]:rounded-none [&>button+button]:border-l [&>button+button]:border-line">{children}</div>;
 
 export function PriceChart(props: PriceChartProps) {
-  const { candles, forming = null, lastPrice = null, overlays = [], panes = [], markers = [], bands = [], areas = [], boxes = [], zones = NONE as ChartZone[], swings = NONE as ChartSwing[], breaks = NONE as ChartBreak[], trades = [], payout = null, splitT = null, mtg = null,
+  const { candles, forming = null, lastPrice = null, overlays = [], panes = [], markers = [], bands = [], areas = [], boxes = [], highlights = NONE as ChartHighlight[], zones = NONE as ChartZone[], swings = NONE as ChartSwing[], breaks = NONE as ChartBreak[], trades = [], payout = null, splitT = null, mtg = null,
     height = 320, initialCount = 150, compact = false, resetKey = '', toolbarLeft, toolbarRight, tooltipExtra, footer, emptyText = 'No candles to show yet.' } = props;
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const root = useRef<HTMLDivElement>(null);
@@ -110,6 +110,7 @@ export function PriceChart(props: PriceChartProps) {
   const [showBroken, setShowBroken] = usePref('chart.past-zones', true);   // zones a candle already closed through: drawn up to that candle (switch off to see only the standing ones)
   const [showSwings, setShowSwings] = usePref('chart.structure', true);
   const [showMinor, setShowMinor] = usePref('chart.minor-swings', true);       // the swings of single candles (the small pull-backs inside a trend), next to the major ones
+  const [showPatterns, setShowPatterns] = usePref('chart.patterns-on', true);        // the patterns picked in the Patterns dialog
   const [showBreaks, setShowBreaks] = usePref('chart.breaks', true);           // BOS / CHoCH lines: where a candle closed through a swing
   const [showZoneText, setShowZoneText] = usePref('chart.zone-text', true);   // "SUPPLY · fresh · 1.5 ATR"
   const [fade, setFade] = usePref('chart.zone-fade', true);              // zones fade with every touch: bold = fresh and strong, light = worn and weak
@@ -561,12 +562,12 @@ export function PriceChart(props: PriceChartProps) {
               <button className="btn btn-sm" title="Centre the next trade" onClick={() => jump(1)}>Trade ⏭</button></Seg>}
             <div className="ml-auto flex flex-wrap items-center gap-2">
               {toolbarRight}
-              {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || breaks.length > 0 || hasMtg) && <button className="btn btn-sm sm:hidden" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)}>Layers {layersOpen ? '▴' : '▾'}</button>}
+              {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || breaks.length > 0 || hasMtg || highlights.length > 0) && <button className="btn btn-sm sm:hidden" aria-expanded={layersOpen} onClick={() => setLayersOpen(!layersOpen)}>Layers {layersOpen ? '▴' : '▾'}</button>}
               <button className="btn btn-sm" title="Back to the newest candles at the default zoom (double-click the chart too)" onClick={reset}>Reset</button>
               <button className="btn btn-sm" title={fs ? 'Leave full screen (Esc)' : 'Full screen (F)'} onClick={toggleFs}>{fs ? '✕ Exit full screen' : '⛶ Full screen'}</button>
             </div>
           </div>
-          {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || breaks.length > 0 || hasMtg) && (
+          {(anySignals || anyTrades || zones.length > 0 || swings.length > 0 || breaks.length > 0 || hasMtg || highlights.length > 0) && (
             <div className={`mt-2 flex-wrap items-center gap-1.5 border-t border-line/60 pt-2 sm:flex ${layersOpen ? 'flex' : 'hidden'}`}>
               <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-mut">Show</span>
               {anySignals && <><Pill on={showBuy} set={setShowBuy} color={UP}>▲ BUY</Pill><Pill on={showSell} set={setShowSell} color={DOWN}>▼ SELL</Pill></>}
@@ -581,6 +582,7 @@ export function PriceChart(props: PriceChartProps) {
               {swings.length > 0 && <Pill on={showSwings} set={setShowSwings} color="#4ade80" title="Swing highs and lows labelled higher-high / lower-high / higher-low / lower-low">HH/HL · LH/LL structure</Pill>}
               {showSwings && swings.some((s) => s.major === false) && <Pill on={showMinor} set={setShowMinor} color="#86efac" title="The small swings: a single candle that turns (a one-candle pull-back inside a move). Off = only the major swings (the extreme of 3 candles on each side)">Minor swings</Pill>}
               {breaks.length > 0 && <Pill on={showBreaks} set={setShowBreaks} color="#fbbf24" title="BOS = a candle closed beyond the last swing: the trend goes on. CHoCH = it closed beyond the swing that protected the trend: the trend changed. ✓ = a strong, confirmed close; a faint line = a weak close, not confirmed">BOS / CHoCH</Pill>}
+              {highlights.length > 0 && <Pill on={showPatterns} set={setShowPatterns} color="#38bdf8" title="The candlestick and chart patterns you picked in the Patterns dialog: a box round the candles, with its short name">Patterns · {highlights.length}</Pill>}
               {hasMtg && <Pill on={showMtg} set={setShowMtg} color={SKY} title="Martingale re-entries after a losing trade">MTG candles</Pill>}
             </div>)}
         </div>
@@ -670,6 +672,28 @@ export function PriceChart(props: PriceChartProps) {
               })}
 
               {candleLayer}
+
+              {/* the patterns picked in the Patterns dialog: a box round the candles (green = bullish, red = bearish, violet = neutral), its short name, and the lines of a chart pattern */}
+              {showPatterns && highlights.length > 0 && (
+                <g clipPath={`url(#${clipId}-main)`}>
+                  {highlights.map((h) => {
+                    const a = firstAtOrAfter(h.t0), z = Math.min(n - 1, firstAtOrAfter(h.t1 + 1) - 1);
+                    if (z < a || z < i0 - 1 || a > i1 + 1) return null;
+                    const bx = x(a) - step / 2 - 1, bw = step * (z - a + 1) + 2;
+                    const ty = y(h.hi) - 4, by = y(h.lo) + 4;
+                    const below = h.bias === 'bull';
+                    const px = (t: number) => x(Math.min(n - 1, firstAtOrAfter(t)));
+                    return (
+                      <g key={h.key}>
+                        <rect x={bx} y={ty} width={bw} height={by - ty} rx={3} fill={h.color} opacity={h.chart ? 0.06 : 0.14} />
+                        <rect x={bx} y={ty} width={bw} height={by - ty} rx={3} fill="none" stroke={h.color} strokeWidth={h.chart ? 1 : 1.3} strokeDasharray={h.chart ? '5 4' : undefined} />
+                        {(h.lines ?? []).map((l, k) => <line key={k} x1={px(l.t0)} y1={y(l.p0)} x2={px(l.t1)} y2={y(l.p1)} stroke={h.color} strokeWidth={l.dash ? 1 : 1.8} strokeDasharray={l.dash ? '3 4' : undefined} opacity={l.dash ? 0.7 : 0.95} />)}
+                        {(!dense || h.chart) && <g>
+                          <rect x={bx} y={below ? by + 2 : ty - 14} width={Math.max(18, h.label.length * 6 + 8)} height={12} rx={6} fill={h.color} />
+                          <text x={bx + Math.max(18, h.label.length * 6 + 8) / 2} y={below ? by + 11 : ty - 5} fontSize="9" fontWeight={800} textAnchor="middle" fill="#0a0e1f">{h.label}</text></g>}
+                      </g>);
+                  })}
+                </g>)}
 
               <g clipPath={`url(#${clipId}-main)`}>
                 {overlays.filter((g) => !hid[g.id]).map((g) => g.lines.map((l, k) => (l.style === 'dots'

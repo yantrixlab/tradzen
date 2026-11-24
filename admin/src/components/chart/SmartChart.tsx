@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, Candle } from '../../api';
 import { useStrategies } from '../../hooks';
+import { prettyPair, tfName } from '../../format';
 import { ChartData, indicatorGroup } from '../StrategyChart';
 import { ErrorBox } from '../ui';
 import { PriceChart } from './PriceChart';
 import { FlowPanel } from './FlowPanel';
 import { catalogItem, IndicatorMenu } from './IndicatorMenu';
+import { PatternMenu, type PatternToast } from './PatternMenu';
+import { BIAS_COLOR, BIAS_WORD, detect, patternDef, countFound, completedAt, type Detection } from '../../lib/chartPatterns';
+import { SOUNDS, tone } from '../../lib/ping';
 import { usePref } from '../../prefs';
-import type { BtTrade, ChartArea, ChartBand, ChartCandle, ChartMarker, MtgSummary, SeriesGroup } from './types';
+import type { BtTrade, ChartArea, ChartBand, ChartCandle, ChartHighlight, ChartMarker, MtgSummary, SeriesGroup } from './types';
 
 /** What /api/backtests/chart returns: a pair's candles, and (with a strategy) the trades it would have taken, their results, the validation split and the MTG summary. */
 export interface BtChart {
@@ -52,6 +56,9 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
   const [lSteps, setLSteps] = usePref('chart.mtg-steps', 0);
   const [lMult, setLMult] = usePref('chart.mtg-mult', 2.2);
   const [picked, setPicked] = usePref<string[]>('chart.indicators', NO_PICKS);
+  const [pats, setPats] = usePref<string[]>('chart.patterns', NO_PICKS);                 // the candle / chart patterns picked in the Patterns dialog
+  const [patAlerts, setPatAlerts] = usePref('chart.pattern-alerts', false);
+  const [patSound, setPatSound] = usePref('chart.pattern-sound', true);
   useEffect(() => { setSid(strategyId); }, [strategyId]);
   const applied = lockStrategy ? strategyId : sid;
   const steps = mtgSteps ?? lSteps, mult = mtgMult ?? lMult;
@@ -94,6 +101,50 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
     }
     return out;
   }, [q.data, live?.candles, tf]);
+  // ---- patterns: everything is looked for once (the dialog shows how many of each were found), the picked ones are highlighted, and a live chart can alert on them
+  const found = useMemo<Detection[]>(() => (compact ? [] : detect(candles)), [candles, compact]);
+  const foundCount = useMemo(() => countFound(found), [found]);
+  const highlights = useMemo<ChartHighlight[]>(() => {
+    const want = new Set(pats);
+    if (!want.size) return [];
+    return found.filter((d) => want.has(d.id)).map((d) => {
+      const def = patternDef(d.id)!;
+      return { key: `${d.id}@${d.t1}`, id: d.id, name: def.name, label: def.short, bias: d.bias, color: BIAS_COLOR[d.bias], chart: def.group === 'chart', t0: d.t0, t1: d.t1, lo: d.lo, hi: d.hi, lines: d.lines };
+    });
+  }, [found, pats]);
+  const patternTip = useCallback((i: number) => {
+    const t = candles[i]?.t;
+    if (t === undefined || !highlights.length) return null;
+    const here = highlights.filter((h) => t >= h.t0 && t <= h.t1);
+    if (!here.length) return null;
+    return <div className="mt-1 border-t border-line pt-1">{here.slice(0, 6).map((h) => <div key={h.key} className="font-semibold" style={{ color: h.color }}>{h.name}<span className="ml-1 font-normal text-mut">{BIAS_WORD[h.bias]}</span></div>)}{here.length > 6 && <div className="text-mut">+{here.length - 6} more</div>}</div>;
+  }, [candles, highlights]);
+
+  const [toasts, setToasts] = useState<PatternToast[]>([]);
+  const dismissToast = useCallback((key: string) => setToasts((ts) => ts.filter((x) => x.key !== key)), []);
+  const baseline = useRef<{ chart: string; seen: Set<string> } | null>(null);
+  const canAlert = !!live && !compact;
+  useEffect(() => {
+    if (!patAlerts || !canAlert || !pats.length) { baseline.current = null; return; }
+    const chart = `${symbol}|${tf}`;
+    const real = candles.filter((c) => !c.syn);
+    const newest = real[real.length - 1]?.t;
+    if (newest === undefined) return;
+    const want = new Set(pats);
+    const mine = found.filter((d) => want.has(d.id));
+    if (!baseline.current || baseline.current.chart !== chart) { baseline.current = { chart, seen: new Set(mine.map((d) => `${d.id}@${d.tAt}`)) }; return; }       // what is already on the chart is not news
+    const fresh = completedAt(mine, newest).filter((d) => !baseline.current!.seen.has(`${d.id}@${d.tAt}`));
+    if (!fresh.length) return;
+    for (const d of fresh) baseline.current.seen.add(`${d.id}@${d.tAt}`);
+    const out: PatternToast[] = fresh.map((d) => { const def = patternDef(d.id)!; return { key: `${d.id}@${d.tAt}`, title: `${def.name} · ${BIAS_WORD[d.bias]}`, text: `${prettyPair(symbol)} · ${tfName(tf)} · ${new Date(d.tAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, bias: d.bias }; });
+    setToasts((ts) => [...ts, ...out].slice(-4));
+    if (patSound) tone(SOUNDS[fresh[0].bias]);
+    try {
+      if (typeof document !== 'undefined' && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') for (const t of out.slice(0, 3)) new Notification(t.title, { body: t.text, tag: t.key });
+    } catch { /* notifications are not available */ }
+    for (const t of out) window.setTimeout(() => setToasts((ts) => ts.filter((x) => x.key !== t.key)), 20000);
+  }, [found, pats, patAlerts, patSound, canAlert, candles, symbol, tf]);
+
   const bridged = useMemo(() => candles.slice(-300).filter((c) => c.syn).length, [candles]);
   const forming = live?.forming ? toCandle(live.forming) : null;
 
@@ -125,6 +176,7 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
           <option value="">Strategy: none</option>{pickable.map((s) => <option key={s.id} value={s.id}>{s.name}{s.status === 'live' ? ' (live)' : ''}</option>)}
         </select>)}
       {!compact && <IndicatorMenu picked={picked} onChange={setPicked} />}
+      {!compact && <PatternMenu picked={pats} onChange={setPats} alerts={patAlerts} onAlerts={setPatAlerts} sound={patSound} onSound={setPatSound} found={foundCount} canAlert={canAlert} toasts={toasts} onDismiss={dismissToast} />}
       {applied && !compact && <label className="flex min-h-[36px] cursor-pointer items-center gap-1.5 text-mut sm:min-h-0 sm:gap-1" title="Draw the indicators the strategy uses"><input type="checkbox" checked={showInd} onChange={(e) => setShowInd(e.target.checked)} />Strategy lines</label>}
       {(applied || runId) && mtgSteps === undefined && !compact && (
         <div className="flex items-center gap-1" title="Martingale: after a losing trade, re-enter the same direction on the next candle with a bigger stake">
@@ -145,6 +197,7 @@ export function SmartChart({ symbol, tf, strategyId = null, runId = null, lockSt
     <PriceChart
       candles={candles} forming={forming} lastPrice={live?.lastPrice ?? null} tf={tf}
       overlays={overlays} panes={panes} zones={ind.data?.zones} swings={ind.data?.swings} breaks={ind.data?.breaks} markers={overlay?.markers} bands={overlay?.bands} areas={overlay?.areas} trades={q.data?.trades ?? []} payout={q.data?.payout ?? null} splitT={q.data?.split_t ?? null} mtg={q.data?.mtg ?? null}
+      highlights={highlights} tooltipExtra={patternTip}
       height={height} initialCount={initialCount} compact={compact} resetKey={`${symbol}-${tf}`} toolbarLeft={toolbarLeft}
       emptyText="Not enough stored candles for this pair and timeframe yet."
       footer={<>
